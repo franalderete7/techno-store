@@ -1,5 +1,16 @@
 # Vercel Deployment – Manual Steps
 
+## ⚠️ CRITICAL: Set Framework to Next.js
+
+**This is the #1 cause of 404 errors.** Vercel Staff have confirmed that wrong framework detection causes 404 even when the build succeeds.
+
+1. Go to **Project Settings** → **General**
+2. Under **Build & Development Settings**, find **Framework Preset**
+3. **Explicitly select "Next.js"** (do not leave on "Other" or auto)
+4. Redeploy after changing
+
+Direct link: `https://vercel.com/[your-team]/[project-name]/settings`
+
 ## 1. Connect the Project
 
 - Go to [vercel.com](https://vercel.com) → **Add New** → **Project**
@@ -8,11 +19,11 @@
 
 ## 2. Configure Project (Before Deploy)
 
-- **Framework Preset:** `Next.js` (auto-detected)
-- **Root Directory:** leave as `.` (unless the app is in a subfolder)
+- **Framework Preset:** **Must be "Next.js"** – select it explicitly!
+- **Root Directory:** leave empty (or `.` if needed)
 - **Build Command:** `npm run build`
-- **Output Directory:** leave default (`.next`)
 - **Install Command:** `npm install`
+- **Node.js Version:** 18.x or 20.x (Project Settings → General)
 
 ## 3. Add Environment Variables
 
