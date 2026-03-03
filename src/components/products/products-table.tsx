@@ -41,10 +41,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Plus, Pencil, Trash2, Loader2, Columns3, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 const TABLE_COLUMNS = [
@@ -394,55 +397,61 @@ export function ProductsTable() {
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-2xl font-bold">Products</h1>
           <div className="flex items-center gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
                 <Button variant="outline">
                   <Columns3 className="mr-2 h-4 w-4" />
                   Columns
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-64 p-0">
-                <div className="flex flex-col">
-                  <div className="flex gap-2 border-b p-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={selectAllColumns}
-                    >
-                      Select All
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={deselectAllColumns}
-                    >
-                      Deselect All
-                    </Button>
-                  </div>
-                  <div className="max-h-[50vh] overflow-y-auto p-2">
-                    {TABLE_COLUMNS.map((col) => (
-                      <label
-                        key={col.key}
-                        className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                      >
-                        <Checkbox
-                          checked={visibleColumns.includes(col.key)}
-                          onCheckedChange={(checked) =>
-                            toggleColumn(col.key, checked === true)
-                          }
-                        />
-                        {col.label}
-                      </label>
-                    ))}
-                  </div>
-                  <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-                    Shift + scroll = horizontal. Scroll wheel works in table.
-                  </p>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="z-[100] w-64 max-h-[70vh] overflow-y-auto">
+                <div className="flex gap-2 border-b p-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      selectAllColumns();
+                    }}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      deselectAllColumns();
+                    }}
+                  >
+                    Deselect All
+                  </Button>
                 </div>
-              </PopoverContent>
-            </Popover>
+                {TABLE_COLUMNS.map((col) => (
+                  <DropdownMenuCheckboxItem
+                    key={col.key}
+                    checked={visibleColumns.includes(col.key)}
+                    onCheckedChange={(checked) =>
+                      toggleColumn(col.key, checked === true)
+                    }
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {col.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+                <div className="border-t px-2 py-1.5 text-xs text-muted-foreground">
+                  Shift + scroll = horizontal
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button onClick={openAdd}>
               <Plus className="mr-2 h-4 w-4" />
               Add Product
