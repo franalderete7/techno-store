@@ -40,14 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Plus, Pencil, Trash2, Loader2, Columns3, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 const TABLE_COLUMNS = [
@@ -390,6 +382,20 @@ export function ProductsTable() {
   };
 
   const displayColumns = TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.key));
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const columnsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (columnsRef.current && !columnsRef.current.contains(event.target as Node)) {
+        setColumnsOpen(false);
+      }
+    }
+    if (columnsOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [columnsOpen]);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -397,61 +403,58 @@ export function ProductsTable() {
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-2xl font-bold">Products</h1>
           <div className="flex items-center gap-2">
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Columns3 className="mr-2 h-4 w-4" />
-                  Columns
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="z-[100] w-64 max-h-[70vh] overflow-y-auto">
-                <div className="flex gap-2 border-b p-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    type="button"
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      selectAllColumns();
-                    }}
-                  >
-                    Select All
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    type="button"
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      deselectAllColumns();
-                    }}
-                  >
-                    Deselect All
-                  </Button>
+            <div ref={columnsRef} className="relative">
+              <Button
+                variant="outline"
+                onClick={() => setColumnsOpen((o) => !o)}
+              >
+                <Columns3 className="mr-2 h-4 w-4" />
+                Columns
+              </Button>
+              {columnsOpen && (
+                <div className="absolute right-0 top-full z-[100] mt-1 w-64 rounded-md border bg-popover p-0 shadow-md">
+                  <div className="flex gap-2 border-b p-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      type="button"
+                      onClick={selectAllColumns}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      type="button"
+                      onClick={deselectAllColumns}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                  <div className="max-h-[50vh] overflow-y-auto p-2">
+                    {TABLE_COLUMNS.map((col) => (
+                      <label
+                        key={col.key}
+                        className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      >
+                        <Checkbox
+                          checked={visibleColumns.includes(col.key)}
+                          onCheckedChange={(checked) =>
+                            toggleColumn(col.key, checked === true)
+                          }
+                        />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                    Shift + scroll = horizontal
+                  </p>
                 </div>
-                {TABLE_COLUMNS.map((col) => (
-                  <DropdownMenuCheckboxItem
-                    key={col.key}
-                    checked={visibleColumns.includes(col.key)}
-                    onCheckedChange={(checked) =>
-                      toggleColumn(col.key, checked === true)
-                    }
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {col.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-                <div className="border-t px-2 py-1.5 text-xs text-muted-foreground">
-                  Shift + scroll = horizontal
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            </div>
             <Button onClick={openAdd}>
               <Plus className="mr-2 h-4 w-4" />
               Add Product
