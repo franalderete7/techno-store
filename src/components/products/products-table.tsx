@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductInsert } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -397,6 +397,29 @@ function ProductImageCell({ product }: { product: Product }) {
   );
 }
 
+function matchesProductSearch(product: Product, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  const searchableValues = [
+    product.product_name,
+    product.product_key,
+    product.category,
+    product.color,
+    product.network,
+    product.image_url,
+    product.id != null ? String(product.id) : null,
+    product.price_usd != null ? String(product.price_usd) : null,
+    product.price_ars != null ? String(product.price_ars) : null,
+  ];
+
+  return searchableValues.some((value) =>
+    String(value ?? "")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}
+
 export function ProductsTable() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -405,12 +428,17 @@ export function ProductsTable() {
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Record<string, string | number | boolean>>({});
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
     normalizeVisibleColumns(DEFAULT_VISIBLE_COLUMNS)
   );
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const tableScrollRef = useRef<HTMLDivElement>(null);
+  const quickAddImageInputRef = useRef<HTMLInputElement>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -421,15 +449,30 @@ export function ProductsTable() {
     }
   };
 
+  const filteredProducts = products.filter((product) =>
+    matchesProductSearch(product, deferredSearchQuery)
+  );
   const sortedProducts =
-    sortColumn && products.length > 0
-      ? sortProducts(products, sortColumn, sortDirection)
-      : products;
+    sortColumn && filteredProducts.length > 0
+      ? sortProducts(filteredProducts, sortColumn, sortDirection)
+      : filteredProducts;
   const quickAddPreview = buildQuickAddPreview(
     String(formData.product_name ?? ""),
     formData.cost_usd,
     products
   );
+
+  useEffect(() => {
+    if (!selectedImageFile) {
+      setSelectedImagePreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedImageFile);
+    setSelectedImagePreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedImageFile]);
 
   useEffect(() => {
     setVisibleColumns(getStoredVisibleColumns());
@@ -515,6 +558,10 @@ export function ProductsTable() {
       product_name: "",
       cost_usd: "",
     });
+    setSelectedImageFile(null);
+    if (quickAddImageInputRef.current) {
+      quickAddImageInputRef.current.value = "";
+    }
     setAddOpen(true);
   };
 
@@ -554,15 +601,50 @@ export function ProductsTable() {
     }
 
     setSaving(true);
-    const { error } = await supabase.from("products").insert(preview.insert);
-    setSaving(false);
-    if (error) {
-      alert("Error adding product: " + error.message);
-      return;
+    try {
+      let imageUrl: string | null = null;
+
+      if (selectedImageFile) {
+        const uploadFormData = new FormData();
+        uploadFormData.append("file", selectedImageFile);
+        uploadFormData.append("productKey", preview.insert.product_key);
+
+        const uploadResponse = await fetch("/api/cloudinary/upload", {
+          method: "POST",
+          body: uploadFormData,
+        });
+
+        const uploadResult = (await uploadResponse.json()) as { error?: string; secureUrl?: string };
+
+        if (!uploadResponse.ok || !uploadResult.secureUrl) {
+          alert(uploadResult.error || "Error uploading image to Cloudinary.");
+          return;
+        }
+
+        imageUrl = uploadResult.secureUrl;
+      }
+
+      const { error } = await supabase
+        .from("products")
+        .insert({ ...preview.insert, image_url: imageUrl });
+
+      if (error) {
+        alert("Error adding product: " + error.message);
+        return;
+      }
+
+      setAddOpen(false);
+      setFormData({});
+      setSelectedImageFile(null);
+      if (quickAddImageInputRef.current) {
+        quickAddImageInputRef.current.value = "";
+      }
+      fetchProducts();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Unexpected error adding product.");
+    } finally {
+      setSaving(false);
     }
-    setAddOpen(false);
-    setFormData({});
-    fetchProducts();
   };
 
   const handleDelete = async () => {
@@ -633,7 +715,14 @@ export function ProductsTable() {
       <div className="mx-auto w-full">
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-2xl font-bold">Products</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="w-full min-w-[220px] sm:w-72">
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search name, key, category, color..."
+              />
+            </div>
             <div ref={columnsRef} className="relative">
               <Button
                 variant="outline"
@@ -709,82 +798,93 @@ export function ProductsTable() {
           <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
             No products yet. Click &quot;Add Product&quot; to create one.
           </div>
-        ) : (
-          <div
-            ref={tableScrollRef}
-            className="overflow-auto rounded-lg border"
-            style={{ maxHeight: "calc(100vh - 12rem)" }}
-            onWheel={handleTableWheel}
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {displayColumns.map((col) => (
-                    <TableHead
-                      key={col.key}
-                      className="min-w-[100px] cursor-pointer select-none whitespace-nowrap px-3 py-3 hover:bg-muted/50"
-                      onClick={() => handleSort(col.key)}
-                    >
-                      <div className="flex items-center gap-1">
-                        {col.label}
-                        {sortColumn === col.key ? (
-                          sortDirection === "asc" ? (
-                            <ArrowUp className="h-4 w-4" />
-                          ) : (
-                            <ArrowDown className="h-4 w-4" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="h-4 w-4 opacity-50" />
-                        )}
-                      </div>
-                    </TableHead>
-                  ))}
-                  <TableHead className="min-w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedProducts.map((p) => (
-                  <TableRow key={p.id}>
-                    {displayColumns.map((col) => (
-                      <TableCell
-                        key={col.key}
-                        className={`px-3 py-2 ${col.key === "image_url" ? "min-w-[84px]" : "min-w-[100px] whitespace-nowrap"}`}
-                      >
-                        {col.key === "image_url" ? (
-                          <ProductImageCell product={p} />
-                        ) : col.key === "id" ? (
-                          <span className="font-mono text-xs">{p.id}</span>
-                        ) : col.key === "in_stock" ? (
-                          p.in_stock ? (
-                            <Badge variant="default">Yes</Badge>
-                          ) : (
-                            <Badge variant="secondary">No</Badge>
-                          )
-                        ) : (
-                          formatCellValue(p, col.key)
-                        )}
-                      </TableCell>
-                    ))}
-                    <TableCell className="min-w-[100px]">
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(p)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteProduct(p)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        ) : filteredProducts.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+            No products match &quot;{searchQuery}&quot;.
           </div>
+        ) : (
+          <>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Showing {sortedProducts.length} of {products.length} products.
+            </p>
+            <div
+              ref={tableScrollRef}
+              className="overflow-auto rounded-lg border"
+              style={{ maxHeight: "calc(100vh - 12rem)" }}
+              onWheel={handleTableWheel}
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {displayColumns.map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className="sticky top-0 z-20 min-w-[100px] cursor-pointer select-none whitespace-nowrap bg-background px-3 py-3 hover:bg-muted/50"
+                        onClick={() => handleSort(col.key)}
+                      >
+                        <div className="flex items-center gap-1">
+                          {col.label}
+                          {sortColumn === col.key ? (
+                            sortDirection === "asc" ? (
+                              <ArrowUp className="h-4 w-4" />
+                            ) : (
+                              <ArrowDown className="h-4 w-4" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
+                    ))}
+                    <TableHead className="sticky top-0 z-20 min-w-[100px] bg-background">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedProducts.map((p) => (
+                    <TableRow key={p.id}>
+                      {displayColumns.map((col) => (
+                        <TableCell
+                          key={col.key}
+                          className={`px-3 py-2 ${col.key === "image_url" ? "min-w-[84px]" : "min-w-[100px] whitespace-nowrap"}`}
+                        >
+                          {col.key === "image_url" ? (
+                            <ProductImageCell product={p} />
+                          ) : col.key === "id" ? (
+                            <span className="font-mono text-xs">{p.id}</span>
+                          ) : col.key === "in_stock" ? (
+                            p.in_stock ? (
+                              <Badge variant="default">Yes</Badge>
+                            ) : (
+                              <Badge variant="secondary">No</Badge>
+                            )
+                          ) : (
+                            formatCellValue(p, col.key)
+                          )}
+                        </TableCell>
+                      ))}
+                      <TableCell className="min-w-[100px]">
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(p)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setDeleteProduct(p)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </div>
 
@@ -865,7 +965,13 @@ export function ProductsTable() {
         open={addOpen}
         onOpenChange={(open) => {
           setAddOpen(open);
-          if (!open) setFormData({});
+          if (!open) {
+            setFormData({});
+            setSelectedImageFile(null);
+            if (quickAddImageInputRef.current) {
+              quickAddImageInputRef.current.value = "";
+            }
+          }
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -898,6 +1004,41 @@ export function ProductsTable() {
                   Margin is assigned automatically from the cost band chart. Stock is always saved as
                   <span className="font-medium text-foreground"> Yes</span>.
                 </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="space-y-2">
+                <Label htmlFor="add-image">Product Image</Label>
+                <Input
+                  id="add-image"
+                  ref={quickAddImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => setSelectedImageFile(event.target.files?.[0] ?? null)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  If you choose a file, it will be uploaded to Cloudinary folder
+                  <span className="font-medium text-foreground"> assets</span> using the generated
+                  product key.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Preview</Label>
+                {selectedImagePreviewUrl ? (
+                  <div className="overflow-hidden rounded-lg border bg-muted">
+                    <img
+                      src={selectedImagePreviewUrl}
+                      alt="Selected product preview"
+                      className="h-40 w-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-40 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                    No image selected
+                  </div>
+                )}
               </div>
             </div>
 
