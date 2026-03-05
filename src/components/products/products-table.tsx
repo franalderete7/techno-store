@@ -43,6 +43,7 @@ import {
 import { Plus, Pencil, Trash2, Loader2, Columns3, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 const TABLE_COLUMNS = [
+  { key: "image_url", label: "Image", alwaysVisible: true },
   { key: "id", label: "ID", alwaysVisible: false },
   { key: "product_key", label: "Product Key", alwaysVisible: false },
   { key: "category", label: "Category", alwaysVisible: false },
@@ -74,6 +75,7 @@ const TABLE_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLUMNS = [
+  "image_url",
   "id",
   "product_key",
   "category",
@@ -83,7 +85,25 @@ const DEFAULT_VISIBLE_COLUMNS = [
   "in_stock",
 ];
 
+const ALWAYS_VISIBLE_COLUMNS = TABLE_COLUMNS.filter((column) => column.alwaysVisible).map(
+  (column) => column.key
+);
+
 const STORAGE_KEY = "techno-store-visible-columns";
+
+const PRICING_BANDS = [
+  { maxCostUsd: 200, marginPct: 0.3, label: "USD 0 - 200" },
+  { maxCostUsd: 400, marginPct: 0.25, label: "USD 201 - 400" },
+  { maxCostUsd: 800, marginPct: 0.2, label: "USD 401 - 800" },
+  { maxCostUsd: Number.POSITIVE_INFINITY, marginPct: 0.15, label: "USD 801+" },
+] as const;
+
+function normalizeVisibleColumns(columns: string[]): string[] {
+  const validColumns = new Set(TABLE_COLUMNS.map((column) => column.key));
+  return [...new Set([...ALWAYS_VISIBLE_COLUMNS, ...columns])].filter((column) =>
+    validColumns.has(column)
+  );
+}
 
 function getStoredVisibleColumns(): string[] {
   if (typeof window === "undefined") return DEFAULT_VISIBLE_COLUMNS;
@@ -91,20 +111,46 @@ function getStoredVisibleColumns(): string[] {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as string[];
-      return parsed.length > 0 ? parsed : DEFAULT_VISIBLE_COLUMNS;
+      return normalizeVisibleColumns(parsed.length > 0 ? parsed : DEFAULT_VISIBLE_COLUMNS);
     }
   } catch {
     // ignore
   }
-  return DEFAULT_VISIBLE_COLUMNS;
+  return normalizeVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+}
+
+function formatPercentValue(value: number): string {
+  return `${(value * 100).toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function formatUsd(value: number): string {
+  return `$${value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatArs(value: number): string {
+  return `$${value.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
 }
 
 function formatCellValue(product: Product, key: string): string {
   const val = product[key as keyof Product];
   if (val === null || val === undefined) return "—";
+  if (key === "margin_pct" || key === "bancarizada_interest" || key === "macro_interest") {
+    return typeof val === "number" ? formatPercentValue(val) : String(val);
+  }
   if (key === "in_stock") return val ? "Yes" : "No";
-  if (key === "price_usd" || key === "cost_usd" || key === "logistics_usd" || key === "total_cost_usd" || key.includes("price") || key.includes("bancarizada") || key.includes("macro"))
-    return typeof val === "number" ? `$${val.toLocaleString()}` : String(val);
+  if (key === "price_usd" || key === "cost_usd" || key === "logistics_usd" || key === "total_cost_usd")
+    return typeof val === "number" ? formatUsd(val) : String(val);
+  if (key.includes("price") || key.includes("bancarizada") || key.includes("macro"))
+    return typeof val === "number" ? formatArs(val) : String(val);
   if (typeof val === "boolean") return val ? "Yes" : "No";
   if (key === "created_at" || key === "updated_at")
     return new Date(val as string).toLocaleDateString();
@@ -137,6 +183,7 @@ const EDITABLE_COLUMNS = [
   { key: "storage_gb", label: "Storage GB", type: "number" as const },
   { key: "color", label: "Color", type: "text" as const },
   { key: "network", label: "Network", type: "text" as const },
+  { key: "image_url", label: "Image URL", type: "text" as const },
 ];
 
 const DEFAULT_VALUES: Partial<ProductInsert> = {
@@ -190,6 +237,166 @@ function toFormValue(product: Product | null, key: string): string | number | bo
   return val;
 }
 
+function parseNumericValue(value: string | number | boolean | undefined): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    if (!normalized) return null;
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function roundUsdAmount(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function roundArsAmount(value: number): number {
+  return Math.round(value);
+}
+
+function slugifyProductName(name: string): string {
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+
+  return slug || "product";
+}
+
+function inferCategoryFromName(name: string): string {
+  const normalized = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (normalized.includes("iphone")) return "IPHONE";
+  if (normalized.includes("samsung") || normalized.includes("galaxy")) return "SAMSUNG";
+  if (
+    normalized.includes("redmi") ||
+    normalized.includes("poco") ||
+    normalized.includes("xiaomi") ||
+    /\bmi\b/.test(normalized)
+  ) {
+    return "REDMI/POCO";
+  }
+  if (normalized.includes("motorola") || normalized.includes("moto")) return "MOTOROLA";
+
+  return "GENERAL";
+}
+
+function buildUniqueProductKey(name: string, products: Product[]): string {
+  const baseKey = slugifyProductName(name);
+  const existingKeys = new Set(products.map((product) => product.product_key.toLowerCase()));
+
+  if (!existingKeys.has(baseKey)) return baseKey;
+
+  let suffix = 2;
+  let candidate = `${baseKey}_${suffix}`;
+
+  while (existingKeys.has(candidate)) {
+    suffix += 1;
+    candidate = `${baseKey}_${suffix}`;
+  }
+
+  return candidate;
+}
+
+function getPricingBand(costUsd: number) {
+  return (
+    PRICING_BANDS.find((band) => costUsd <= band.maxCostUsd) ??
+    PRICING_BANDS[PRICING_BANDS.length - 1]
+  );
+}
+
+type QuickAddPreview = {
+  marginBandLabel: string;
+  insert: ProductInsert;
+};
+
+function buildQuickAddPreview(
+  productName: string,
+  rawCostUsd: string | number | boolean | undefined,
+  products: Product[]
+): QuickAddPreview | null {
+  const trimmedName = productName.trim();
+  const costUsd = parseNumericValue(rawCostUsd);
+
+  if (!trimmedName || costUsd === null || costUsd <= 0) return null;
+
+  const logisticsUsd = Number(DEFAULT_VALUES.logistics_usd ?? 10);
+  const usdRate = Number(DEFAULT_VALUES.usd_rate ?? 1460);
+  const cuotasQty = Number(DEFAULT_VALUES.cuotas_qty ?? 6);
+  const bancarizadaInterest = Number(DEFAULT_VALUES.bancarizada_interest ?? 0.5);
+  const macroInterest = Number(DEFAULT_VALUES.macro_interest ?? 0.35);
+  const marginBand = getPricingBand(costUsd);
+
+  const totalCostUsd = roundUsdAmount(costUsd + logisticsUsd);
+  const priceUsd = roundUsdAmount(totalCostUsd * (1 + marginBand.marginPct));
+  const priceArs = roundArsAmount(priceUsd * usdRate);
+  const bancarizadaTotal = roundArsAmount(priceArs * (1 + bancarizadaInterest));
+  const macroTotal = roundArsAmount(priceArs * (1 + macroInterest));
+
+  return {
+    marginBandLabel: marginBand.label,
+    insert: {
+      product_key: buildUniqueProductKey(trimmedName, products),
+      category: inferCategoryFromName(trimmedName),
+      product_name: trimmedName,
+      cost_usd: roundUsdAmount(costUsd),
+      logistics_usd: logisticsUsd,
+      total_cost_usd: totalCostUsd,
+      margin_pct: marginBand.marginPct,
+      price_usd: priceUsd,
+      price_ars: priceArs,
+      promo_price_ars: null,
+      bancarizada_total: bancarizadaTotal,
+      bancarizada_cuota: roundArsAmount(bancarizadaTotal / cuotasQty),
+      bancarizada_interest: bancarizadaInterest,
+      macro_total: macroTotal,
+      macro_cuota: roundArsAmount(macroTotal / cuotasQty),
+      macro_interest: macroInterest,
+      cuotas_qty: cuotasQty,
+      in_stock: true,
+      delivery_type: "immediate",
+      delivery_days: 0,
+      usd_rate: usdRate,
+      image_url: null,
+    },
+  };
+}
+
+function ProductImageCell({ product }: { product: Product }) {
+  const [hasError, setHasError] = useState(false);
+  const imageUrl = typeof product.image_url === "string" ? product.image_url.trim() : "";
+
+  if (!imageUrl || hasError) {
+    return (
+      <div className="flex h-14 w-14 items-center justify-center rounded-md border bg-muted text-center text-[10px] uppercase tracking-wide text-muted-foreground">
+        No image
+      </div>
+    );
+  }
+
+  return (
+    <a href={imageUrl} target="_blank" rel="noreferrer" className="block">
+      <img
+        src={imageUrl}
+        alt={product.product_name}
+        className="h-14 w-14 rounded-md border object-cover"
+        loading="lazy"
+        onError={() => setHasError(true)}
+      />
+    </a>
+  );
+}
+
 export function ProductsTable() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -198,7 +405,9 @@ export function ProductsTable() {
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Record<string, string | number | boolean>>({});
-  const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE_COLUMNS);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(
+    normalizeVisibleColumns(DEFAULT_VISIBLE_COLUMNS)
+  );
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -216,15 +425,21 @@ export function ProductsTable() {
     sortColumn && products.length > 0
       ? sortProducts(products, sortColumn, sortDirection)
       : products;
+  const quickAddPreview = buildQuickAddPreview(
+    String(formData.product_name ?? ""),
+    formData.cost_usd,
+    products
+  );
 
   useEffect(() => {
     setVisibleColumns(getStoredVisibleColumns());
   }, []);
 
   const toggleColumn = (key: string, checked: boolean) => {
-    const next = checked
-      ? [...visibleColumns, key]
-      : visibleColumns.filter((c) => c !== key);
+    if (ALWAYS_VISIBLE_COLUMNS.includes(key)) return;
+    const next = normalizeVisibleColumns(
+      checked ? [...visibleColumns, key] : visibleColumns.filter((c) => c !== key)
+    );
     setVisibleColumns(next);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -232,7 +447,7 @@ export function ProductsTable() {
   };
 
   const selectAllColumns = () => {
-    const all = TABLE_COLUMNS.map((c) => c.key);
+    const all = normalizeVisibleColumns(TABLE_COLUMNS.map((c) => c.key));
     setVisibleColumns(all);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
@@ -240,9 +455,9 @@ export function ProductsTable() {
   };
 
   const deselectAllColumns = () => {
-    setVisibleColumns([]);
+    setVisibleColumns(ALWAYS_VISIBLE_COLUMNS);
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ALWAYS_VISIBLE_COLUMNS));
     }
   };
 
@@ -296,11 +511,10 @@ export function ProductsTable() {
 
   const openAdd = () => {
     setEditProduct(null);
-    const data: Record<string, string | number | boolean> = {};
-    EDITABLE_COLUMNS.forEach(({ key }) => {
-      data[key] = toFormValue(null, key);
+    setFormData({
+      product_name: "",
+      cost_usd: "",
     });
-    setFormData(data);
     setAddOpen(true);
   };
 
@@ -333,34 +547,21 @@ export function ProductsTable() {
   };
 
   const handleSaveAdd = async () => {
+    const preview = buildQuickAddPreview(String(formData.product_name ?? ""), formData.cost_usd, products);
+    if (!preview) {
+      alert("Product Name and a valid Cost USD are required.");
+      return;
+    }
+
     setSaving(true);
-    const insert: Record<string, unknown> = {
-      product_key: String(formData.product_key || ""),
-      category: String(formData.category || ""),
-      product_name: String(formData.product_name || ""),
-      price_usd: Number(formData.price_usd) || 0,
-      price_ars: Number(formData.price_ars) || 0,
-    };
-    EDITABLE_COLUMNS.forEach(({ key, type }) => {
-      if (["product_key", "category", "product_name", "price_usd", "price_ars"].includes(key))
-        return;
-      const val = formData[key];
-      if (type === "number") {
-        const n = typeof val === "string" ? parseFloat(val) : Number(val);
-        insert[key] = isNaN(n) ? null : n;
-      } else if (type === "boolean") {
-        insert[key] = !!val;
-      } else {
-        insert[key] = val === "" ? null : String(val);
-      }
-    });
-    const { error } = await supabase.from("products").insert(insert);
+    const { error } = await supabase.from("products").insert(preview.insert);
     setSaving(false);
     if (error) {
       alert("Error adding product: " + error.message);
       return;
     }
     setAddOpen(false);
+    setFormData({});
     fetchProducts();
   };
 
@@ -382,6 +583,36 @@ export function ProductsTable() {
   };
 
   const displayColumns = TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.key));
+  const quickAddSummaryItems = quickAddPreview
+    ? [
+        { label: "Product Key", value: quickAddPreview.insert.product_key },
+        { label: "Category", value: quickAddPreview.insert.category },
+        {
+          label: "Margin",
+          value: formatPercentValue(quickAddPreview.insert.margin_pct ?? 0),
+        },
+        {
+          label: "Price USD",
+          value: formatUsd(quickAddPreview.insert.price_usd),
+        },
+        {
+          label: "Price ARS",
+          value: formatArs(quickAddPreview.insert.price_ars),
+        },
+        {
+          label: "Bancarizada / cuota",
+          value: formatArs(quickAddPreview.insert.bancarizada_cuota ?? 0),
+        },
+        {
+          label: "Macro / cuota",
+          value: formatArs(quickAddPreview.insert.macro_cuota ?? 0),
+        },
+        {
+          label: "Total Cost USD",
+          value: formatUsd(quickAddPreview.insert.total_cost_usd ?? 0),
+        },
+      ]
+    : [];
   const [columnsOpen, setColumnsOpen] = useState(false);
   const columnsRef = useRef<HTMLDivElement>(null);
 
@@ -437,20 +668,28 @@ export function ProductsTable() {
                     {TABLE_COLUMNS.map((col) => (
                       <label
                         key={col.key}
-                        className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        className={`flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm ${
+                          col.alwaysVisible ? "cursor-default opacity-70" : "cursor-pointer hover:bg-accent"
+                        }`}
                       >
                         <Checkbox
                           checked={visibleColumns.includes(col.key)}
+                          disabled={col.alwaysVisible}
                           onCheckedChange={(checked) =>
                             toggleColumn(col.key, checked === true)
                           }
                         />
-                        {col.label}
+                        <span>{col.label}</span>
+                        {col.alwaysVisible ? (
+                          <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Always
+                          </span>
+                        ) : null}
                       </label>
                     ))}
                   </div>
                   <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-                    Shift + scroll = horizontal
+                    Image is always visible. Shift + scroll = horizontal.
                   </p>
                 </div>
               )}
@@ -509,9 +748,11 @@ export function ProductsTable() {
                     {displayColumns.map((col) => (
                       <TableCell
                         key={col.key}
-                        className="min-w-[100px] whitespace-nowrap px-3 py-2"
+                        className={`px-3 py-2 ${col.key === "image_url" ? "min-w-[84px]" : "min-w-[100px] whitespace-nowrap"}`}
                       >
-                        {col.key === "id" ? (
+                        {col.key === "image_url" ? (
+                          <ProductImageCell product={p} />
+                        ) : col.key === "id" ? (
                           <span className="font-mono text-xs">{p.id}</span>
                         ) : col.key === "in_stock" ? (
                           p.in_stock ? (
@@ -620,64 +861,76 @@ export function ProductsTable() {
       </Dialog>
 
       {/* Add Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <Dialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          setAddOpen(open);
+          if (!open) setFormData({});
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Add Product</DialogTitle>
+            <DialogTitle>Quick Add Product</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              {EDITABLE_COLUMNS.map(({ key, label, type }) => (
-                <div key={key} className="space-y-2">
-                  <Label htmlFor={`add-${key}`}>{label}</Label>
-                  {type === "boolean" ? (
-                    <div className="flex items-center gap-2 pt-2">
-                      <Checkbox
-                        id={`add-${key}`}
-                        checked={!!formData[key]}
-                        onCheckedChange={(c) => updateForm(key, !!c)}
-                      />
-                      <label htmlFor={`add-${key}`} className="text-sm">
-                        {formData[key] ? "Yes" : "No"}
-                      </label>
-                    </div>
-                  ) : type === "text" && key === "delivery_type" ? (
-                    <Select
-                      value={String(formData[key] ?? "")}
-                      onValueChange={(v) => updateForm(key, v)}
-                    >
-                      <SelectTrigger id={`add-${key}`}>
-                        <SelectValue placeholder="Select..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="immediate">Immediate</SelectItem>
-                        <SelectItem value="scheduled">Scheduled</SelectItem>
-                        <SelectItem value="pickup">Pickup</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      id={`add-${key}`}
-                      type={type}
-                      value={
-                        typeof formData[key] === "boolean"
-                          ? ""
-                          : String(formData[key] ?? "")
-                      }
-                      onChange={(e) =>
-                        updateForm(
-                          key,
-                          type === "number"
-                            ? (e.target.value === "" ? "" : parseFloat(e.target.value))
-                            : e.target.value
-                        )
-                      }
-                      placeholder={label}
-                    />
-                  )}
-                </div>
-              ))}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="add-product-name">Product Name</Label>
+                <Input
+                  id="add-product-name"
+                  value={String(formData.product_name ?? "")}
+                  onChange={(e) => updateForm("product_name", e.target.value)}
+                  placeholder="iPhone 15 128GB"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-cost-usd">Cost USD</Label>
+                <Input
+                  id="add-cost-usd"
+                  type="number"
+                  value={typeof formData.cost_usd === "boolean" ? "" : String(formData.cost_usd ?? "")}
+                  onChange={(e) =>
+                    updateForm("cost_usd", e.target.value === "" ? "" : parseFloat(e.target.value))
+                  }
+                  placeholder="499"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Margin is assigned automatically from the cost band chart. Stock is always saved as
+                  <span className="font-medium text-foreground"> Yes</span>.
+                </p>
+              </div>
             </div>
+
+            {quickAddPreview ? (
+              <div className="rounded-lg border bg-muted/20 p-4">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Auto-calculated values</p>
+                    <p className="text-xs text-muted-foreground">
+                      {quickAddPreview.marginBandLabel} margin band, logistics {formatUsd(
+                        quickAddPreview.insert.logistics_usd ?? 0
+                      )}, USD rate {quickAddPreview.insert.usd_rate}
+                    </p>
+                  </div>
+                  <Badge variant="default">In stock: Yes</Badge>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {quickAddSummaryItems.map((item) => (
+                    <div key={item.label} className="rounded-md border bg-background p-3">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        {item.label}
+                      </p>
+                      <p className="mt-1 text-sm font-medium">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Enter a product name and a valid USD cost to generate the category, product key,
+                selling price, installment totals, and default stock data automatically.
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>

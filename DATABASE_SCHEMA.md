@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2025-03-03
+**Last updated:** 2026-03-03
 
 ## Overview
 
@@ -43,6 +43,7 @@ Product catalog with pricing, logistics, and delivery info.
 | color | text | YES | - | Product color |
 | network | text | YES | - | Network type |
 | image_url | text | YES | - | Image URL (managed separately) |
+| condition | text | YES | 'new' | Product condition: new, used, or like_new |
 
 **Constraints:**
 - Primary key: `id`
