@@ -481,6 +481,9 @@ export function ProductsTable() {
   const [formData, setFormData] = useState<Record<string, string | number | boolean>>({});
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null);
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreviewUrl, setEditImagePreviewUrl] = useState<string | null>(null);
+  const [editImageMarkedForRemoval, setEditImageMarkedForRemoval] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdvancedDefaults, setShowAdvancedDefaults] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
@@ -490,6 +493,7 @@ export function ProductsTable() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const quickAddImageInputRef = useRef<HTMLInputElement>(null);
+  const editImageInputRef = useRef<HTMLInputElement>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const handleSort = (column: string) => {
@@ -526,6 +530,18 @@ export function ProductsTable() {
 
     return () => URL.revokeObjectURL(objectUrl);
   }, [selectedImageFile]);
+
+  useEffect(() => {
+    if (!editImageFile) {
+      setEditImagePreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(editImageFile);
+    setEditImagePreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [editImageFile]);
 
   useEffect(() => {
     setVisibleColumns(getStoredVisibleColumns());
@@ -603,6 +619,11 @@ export function ProductsTable() {
       data[key] = toFormValue(product, key);
     });
     setFormData(data);
+    setEditImageFile(null);
+    setEditImageMarkedForRemoval(false);
+    if (editImageInputRef.current) {
+      editImageInputRef.current.value = "";
+    }
   };
 
   const openAdd = () => {
@@ -624,6 +645,7 @@ export function ProductsTable() {
     setSaving(true);
     const update: Record<string, string | number | boolean | null> = {};
     EDITABLE_COLUMNS.forEach(({ key, type }) => {
+      if (key === "image_url") return;
       const val = formData[key];
       if (type === "number") {
         const n = typeof val === "string" ? parseFloat(val) : Number(val);
@@ -634,17 +656,87 @@ export function ProductsTable() {
         update[key] = val === "" ? null : (val as string);
       }
     });
-    const { error } = await supabase
-      .from("products")
-      .update(update)
-      .eq("id", editProduct.id);
-    setSaving(false);
-    if (error) {
-      alert("Error updating product: " + error.message);
-      return;
+
+    try {
+      let nextImageUrl =
+        editImageMarkedForRemoval || editImageFile
+          ? null
+          : typeof formData.image_url === "string" && formData.image_url.trim()
+            ? formData.image_url.trim()
+            : null;
+
+      if (editImageMarkedForRemoval && editProduct.image_url) {
+        const deleteResponse = await fetch("/api/cloudinary/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            imageUrl: editProduct.image_url,
+            productKey: editProduct.product_key,
+          }),
+        });
+
+        const deleteResult = (await deleteResponse.json()) as { error?: string };
+        if (!deleteResponse.ok) {
+          alert(deleteResult.error || "Error deleting image from Cloudinary.");
+          return;
+        }
+      }
+
+      if (editImageFile) {
+        const productKey = String(update.product_key ?? editProduct.product_key ?? "").trim();
+        if (!productKey) {
+          alert("Product Key is required to upload a replacement image.");
+          return;
+        }
+
+        const uploadFormData = new FormData();
+        uploadFormData.append("file", editImageFile);
+        uploadFormData.append("productKey", productKey);
+
+        const uploadResponse = await fetch("/api/cloudinary/upload", {
+          method: "POST",
+          body: uploadFormData,
+        });
+
+        const uploadResult = (await uploadResponse.json()) as {
+          error?: string;
+          secureUrl?: string;
+        };
+
+        if (!uploadResponse.ok || !uploadResult.secureUrl) {
+          alert(uploadResult.error || "Error uploading image to Cloudinary.");
+          return;
+        }
+
+        nextImageUrl = uploadResult.secureUrl;
+      }
+
+      update.image_url = nextImageUrl;
+
+      const { error } = await supabase
+        .from("products")
+        .update(update)
+        .eq("id", editProduct.id);
+
+      if (error) {
+        alert("Error updating product: " + error.message);
+        return;
+      }
+
+      setEditProduct(null);
+      setEditImageFile(null);
+      setEditImageMarkedForRemoval(false);
+      if (editImageInputRef.current) {
+        editImageInputRef.current.value = "";
+      }
+      fetchProducts();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Unexpected error updating product.");
+    } finally {
+      setSaving(false);
     }
-    setEditProduct(null);
-    fetchProducts();
   };
 
   const handleSaveAdd = async () => {
@@ -719,6 +811,10 @@ export function ProductsTable() {
   };
 
   const displayColumns = TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.key));
+  const editImageUrl =
+    typeof formData.image_url === "string" && !editImageMarkedForRemoval
+      ? formData.image_url.trim()
+      : "";
   const quickAddSummaryItems = resolvedQuickAddInsert
     ? [
         { label: "Product Key", value: resolvedQuickAddInsert.product_key },
@@ -951,7 +1047,18 @@ export function ProductsTable() {
       </div>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editProduct && !addOpen} onOpenChange={(o) => !o && setEditProduct(null)}>
+      <Dialog
+        open={!!editProduct && !addOpen}
+        onOpenChange={(open) => {
+          if (open) return;
+          setEditProduct(null);
+          setEditImageFile(null);
+          setEditImageMarkedForRemoval(false);
+          if (editImageInputRef.current) {
+            editImageInputRef.current.value = "";
+          }
+        }}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Product</DialogTitle>
@@ -959,9 +1066,98 @@ export function ProductsTable() {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               {EDITABLE_COLUMNS.map(({ key, label, type }) => (
-                <div key={key} className="space-y-2">
+                <div key={key} className={key === "image_url" ? "col-span-2 space-y-2" : "space-y-2"}>
                   <Label htmlFor={key}>{label}</Label>
-                  {type === "boolean" ? (
+                  {key === "image_url" ? (
+                    <div className="space-y-3 rounded-md border p-4">
+                      <div className="grid gap-4 sm:grid-cols-[220px_minmax(0,1fr)]">
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Current Image</p>
+                          {editImagePreviewUrl ? (
+                            <div className="overflow-hidden rounded-lg border bg-muted">
+                              <img
+                                src={editImagePreviewUrl}
+                                alt="Selected edit preview"
+                                className="h-40 w-full object-cover"
+                              />
+                            </div>
+                          ) : editImageUrl ? (
+                            <div className="overflow-hidden rounded-lg border bg-muted">
+                              <img
+                                src={editImageUrl}
+                                alt="Current product image"
+                                className="h-40 w-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex h-40 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                              No image
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="edit-image-upload">Upload Image</Label>
+                            <Input
+                              id="edit-image-upload"
+                              ref={editImageInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) => {
+                                setEditImageFile(event.target.files?.[0] ?? null);
+                                if (event.target.files?.[0]) {
+                                  setEditImageMarkedForRemoval(false);
+                                }
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Upload a new file to replace the current image, or add one if the product
+                              has none.
+                            </p>
+                          </div>
+
+                          <div className="rounded-md bg-muted/50 p-3 text-sm">
+                            {editImageMarkedForRemoval ? (
+                              <p className="text-destructive">The current image will be removed on save.</p>
+                            ) : editImageFile ? (
+                              <p>New image selected. Saving will update the product image.</p>
+                            ) : editImageUrl ? (
+                              <p className="break-all text-muted-foreground">{editImageUrl}</p>
+                            ) : (
+                              <p className="text-muted-foreground">No image URL saved for this product yet.</p>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            {editImageUrl ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setEditImageMarkedForRemoval((current) => !current)}
+                              >
+                                {editImageMarkedForRemoval ? "Undo Remove" : "Delete Image"}
+                              </Button>
+                            ) : null}
+                            {editImageFile ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditImageFile(null);
+                                  if (editImageInputRef.current) {
+                                    editImageInputRef.current.value = "";
+                                  }
+                                }}
+                              >
+                                Clear Selected File
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : type === "boolean" ? (
                     <div className="flex items-center gap-2 pt-2">
                       <Checkbox
                         id={key}
