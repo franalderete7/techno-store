@@ -70,6 +70,8 @@ const TABLE_COLUMNS = [
   { key: "storage_gb", label: "Storage GB", alwaysVisible: false },
   { key: "color", label: "Color", alwaysVisible: false },
   { key: "network", label: "Network", alwaysVisible: false },
+  { key: "battery_health", label: "Battery Health", alwaysVisible: false },
+  { key: "condition", label: "Condition", alwaysVisible: false },
   { key: "created_at", label: "Created", alwaysVisible: false },
   { key: "updated_at", label: "Updated", alwaysVisible: false },
 ];
@@ -146,6 +148,9 @@ function formatCellValue(product: Product, key: string): string {
   if (key === "margin_pct" || key === "bancarizada_interest" || key === "macro_interest") {
     return typeof val === "number" ? formatPercentValue(val) : String(val);
   }
+  if (key === "battery_health") {
+    return typeof val === "number" ? `${val}%` : String(val);
+  }
   if (key === "in_stock") return val ? "Yes" : "No";
   if (key === "price_usd" || key === "cost_usd" || key === "logistics_usd" || key === "total_cost_usd")
     return typeof val === "number" ? formatUsd(val) : String(val);
@@ -183,8 +188,14 @@ const EDITABLE_COLUMNS = [
   { key: "storage_gb", label: "Storage GB", type: "number" as const },
   { key: "color", label: "Color", type: "text" as const },
   { key: "network", label: "Network", type: "text" as const },
+  { key: "battery_health", label: "Battery Health", type: "number" as const },
+  { key: "condition", label: "Condition", type: "text" as const },
   { key: "image_url", label: "Image URL", type: "text" as const },
 ];
+
+const QUICK_ADD_ADVANCED_COLUMNS = EDITABLE_COLUMNS.filter(
+  ({ key }) => !["product_name", "cost_usd", "image_url"].includes(key)
+);
 
 const DEFAULT_VALUES: Partial<ProductInsert> = {
   logistics_usd: 10,
@@ -195,6 +206,8 @@ const DEFAULT_VALUES: Partial<ProductInsert> = {
   delivery_type: "immediate",
   delivery_days: 0,
   usd_rate: 1460,
+  battery_health: 100,
+  condition: "new",
 };
 
 function getSortValue(product: Product, key: string): string | number | boolean | null {
@@ -363,13 +376,49 @@ function buildQuickAddPreview(
       macro_cuota: roundArsAmount(macroTotal / cuotasQty),
       macro_interest: macroInterest,
       cuotas_qty: cuotasQty,
-      in_stock: true,
-      delivery_type: "immediate",
-      delivery_days: 0,
+      in_stock: Boolean(DEFAULT_VALUES.in_stock ?? true),
+      delivery_type: String(DEFAULT_VALUES.delivery_type ?? "immediate"),
+      delivery_days: Number(DEFAULT_VALUES.delivery_days ?? 0),
       usd_rate: usdRate,
+      ram_gb: null,
+      storage_gb: null,
+      color: null,
+      network: null,
       image_url: null,
+      battery_health: Number(DEFAULT_VALUES.battery_health ?? 100),
+      condition: String(DEFAULT_VALUES.condition ?? "new"),
     },
   };
+}
+
+function buildQuickAddInsertWithOverrides(
+  preview: QuickAddPreview | null,
+  formData: Record<string, string | number | boolean>
+): ProductInsert | null {
+  if (!preview) return null;
+
+  const resolved: Record<string, unknown> = { ...preview.insert };
+
+  QUICK_ADD_ADVANCED_COLUMNS.forEach(({ key, type }) => {
+    const value = formData[key];
+
+    if (value === undefined || value === "") return;
+
+    if (type === "number") {
+      const parsed = parseNumericValue(value);
+      if (parsed !== null) resolved[key] = parsed;
+      return;
+    }
+
+    if (type === "boolean") {
+      resolved[key] = !!value;
+      return;
+    }
+
+    resolved[key] = String(value);
+  });
+
+  return resolved as ProductInsert;
 }
 
 function ProductImageCell({ product }: { product: Product }) {
@@ -408,6 +457,8 @@ function matchesProductSearch(product: Product, query: string): boolean {
     product.color,
     product.network,
     product.image_url,
+    product.condition,
+    product.battery_health != null ? String(product.battery_health) : null,
     product.id != null ? String(product.id) : null,
     product.price_usd != null ? String(product.price_usd) : null,
     product.price_ars != null ? String(product.price_ars) : null,
@@ -431,6 +482,7 @@ export function ProductsTable() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showAdvancedDefaults, setShowAdvancedDefaults] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
     normalizeVisibleColumns(DEFAULT_VISIBLE_COLUMNS)
   );
@@ -461,6 +513,7 @@ export function ProductsTable() {
     formData.cost_usd,
     products
   );
+  const resolvedQuickAddInsert = buildQuickAddInsertWithOverrides(quickAddPreview, formData);
 
   useEffect(() => {
     if (!selectedImageFile) {
@@ -559,6 +612,7 @@ export function ProductsTable() {
       cost_usd: "",
     });
     setSelectedImageFile(null);
+    setShowAdvancedDefaults(false);
     if (quickAddImageInputRef.current) {
       quickAddImageInputRef.current.value = "";
     }
@@ -594,8 +648,7 @@ export function ProductsTable() {
   };
 
   const handleSaveAdd = async () => {
-    const preview = buildQuickAddPreview(String(formData.product_name ?? ""), formData.cost_usd, products);
-    if (!preview) {
+    if (!resolvedQuickAddInsert) {
       alert("Product Name and a valid Cost USD are required.");
       return;
     }
@@ -607,7 +660,7 @@ export function ProductsTable() {
       if (selectedImageFile) {
         const uploadFormData = new FormData();
         uploadFormData.append("file", selectedImageFile);
-        uploadFormData.append("productKey", preview.insert.product_key);
+        uploadFormData.append("productKey", resolvedQuickAddInsert.product_key);
 
         const uploadResponse = await fetch("/api/cloudinary/upload", {
           method: "POST",
@@ -626,7 +679,7 @@ export function ProductsTable() {
 
       const { error } = await supabase
         .from("products")
-        .insert({ ...preview.insert, image_url: imageUrl });
+        .insert({ ...resolvedQuickAddInsert, image_url: imageUrl });
 
       if (error) {
         alert("Error adding product: " + error.message);
@@ -636,6 +689,7 @@ export function ProductsTable() {
       setAddOpen(false);
       setFormData({});
       setSelectedImageFile(null);
+      setShowAdvancedDefaults(false);
       if (quickAddImageInputRef.current) {
         quickAddImageInputRef.current.value = "";
       }
@@ -665,33 +719,41 @@ export function ProductsTable() {
   };
 
   const displayColumns = TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.key));
-  const quickAddSummaryItems = quickAddPreview
+  const quickAddSummaryItems = resolvedQuickAddInsert
     ? [
-        { label: "Product Key", value: quickAddPreview.insert.product_key },
-        { label: "Category", value: quickAddPreview.insert.category },
+        { label: "Product Key", value: resolvedQuickAddInsert.product_key },
+        { label: "Category", value: resolvedQuickAddInsert.category },
         {
           label: "Margin",
-          value: formatPercentValue(quickAddPreview.insert.margin_pct ?? 0),
+          value: formatPercentValue(resolvedQuickAddInsert.margin_pct ?? 0),
         },
         {
           label: "Price USD",
-          value: formatUsd(quickAddPreview.insert.price_usd),
+          value: formatUsd(resolvedQuickAddInsert.price_usd),
         },
         {
           label: "Price ARS",
-          value: formatArs(quickAddPreview.insert.price_ars),
+          value: formatArs(resolvedQuickAddInsert.price_ars),
         },
         {
           label: "Bancarizada / cuota",
-          value: formatArs(quickAddPreview.insert.bancarizada_cuota ?? 0),
+          value: formatArs(resolvedQuickAddInsert.bancarizada_cuota ?? 0),
         },
         {
           label: "Macro / cuota",
-          value: formatArs(quickAddPreview.insert.macro_cuota ?? 0),
+          value: formatArs(resolvedQuickAddInsert.macro_cuota ?? 0),
         },
         {
           label: "Total Cost USD",
-          value: formatUsd(quickAddPreview.insert.total_cost_usd ?? 0),
+          value: formatUsd(resolvedQuickAddInsert.total_cost_usd ?? 0),
+        },
+        {
+          label: "Battery Health",
+          value: `${resolvedQuickAddInsert.battery_health ?? 100}%`,
+        },
+        {
+          label: "Condition",
+          value: String(resolvedQuickAddInsert.condition ?? "new"),
         },
       ]
     : [];
@@ -924,6 +986,21 @@ export function ProductsTable() {
                         <SelectItem value="pickup">Pickup</SelectItem>
                       </SelectContent>
                     </Select>
+                  ) : type === "text" && key === "condition" ? (
+                    <Select
+                      value={String(formData[key] ?? "new")}
+                      onValueChange={(value) => updateForm(key, value)}
+                    >
+                      <SelectTrigger id={key}>
+                        <SelectValue placeholder="Select condition..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="new">New</SelectItem>
+                        <SelectItem value="like_new">Like New</SelectItem>
+                        <SelectItem value="used">Used</SelectItem>
+                        <SelectItem value="refurbished">Refurbished</SelectItem>
+                      </SelectContent>
+                    </Select>
                   ) : (
                     <Input
                       id={key}
@@ -968,6 +1045,7 @@ export function ProductsTable() {
           if (!open) {
             setFormData({});
             setSelectedImageFile(null);
+            setShowAdvancedDefaults(false);
             if (quickAddImageInputRef.current) {
               quickAddImageInputRef.current.value = "";
             }
@@ -1001,8 +1079,9 @@ export function ProductsTable() {
                   placeholder="499"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Margin is assigned automatically from the cost band chart. Stock is always saved as
-                  <span className="font-medium text-foreground"> Yes</span>.
+                  Margin is assigned automatically from the cost band chart. New products default to
+                  <span className="font-medium text-foreground"> condition = new</span> and
+                  <span className="font-medium text-foreground"> battery health = 100%</span>.
                 </p>
               </div>
             </div>
@@ -1053,7 +1132,19 @@ export function ProductsTable() {
                       )}, USD rate {quickAddPreview.insert.usd_rate}
                     </p>
                   </div>
-                  <Badge variant="default">In stock: Yes</Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="default">
+                      In stock: {resolvedQuickAddInsert?.in_stock ? "Yes" : "No"}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAdvancedDefaults((current) => !current)}
+                    >
+                      {showAdvancedDefaults ? "Hide Defaults" : "Show Defaults"}
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {quickAddSummaryItems.map((item) => (
@@ -1065,11 +1156,114 @@ export function ProductsTable() {
                     </div>
                   ))}
                 </div>
+
+                {showAdvancedDefaults && resolvedQuickAddInsert ? (
+                  <div className="mt-4 space-y-4 rounded-md border bg-background p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">Editable defaults</p>
+                        <p className="text-xs text-muted-foreground">
+                          Review the generated product data and change it here if this upload is not a
+                          brand-new item.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setFormData((current) => ({
+                            product_name: current.product_name ?? "",
+                            cost_usd: current.cost_usd ?? "",
+                          }))
+                        }
+                      >
+                        Reset Changes
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {QUICK_ADD_ADVANCED_COLUMNS.map(({ key, label, type }) => {
+                        const currentValue = resolvedQuickAddInsert[key as keyof ProductInsert];
+
+                        return (
+                          <div key={key} className="space-y-2">
+                            <Label htmlFor={`quick-add-${key}`}>{label}</Label>
+                            {type === "boolean" ? (
+                              <div className="flex items-center gap-2 pt-2">
+                                <Checkbox
+                                  id={`quick-add-${key}`}
+                                  checked={!!currentValue}
+                                  onCheckedChange={(checked) => updateForm(key, checked === true)}
+                                />
+                                <label htmlFor={`quick-add-${key}`} className="text-sm">
+                                  {currentValue ? "Yes" : "No"}
+                                </label>
+                              </div>
+                            ) : type === "text" && key === "delivery_type" ? (
+                              <Select
+                                value={String(currentValue ?? "immediate")}
+                                onValueChange={(value) => updateForm(key, value)}
+                              >
+                                <SelectTrigger id={`quick-add-${key}`}>
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="immediate">Immediate</SelectItem>
+                                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                                  <SelectItem value="pickup">Pickup</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : type === "text" && key === "condition" ? (
+                              <Select
+                                value={String(currentValue ?? "new")}
+                                onValueChange={(value) => updateForm(key, value)}
+                              >
+                                <SelectTrigger id={`quick-add-${key}`}>
+                                  <SelectValue placeholder="Select condition..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="new">New</SelectItem>
+                                  <SelectItem value="like_new">Like New</SelectItem>
+                                  <SelectItem value="used">Used</SelectItem>
+                                  <SelectItem value="refurbished">Refurbished</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                id={`quick-add-${key}`}
+                                type={type}
+                                value={
+                                  typeof currentValue === "boolean"
+                                    ? ""
+                                    : currentValue === null || currentValue === undefined
+                                      ? ""
+                                      : String(currentValue)
+                                }
+                                onChange={(event) =>
+                                  updateForm(
+                                    key,
+                                    type === "number"
+                                      ? event.target.value === ""
+                                        ? ""
+                                        : parseFloat(event.target.value)
+                                      : event.target.value
+                                  )
+                                }
+                                placeholder={label}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 Enter a product name and a valid USD cost to generate the category, product key,
-                selling price, installment totals, and default stock data automatically.
+                selling price, installment totals, and the default new-product data automatically.
               </div>
             )}
           </div>

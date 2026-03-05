@@ -43,7 +43,8 @@ Product catalog with pricing, logistics, and delivery info.
 | color | text | YES | - | Product color |
 | network | text | YES | - | Network type |
 | image_url | text | YES | - | Image URL (managed separately) |
-| condition | text | YES | 'new' | Product condition: new, used, or like_new |
+| battery_health | integer | YES | - | Battery health percentage |
+| condition | text | NO | 'new' | Product condition: new, like_new, used, or refurbished |
 
 **Constraints:**
 - Primary key: `id`
@@ -53,6 +54,8 @@ Product catalog with pricing, logistics, and delivery info.
 - `idx_products_category` on `category`
 - `idx_products_product_key` on `product_key`
 - `idx_products_in_stock` on `in_stock`
+- `idx_products_condition` on `condition`
+- `idx_products_battery_health` on `battery_health`
 
 **Triggers:**
 - `trg_products_updated` – updates `updated_at` on row update (uses `update_updated_at()`)

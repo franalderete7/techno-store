@@ -40,6 +40,8 @@ export interface Database {
           color: string | null;
           network: string | null;
           image_url: string | null;
+          battery_health: number | null;
+          condition: string;
         };
         Insert: {
           id?: number;
@@ -69,6 +71,8 @@ export interface Database {
           color?: string | null;
           network?: string | null;
           image_url?: string | null;
+          battery_health?: number | null;
+          condition?: string;
         };
         Update: {
           id?: number;
@@ -98,6 +102,8 @@ export interface Database {
           color?: string | null;
           network?: string | null;
           image_url?: string | null;
+          battery_health?: number | null;
+          condition?: string;
         };
       };
     };
