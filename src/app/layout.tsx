@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { TopNav } from "@/components/layout/top-nav";
 import "./globals.css";
 
 const inter = Inter({
@@ -13,8 +14,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Techno Store - Products",
-  description: "Product management for Techno Store",
+  title: "TechnoStore Admin",
+  description: "TechnoStore management dashboard",
 };
 
 export default function RootLayout({
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased font-sans`}
       >
+        <TopNav />
         {children}
       </body>
     </html>
