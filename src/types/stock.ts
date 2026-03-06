@@ -56,7 +56,7 @@ export interface Purchase {
 }
 
 export interface PurchaseInsert {
-  purchase_id: string;
+  purchase_id?: string;
   date_purchase?: string;
   supplier_name: string;
   payment_method?: PaymentMethod;

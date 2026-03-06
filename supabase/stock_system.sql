@@ -47,6 +47,8 @@ CREATE TYPE error_severity AS ENUM ('low', 'medium', 'high');
 -- ============================================================
 -- 2. Purchases (orders from suppliers)
 -- ============================================================
+CREATE SEQUENCE purchase_id_seq START 1;
+
 CREATE TABLE purchases (
   id serial PRIMARY KEY,
   purchase_id text NOT NULL UNIQUE,
@@ -64,6 +66,21 @@ CREATE TABLE purchases (
 
 CREATE INDEX idx_purchases_supplier ON purchases(supplier_name);
 CREATE INDEX idx_purchases_date ON purchases(date_purchase DESC);
+
+CREATE OR REPLACE FUNCTION generate_purchase_id()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.purchase_id := 'PUR-' || EXTRACT(YEAR FROM CURRENT_DATE)::text
+    || '-' || LPAD(nextval('purchase_id_seq')::text, 5, '0');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_generate_purchase_id
+  BEFORE INSERT ON purchases
+  FOR EACH ROW EXECUTE FUNCTION generate_purchase_id();
 
 CREATE TRIGGER trg_purchases_updated
   BEFORE UPDATE ON purchases
