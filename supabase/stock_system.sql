@@ -94,6 +94,7 @@ CREATE TABLE stock_units (
   imei1 text NOT NULL UNIQUE,
   imei2 text,
   product_key text NOT NULL REFERENCES products(product_key),
+  color text,
   purchase_id text REFERENCES purchases(purchase_id),
   supplier_name text,
   cost_unit numeric(10, 2),

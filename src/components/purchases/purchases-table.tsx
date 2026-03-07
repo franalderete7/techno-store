@@ -183,6 +183,7 @@ export function PurchasesTable() {
       imei1: "",
       imei2: "",
       product_key: "",
+      color: "",
       cost_unit: "",
       cost_currency: purchase.currency ?? "USD",
       notes: "",
@@ -250,6 +251,7 @@ export function PurchasesTable() {
       imei1: unitForm.imei1.trim(),
       imei2: unitForm.imei2?.trim() || null,
       product_key: unitForm.product_key,
+      color: unitForm.color?.trim() || null,
       purchase_id: addUnitPurchase.purchase_id,
       supplier_name: addUnitPurchase.supplier_name,
       cost_unit: unitForm.cost_unit ? parseFloat(unitForm.cost_unit) : null,
@@ -670,6 +672,7 @@ export function PurchasesTable() {
                       <TableRow>
                         <TableHead>IMEI1</TableHead>
                         <TableHead>Product</TableHead>
+                        <TableHead>Color</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Cost</TableHead>
                       </TableRow>
@@ -682,6 +685,7 @@ export function PurchasesTable() {
                           <TableRow key={u.id}>
                             <TableCell className="font-mono text-xs">{u.imei1}</TableCell>
                             <TableCell>{prod?.product_name ?? u.product_key}</TableCell>
+                            <TableCell>{u.color ?? "—"}</TableCell>
                             <TableCell>
                               <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusOpt?.color ?? ""}`}>
                                 {statusOpt?.label ?? u.status}
@@ -749,6 +753,14 @@ export function PurchasesTable() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <Input
+                value={unitForm.color ?? ""}
+                onChange={(e) => updateUnitForm("color", e.target.value)}
+                placeholder="Black, White, Blue..."
+              />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Cost</Label>
@@ -770,6 +782,9 @@ export function PurchasesTable() {
                 </Select>
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              When you save a unit with cost, the linked product pricing is recalculated from that stock cost.
+            </p>
             <div className="space-y-2">
               <Label>Notes</Label>
               <Input

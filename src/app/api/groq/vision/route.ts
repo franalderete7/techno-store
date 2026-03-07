@@ -36,7 +36,7 @@ Look for:
 - Phone brand (Samsung, Apple/iPhone, Xiaomi/Redmi/POCO, Motorola, etc.)
 - Model name (e.g. "iPhone 16 Pro Max", "Galaxy S25 Ultra", "Redmi Note 13 Pro")
 - RAM and storage capacity
-- Color
+- Phone or box color (only if clearly visible or readable)
 - Network type (4G/5G)
 
 Return ONLY valid JSON (no markdown, no backticks, no explanation):
@@ -47,7 +47,7 @@ Return ONLY valid JSON (no markdown, no backticks, no explanation):
   "model": "full model name or null",
   "ram_gb": number or null,
   "storage_gb": number or null,
-  "color": "color name or null",
+  "color": "phone color like black/white/titanium blue or null",
   "network": "4G or 5G or null",
   "condition": "new or used or null"
 }

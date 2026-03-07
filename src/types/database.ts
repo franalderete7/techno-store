@@ -42,6 +42,7 @@ export interface Database {
           image_url: string | null;
           battery_health: number | null;
           condition: string;
+          pricing_source_stock_unit_id: number | null;
         };
         Insert: {
           id?: number;
@@ -73,6 +74,7 @@ export interface Database {
           image_url?: string | null;
           battery_health?: number | null;
           condition?: string;
+          pricing_source_stock_unit_id?: number | null;
         };
         Update: {
           id?: number;
@@ -104,6 +106,7 @@ export interface Database {
           image_url?: string | null;
           battery_health?: number | null;
           condition?: string;
+          pricing_source_stock_unit_id?: number | null;
         };
       };
     };

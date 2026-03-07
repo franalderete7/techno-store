@@ -10,6 +10,7 @@ export interface StockUnit {
   imei1: string;
   imei2: string | null;
   product_key: string;
+  color: string | null;
   purchase_id: string | null;
   supplier_name: string | null;
   cost_unit: number | null;
@@ -33,6 +34,7 @@ export interface StockUnitInsert {
   imei1: string;
   imei2?: string | null;
   product_key: string;
+  color?: string | null;
   purchase_id?: string | null;
   supplier_name?: string | null;
   cost_unit?: number | null;

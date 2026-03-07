@@ -166,6 +166,7 @@ export function StockTable() {
         return (
           u.imei1.includes(q) ||
           u.product_key.toLowerCase().includes(q) ||
+          (u.color ?? "").toLowerCase().includes(q) ||
           (product?.product_name ?? "").toLowerCase().includes(q) ||
           (u.supplier_name ?? "").toLowerCase().includes(q) ||
           (u.notes ?? "").toLowerCase().includes(q)
@@ -203,6 +204,7 @@ export function StockTable() {
       imei1: "",
       imei2: "",
       product_key: "",
+      color: "",
       purchase_id: "",
       supplier_name: "",
       cost_unit: "",
@@ -224,6 +226,7 @@ export function StockTable() {
       imei1: unit.imei1,
       imei2: unit.imei2 ?? "",
       product_key: unit.product_key,
+      color: unit.color ?? "",
       purchase_id: unit.purchase_id ?? "",
       supplier_name: unit.supplier_name ?? "",
       cost_unit: unit.cost_unit != null ? String(unit.cost_unit) : "",
@@ -297,6 +300,7 @@ export function StockTable() {
         const updated = { ...prev };
         if (data.imei1) updated.imei1 = data.imei1;
         if (data.imei2) updated.imei2 = data.imei2;
+        if (data.color) updated.color = data.color;
         if (matchedProduct) updated.product_key = matchedProduct.product_key;
         return updated;
       });
@@ -343,6 +347,7 @@ export function StockTable() {
       imei1,
       imei2: formData.imei2?.trim() || null,
       product_key: formData.product_key,
+      color: formData.color?.trim() || null,
       purchase_id: formData.purchase_id || null,
       supplier_name: formData.supplier_name?.trim() || null,
       cost_unit: formData.cost_unit ? parseFloat(formData.cost_unit) : null,
@@ -547,6 +552,7 @@ export function StockTable() {
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>Cost: {fmtPrice(unit.cost_unit, unit.cost_currency)}</span>
+                      {unit.color && <span>Color: {unit.color}</span>}
                       {unit.price_sold != null && (
                         <span className="text-emerald-400">
                           Sold: {fmtPrice(unit.price_sold, unit.cost_currency)}
@@ -577,6 +583,7 @@ export function StockTable() {
                   <TableRow>
                     <TableHead className="sticky top-0 z-20 bg-background">IMEI1</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Product</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Color</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Status</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Cost</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Price Sold</TableHead>
@@ -598,6 +605,7 @@ export function StockTable() {
                             <p className="text-xs text-muted-foreground">{unit.product_key}</p>
                           </div>
                         </TableCell>
+                        <TableCell>{unit.color ?? "—"}</TableCell>
                         <TableCell><StatusBadge status={unit.status} /></TableCell>
                         <TableCell className="whitespace-nowrap">
                           {fmtPrice(unit.cost_unit, unit.cost_currency)}
@@ -848,6 +856,18 @@ export function StockTable() {
               )}
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs sm:text-sm">Color</Label>
+              <Input
+                value={formData.color ?? ""}
+                onChange={(e) => updateForm("color", e.target.value)}
+                placeholder="Black, White, Titanium..."
+              />
+              <p className="text-[11px] text-muted-foreground">
+                AI fills this automatically when the color is visible in the uploaded images.
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Purchase</Label>
@@ -899,6 +919,9 @@ export function StockTable() {
                 </Select>
               </div>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Saving a cost here automatically syncs the matching product prices by `product_key`.
+            </p>
 
             <div className="rounded-lg border bg-muted/20 p-3">
               <div className="mb-3">

@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-07
 
 ## Overview
 
@@ -21,7 +21,7 @@ This document describes the Supabase/PostgreSQL schema used by the Techno Store 
 
 ### products
 
-Product catalog with pricing, logistics, and delivery info. This is the **price list**, not physical inventory.
+Product catalog with pricing, logistics, and delivery info. This is the **price list**, not physical inventory. Price fields can be recalculated automatically from stock costs matched by `product_key`.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -56,6 +56,7 @@ Product catalog with pricing, logistics, and delivery info. This is the **price 
 | image_url | text | YES | - | Image URL (managed separately) |
 | battery_health | integer | YES | - | Battery health percentage |
 | condition | text | NO | 'new' | Product condition: new, like_new, used, or refurbished |
+| pricing_source_stock_unit_id | integer | YES | - | FK → stock_units.id; stock unit whose saved cost currently drives automatic pricing |
 
 **Constraints:**
 - Primary key: `id`
@@ -75,7 +76,7 @@ Product catalog with pricing, logistics, and delivery info. This is the **price 
 
 ### stock_units
 
-Physical inventory — 1 row = 1 phone unit identified by IMEI1.
+Physical inventory — 1 row = 1 phone unit identified by IMEI1. The Stock page AI scan can auto-fill the unit color when it is clearly visible in the uploaded images.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -83,6 +84,7 @@ Physical inventory — 1 row = 1 phone unit identified by IMEI1.
 | imei1 | text | NO | - | IMEI1 (unique, 15 digits) |
 | imei2 | text | YES | - | IMEI2 (informational only) |
 | product_key | text | NO | - | FK → products.product_key |
+| color | text | YES | - | Color of the individual stock unit |
 | purchase_id | text | YES | - | FK → purchases.purchase_id |
 | supplier_name | text | YES | - | Supplier name |
 | cost_unit | numeric(10, 2) | YES | - | Unit cost |
@@ -120,6 +122,9 @@ Physical inventory — 1 row = 1 phone unit identified by IMEI1.
 **Triggers:**
 - `trg_stock_units_updated` – updates `updated_at` on row update
 - `trg_stock_units_sale_fields` – auto-fills `date_sold` when a unit is marked as sold
+- `trg_sync_products_from_stock_units` – syncs `products.in_stock` and reprices the matching product when a stock cost changes
+
+**Pricing sync rule:** the last saved stock cost for a `product_key` becomes the product's pricing source and is tracked in `products.pricing_source_stock_unit_id`. If that stock unit is removed, the product falls back to the latest remaining stock unit with a valid cost.
 
 ---
 
@@ -284,6 +289,11 @@ Error tracking for stock operations.
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `update_updated_at()` | trigger | Sets `updated_at = now()` on row update |
+| `get_margin_pct_for_cost(p_cost_usd)` | numeric | Returns the default margin band for a USD cost |
+| `normalize_stock_cost_to_usd(p_cost_unit, p_cost_currency, p_usd_rate)` | numeric | Converts a stock unit cost to USD using the product USD rate |
+| `sync_product_in_stock_flag(p_product_key)` | void | Updates `products.in_stock` from current stock units |
+| `apply_product_pricing_from_stock_cost(p_product_key, p_cost_unit, p_cost_currency, p_source_stock_unit_id)` | void | Recalculates derived product pricing fields from a stock cost |
+| `sync_product_from_latest_stock_cost(p_product_key)` | void | Rebuilds product pricing from the latest remaining stock unit with cost |
 | `sell_unit_by_imei(p_imei1, p_sale_id)` | jsonb | Atomically sells a unit by IMEI1; validates status; logs errors |
 | `reserve_unit(p_imei1, p_customer_phone, p_customer_id, p_reservation_id, p_hours)` | jsonb | Reserves a unit for a customer with expiry window |
 | `get_stock_count(p_product_key)` | integer | Returns count of in_stock units for a product |
@@ -308,13 +318,13 @@ Error tracking for stock operations.
 
 ## RLS Policies
 
-All stock-related tables have RLS enabled. `service_role` (web admin + n8n) has full access. Anon key has no access to stock tables.
+All stock-related tables have RLS enabled with permissive `allow_all` policies in the current schema, so both the web admin app and service integrations can read/write them.
 
 | Table | Policy |
 |-------|--------|
-| `stock_units` | `service_role_all` – full access |
-| `purchases` | `service_role_all` – full access |
-| `sales` | `service_role_all` – full access |
-| `sale_items` | `service_role_all` – full access |
-| `reservations` | `service_role_all` – full access |
-| `stock_errors_log` | `service_role_all` – full access |
+| `stock_units` | `allow_all` – full access |
+| `purchases` | `allow_all` – full access |
+| `sales` | `allow_all` – full access |
+| `sale_items` | `allow_all` – full access |
+| `reservations` | `allow_all` – full access |
+| `stock_errors_log` | `allow_all` – full access |
