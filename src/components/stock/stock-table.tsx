@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { getErrorMessage, parseOptionalNumber, parseOptionalText } from "@/lib/utils";
 import type { Product } from "@/types/database";
 import type { StockUnit, StockUnitInsert, StockStatus, Purchase } from "@/types/stock";
 import { STOCK_STATUS_OPTIONS } from "@/types/stock";
@@ -327,43 +328,54 @@ export function StockTable() {
   };
 
   const handleSave = async () => {
-    if (!formData.imei1?.trim()) {
+    const imei1 = formData.imei1?.trim() ?? "";
+    const imei2 = parseOptionalText(formData.imei2);
+    const productKey = parseOptionalText(formData.product_key);
+
+    if (!imei1) {
       alert("IMEI1 is required.");
       return;
     }
-    if (!formData.product_key) {
+    if (!/^\d{15}$/.test(imei1)) {
+      alert("IMEI1 must be exactly 15 digits.");
+      return;
+    }
+    if (imei2 && !/^\d{15}$/.test(imei2)) {
+      alert("IMEI2 must be exactly 15 digits.");
+      return;
+    }
+    if (!productKey) {
       alert("Product is required. Create it in the Products page first if it doesn't exist.");
       return;
     }
 
     setSaving(true);
-    const imei1 = formData.imei1.trim();
     const status = formData.status || "in_stock";
     const dateSold =
       status === "sold"
         ? formData.date_sold || editingUnit?.date_sold || todayIsoDate()
         : formData.date_sold || null;
-    const record: Record<string, unknown> = {
+    const record: StockUnitInsert = {
       imei1,
-      imei2: formData.imei2?.trim() || null,
-      product_key: formData.product_key,
-      color: formData.color?.trim() || null,
-      purchase_id: formData.purchase_id || null,
-      supplier_name: formData.supplier_name?.trim() || null,
-      cost_unit: formData.cost_unit ? parseFloat(formData.cost_unit) : null,
-      cost_currency: formData.cost_currency || "USD",
-      price_sold: formData.price_sold ? parseFloat(formData.price_sold) : null,
-      date_received: formData.date_received || null,
-      status,
-      date_sold: dateSold,
-      notes: formData.notes?.trim() || null,
+      imei2,
+      product_key: productKey,
+      color: parseOptionalText(formData.color),
+      purchase_id: parseOptionalText(formData.purchase_id),
+      supplier_name: parseOptionalText(formData.supplier_name),
+      cost_unit: parseOptionalNumber(formData.cost_unit),
+      cost_currency: parseOptionalText(formData.cost_currency) ?? "USD",
+      price_sold: parseOptionalNumber(formData.price_sold),
+      date_received: parseOptionalText(formData.date_received),
+      status: status as StockStatus,
+      date_sold: parseOptionalText(dateSold),
+      notes: parseOptionalText(formData.notes),
     };
 
     try {
       // Upload proof images if user added any
       let proofUrls: string[] = (editingUnit?.proof_image_urls as string[] | null) ?? [];
       if (scanImages.length > 0) {
-        const productSlug = sanitizeForFilename(formData.product_key);
+        const productSlug = sanitizeForFilename(productKey);
         const urls: string[] = [];
         for (let i = 0; i < scanImages.length; i++) {
           const filename = `${imei1}_${productSlug}_proof_${i + 1}.jpg`;
@@ -382,7 +394,7 @@ export function StockTable() {
         const { error } = await supabase.from("stock_units").update(record).eq("id", editingUnit.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("stock_units").insert(record as unknown as StockUnitInsert);
+        const { error } = await supabase.from("stock_units").insert(record);
         if (error) throw error;
       }
       setDialogOpen(false);
@@ -390,15 +402,25 @@ export function StockTable() {
       resetScan();
       fetchAll();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("valid_imei1")) {
+      const msg = getErrorMessage(err, "Unexpected error saving stock item.");
+      if (
+        (msg.includes("Could not find the 'color' column") || msg.includes("schema cache")) &&
+        msg.includes("color")
+      ) {
+        alert("Database error: run the stock_units_color.sql migration in Supabase first.");
+      } else if (
+        (msg.includes("Could not find the 'proof_image_urls' column") || msg.includes("schema cache")) &&
+        msg.includes("proof_image_urls")
+      ) {
+        alert("Database error: run the stock_proof_images.sql migration in Supabase first.");
+      } else if (msg.includes("valid_imei1")) {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
       } else if (msg.includes("Bucket not found") || msg.includes("storage")) {
         alert("Storage error: Run the stock_proof_images.sql migration in Supabase first.");
       } else {
-        alert("Error saving: " + msg);
+        alert(msg);
       }
     } finally {
       setSaving(false);
@@ -411,7 +433,7 @@ export function StockTable() {
     const { error } = await supabase.from("stock_units").delete().eq("id", deleteUnit.id);
     setSaving(false);
     if (error) {
-      alert("Error deleting: " + error.message);
+      alert(getErrorMessage(error, "Unexpected error deleting stock item."));
       return;
     }
     setDeleteUnit(null);
@@ -868,8 +890,8 @@ export function StockTable() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="min-w-0 space-y-1.5">
                 <Label className="text-xs sm:text-sm">Purchase</Label>
                 <Select value={formData.purchase_id ?? ""} onValueChange={(v) => updateForm("purchase_id", v === "__none__" ? "" : v)}>
                   <SelectTrigger>
@@ -885,7 +907,7 @@ export function StockTable() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1.5">
                 <Label className="text-xs sm:text-sm">Supplier</Label>
                 <Input
                   value={formData.supplier_name ?? ""}

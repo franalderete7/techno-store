@@ -135,15 +135,26 @@ export function SalesChart({
     [units]
   );
 
-  const soldUnits = useMemo(
+  const soldUnitsWithDate = useMemo(
     () => units.filter((unit) => unit.status === "sold" && Boolean(unit.date_sold)),
     [units]
   );
 
-  const soldUnitsMissingDateCount = soldStatusCount - soldUnits.length;
+  const soldUnitsMissingDateCount = soldStatusCount - soldUnitsWithDate.length;
+
+  const soldUnitsWithRealizedPrice = useMemo(
+    () =>
+      soldUnitsWithDate.filter(
+        (unit) => unit.price_sold != null && Number(unit.price_sold) > 0
+      ),
+    [soldUnitsWithDate]
+  );
+
+  const soldUnitsMissingPriceCount =
+    soldUnitsWithDate.length - soldUnitsWithRealizedPrice.length;
 
   const realizedSales = useMemo<RealizedSale[]>(() => {
-    return soldUnits.map((unit) => {
+    return soldUnitsWithRealizedPrice.map((unit) => {
       const purchase = unit.purchase_id ? purchaseMap.get(unit.purchase_id) : undefined;
       const product = productMap.get(unit.product_key);
       const funder = normalizeFunderName(purchase?.funded_by);
@@ -159,7 +170,7 @@ export function SalesChart({
         dateSold: getSaleDate(unit),
       };
     });
-  }, [productMap, purchaseMap, soldUnits]);
+  }, [productMap, purchaseMap, soldUnitsWithRealizedPrice]);
 
   const totals = useMemo(() => {
     const revenue = realizedSales.reduce((sum, sale) => sum + sale.revenue, 0);
@@ -418,6 +429,13 @@ export function SalesChart({
             Run the SQL backfill so the daily/monthly chart is exact.
           </div>
         )}
+        {soldUnitsMissingPriceCount > 0 && (
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            {soldUnitsMissingPriceCount} sold item{soldUnitsMissingPriceCount === 1 ? "" : "s"} still
+            missing <code className="mx-1 rounded bg-background/70 px-1 py-0.5">price_sold</code>.
+            Realized profit only counts sold items with a saved sale price.
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
@@ -449,13 +467,22 @@ export function SalesChart({
                 monthly sales automatically.
               </p>
             </div>
-          ) : soldUnits.length === 0 ? (
+          ) : soldUnitsWithDate.length === 0 ? (
             <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
               <CalendarRange className="mb-3 h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-medium">Sold items need a sale date</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                 The chart now uses <span className="font-medium text-foreground">date_sold</span> as
                 the source of truth. Run the SQL backfill below and the history will appear.
+              </p>
+            </div>
+          ) : realizedSales.length === 0 ? (
+            <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
+              <BadgeDollarSign className="mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-medium">Sold items need a sale price</p>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                Realized profit only includes sold items with a saved{" "}
+                <span className="font-medium text-foreground">price_sold</span>.
               </p>
             </div>
           ) : (

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { getErrorMessage, parseOptionalNumber, parseOptionalText } from "@/lib/utils";
 import type { Product } from "@/types/database";
 import type {
   Purchase, PurchaseInsert, StockUnit, StockUnitInsert, PaymentStatus,
@@ -222,7 +223,7 @@ export function PurchasesTable() {
       setEditingPurchase(null);
       fetchAll();
     } catch (err: unknown) {
-      alert("Error saving: " + (err instanceof Error ? err.message : String(err)));
+      alert(getErrorMessage(err, "Unexpected error saving purchase."));
     } finally {
       setSaving(false);
     }
@@ -234,7 +235,7 @@ export function PurchasesTable() {
     const { error } = await supabase.from("purchases").delete().eq("id", deletePurchase.id);
     setSaving(false);
     if (error) {
-      alert("Error deleting: " + error.message);
+      alert(getErrorMessage(error, "Unexpected error deleting purchase."));
       return;
     }
     setDeletePurchase(null);
@@ -242,23 +243,35 @@ export function PurchasesTable() {
   };
 
   const handleAddUnit = async () => {
-    if (!unitForm.imei1?.trim() || !unitForm.product_key || !addUnitPurchase) {
+    const imei1 = unitForm.imei1?.trim() ?? "";
+    const imei2 = parseOptionalText(unitForm.imei2);
+    const productKey = parseOptionalText(unitForm.product_key);
+
+    if (!imei1 || !productKey || !addUnitPurchase) {
       alert("IMEI1 and Product are required.");
+      return;
+    }
+    if (!/^\d{15}$/.test(imei1)) {
+      alert("IMEI1 must be exactly 15 digits.");
+      return;
+    }
+    if (imei2 && !/^\d{15}$/.test(imei2)) {
+      alert("IMEI2 must be exactly 15 digits.");
       return;
     }
     setSaving(true);
     const record: StockUnitInsert = {
-      imei1: unitForm.imei1.trim(),
-      imei2: unitForm.imei2?.trim() || null,
-      product_key: unitForm.product_key,
-      color: unitForm.color?.trim() || null,
+      imei1,
+      imei2,
+      product_key: productKey,
+      color: parseOptionalText(unitForm.color),
       purchase_id: addUnitPurchase.purchase_id,
       supplier_name: addUnitPurchase.supplier_name,
-      cost_unit: unitForm.cost_unit ? parseFloat(unitForm.cost_unit) : null,
-      cost_currency: unitForm.cost_currency || "USD",
+      cost_unit: parseOptionalNumber(unitForm.cost_unit),
+      cost_currency: parseOptionalText(unitForm.cost_currency) ?? "USD",
       date_received: addUnitPurchase.date_purchase,
       status: "in_stock",
-      notes: unitForm.notes?.trim() || null,
+      notes: parseOptionalText(unitForm.notes),
     };
 
     try {
@@ -271,13 +284,18 @@ export function PurchasesTable() {
         openDetail(addUnitPurchase);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("valid_imei1")) {
+      const msg = getErrorMessage(err, "Unexpected error adding stock unit.");
+      if (
+        (msg.includes("Could not find the 'color' column") || msg.includes("schema cache")) &&
+        msg.includes("color")
+      ) {
+        alert("Database error: run the stock_units_color.sql migration in Supabase first.");
+      } else if (msg.includes("valid_imei1")) {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
       } else {
-        alert("Error adding unit: " + msg);
+        alert(msg);
       }
     } finally {
       setSaving(false);

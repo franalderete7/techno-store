@@ -2,7 +2,8 @@
 
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { Product, ProductInsert } from "@/types/database";
+import { getErrorMessage, parseOptionalText } from "@/lib/utils";
+import type { Product, ProductInsert, ProductUpdate } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -209,6 +210,117 @@ const DEFAULT_VALUES: Partial<ProductInsert> = {
   battery_health: 100,
   condition: "new",
 };
+
+const PRODUCT_CONDITION_OPTIONS = [
+  { value: "new", label: "New" },
+  { value: "like_new", label: "Like New" },
+  { value: "used", label: "Used" },
+  { value: "refurbished", label: "Refurbished" },
+] as const;
+
+const PRODUCT_CONDITION_SET = new Set(PRODUCT_CONDITION_OPTIONS.map((option) => option.value));
+
+function buildProductUpdatePayload(
+  formData: Record<string, string | number | boolean>
+): { payload: ProductUpdate | null; error?: string } {
+  const update: Record<string, string | number | boolean | null> = {};
+
+  EDITABLE_COLUMNS.forEach(({ key, type }) => {
+    if (key === "image_url") return;
+
+    const value = formData[key];
+
+    if (type === "number") {
+      update[key] = parseNumericValue(value);
+      return;
+    }
+
+    if (type === "boolean") {
+      update[key] = Boolean(value);
+      return;
+    }
+
+    update[key] = parseOptionalText(value);
+  });
+
+  const productKey = parseOptionalText(update.product_key);
+  const category = parseOptionalText(update.category);
+  const productName = parseOptionalText(update.product_name);
+  const condition = parseOptionalText(update.condition);
+  const priceUsd = typeof update.price_usd === "number" ? update.price_usd : null;
+  const priceArs = typeof update.price_ars === "number" ? update.price_ars : null;
+
+  if (!productKey) return { payload: null, error: "Product Key is required." };
+  if (!category) return { payload: null, error: "Category is required." };
+  if (!productName) return { payload: null, error: "Product Name is required." };
+  if (priceUsd == null) return { payload: null, error: "Price USD is required." };
+  if (priceArs == null) return { payload: null, error: "Price ARS is required." };
+  if (!condition || !PRODUCT_CONDITION_SET.has(condition as (typeof PRODUCT_CONDITION_OPTIONS)[number]["value"])) {
+    return { payload: null, error: "Condition must be New, Like New, Used, or Refurbished." };
+  }
+
+  update.product_key = productKey;
+  update.category = category;
+  update.product_name = productName;
+  update.condition = condition;
+
+  return { payload: update as ProductUpdate };
+}
+
+function buildProductInsertPayload(
+  insert: ProductInsert
+): { payload: ProductInsert | null; error?: string } {
+  const productKey = parseOptionalText(insert.product_key);
+  const category = parseOptionalText(insert.category);
+  const productName = parseOptionalText(insert.product_name);
+  const condition = parseOptionalText(insert.condition) ?? "new";
+
+  if (!productKey) return { payload: null, error: "Product Key is required." };
+  if (!category) return { payload: null, error: "Category is required." };
+  if (!productName) return { payload: null, error: "Product Name is required." };
+  if (!PRODUCT_CONDITION_SET.has(condition as (typeof PRODUCT_CONDITION_OPTIONS)[number]["value"])) {
+    return { payload: null, error: "Condition must be New, Like New, Used, or Refurbished." };
+  }
+  if (insert.price_usd == null) return { payload: null, error: "Price USD is required." };
+  if (insert.price_ars == null) return { payload: null, error: "Price ARS is required." };
+
+  return {
+    payload: {
+      ...insert,
+      product_key: productKey,
+      category,
+      product_name: productName,
+      delivery_type: parseOptionalText(insert.delivery_type) ?? "immediate",
+      color: parseOptionalText(insert.color),
+      network: parseOptionalText(insert.network),
+      image_url: parseOptionalText(insert.image_url),
+      condition,
+    },
+  };
+}
+
+function getProductErrorMessage(error: unknown, action: "adding" | "updating" | "deleting"): string {
+  const message = getErrorMessage(error, `Unexpected error ${action} product.`);
+
+  if (message.includes("products_product_key_key") || message.includes("duplicate key")) {
+    return "Product Key already exists."
+  }
+
+  if (message.includes("chk_products_condition")) {
+    return "Condition must be New, Like New, Used, or Refurbished."
+  }
+
+  if (message.includes("null value in column")) {
+    if (message.includes("\"product_key\"")) return "Product Key is required."
+    if (message.includes("\"category\"")) return "Category is required."
+    if (message.includes("\"product_name\"")) return "Product Name is required."
+    if (message.includes("\"price_usd\"")) return "Price USD is required."
+    if (message.includes("\"price_ars\"")) return "Price ARS is required."
+    if (message.includes("\"condition\"")) return "Condition is required."
+  }
+
+  return message
+}
 
 function getSortValue(product: Product, key: string): string | number | boolean | null {
   const val = product[key as keyof Product];
@@ -643,19 +755,13 @@ export function ProductsTable() {
   const handleSaveEdit = async () => {
     if (!editProduct) return;
     setSaving(true);
-    const update: Record<string, string | number | boolean | null> = {};
-    EDITABLE_COLUMNS.forEach(({ key, type }) => {
-      if (key === "image_url") return;
-      const val = formData[key];
-      if (type === "number") {
-        const n = typeof val === "string" ? parseFloat(val) : Number(val);
-        update[key] = isNaN(n) ? null : n;
-      } else if (type === "boolean") {
-        update[key] = !!val;
-      } else {
-        update[key] = val === "" ? null : (val as string);
-      }
-    });
+    const { payload: update, error: payloadError } = buildProductUpdatePayload(formData);
+
+    if (!update) {
+      alert(payloadError || "Invalid product data.");
+      setSaving(false);
+      return;
+    }
 
     try {
       let nextImageUrl =
@@ -721,7 +827,7 @@ export function ProductsTable() {
         .eq("id", editProduct.id);
 
       if (error) {
-        alert("Error updating product: " + error.message);
+        alert(getProductErrorMessage(error, "updating"));
         return;
       }
 
@@ -733,7 +839,7 @@ export function ProductsTable() {
       }
       fetchProducts();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Unexpected error updating product.");
+      alert(getProductErrorMessage(error, "updating"));
     } finally {
       setSaving(false);
     }
@@ -747,12 +853,18 @@ export function ProductsTable() {
 
     setSaving(true);
     try {
+      const { payload: insertPayload, error: payloadError } = buildProductInsertPayload(resolvedQuickAddInsert);
+      if (!insertPayload) {
+        alert(payloadError || "Invalid product data.");
+        return;
+      }
+
       let imageUrl: string | null = null;
 
       if (selectedImageFile) {
         const uploadFormData = new FormData();
         uploadFormData.append("file", selectedImageFile);
-        uploadFormData.append("productKey", resolvedQuickAddInsert.product_key);
+        uploadFormData.append("productKey", insertPayload.product_key);
 
         const uploadResponse = await fetch("/api/cloudinary/upload", {
           method: "POST",
@@ -771,10 +883,10 @@ export function ProductsTable() {
 
       const { error } = await supabase
         .from("products")
-        .insert({ ...resolvedQuickAddInsert, image_url: imageUrl });
+        .insert({ ...insertPayload, image_url: imageUrl });
 
       if (error) {
-        alert("Error adding product: " + error.message);
+        alert(getProductErrorMessage(error, "adding"));
         return;
       }
 
@@ -787,7 +899,7 @@ export function ProductsTable() {
       }
       fetchProducts();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Unexpected error adding product.");
+      alert(getProductErrorMessage(error, "adding"));
     } finally {
       setSaving(false);
     }
@@ -799,7 +911,7 @@ export function ProductsTable() {
     const { error } = await supabase.from("products").delete().eq("id", deleteProduct.id);
     setSaving(false);
     if (error) {
-      alert("Error deleting product: " + error.message);
+      alert(getProductErrorMessage(error, "deleting"));
       return;
     }
     setDeleteProduct(null);
@@ -1243,10 +1355,11 @@ export function ProductsTable() {
                         <SelectValue placeholder="Select condition..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="new">New</SelectItem>
-                        <SelectItem value="like_new">Like New</SelectItem>
-                        <SelectItem value="used">Used</SelectItem>
-                        <SelectItem value="refurbished">Refurbished</SelectItem>
+                        {PRODUCT_CONDITION_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   ) : (
@@ -1471,10 +1584,11 @@ export function ProductsTable() {
                                   <SelectValue placeholder="Select condition..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="new">New</SelectItem>
-                                  <SelectItem value="like_new">Like New</SelectItem>
-                                  <SelectItem value="used">Used</SelectItem>
-                                  <SelectItem value="refurbished">Refurbished</SelectItem>
+                                  {PRODUCT_CONDITION_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
                                 </SelectContent>
                               </Select>
                             ) : (
