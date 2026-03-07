@@ -88,6 +88,17 @@ function todayIsoDate() {
   return new Date().toISOString().split("T")[0];
 }
 
+async function dataUrlToFile(dataUrl: string, filename: string): Promise<File> {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/jpeg" });
+}
+
+function sanitizeForFilename(s: string): string {
+  return s.replace(/[\s/\\:*?"<>|]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "") || "product";
+}
+
+const BUCKET = "stock-proof-images";
 
 /* ─── main component ───────────────────────────────────────────────── */
 
@@ -248,33 +259,30 @@ export function StockTable() {
       }
 
       // Auto-fill form with detected data
+      // Try to match product by brand + model + specs (before setFormData so we can show "no product" message)
+      const searchTerms =
+        data.brand || data.model
+          ? [data.brand, data.model, data.storage_gb ? `${data.storage_gb}` : ""]
+              .filter(Boolean)
+              .map((s: string) => s.toLowerCase())
+          : [];
+      const matchedProduct =
+        searchTerms.length > 0
+          ? products.find((p) => {
+              const name = p.product_name.toLowerCase();
+              return searchTerms.every((t: string) => name.includes(t));
+            }) ??
+            products.find((p) => {
+              const name = p.product_name.toLowerCase();
+              return searchTerms.slice(0, 2).some((t: string) => name.includes(t));
+            })
+          : null;
+
       setFormData((prev) => {
         const updated = { ...prev };
         if (data.imei1) updated.imei1 = data.imei1;
         if (data.imei2) updated.imei2 = data.imei2;
-
-        // Try to match product by brand + model + specs
-        if (data.brand || data.model) {
-          const searchTerms = [data.brand, data.model, data.storage_gb ? `${data.storage_gb}` : ""]
-            .filter(Boolean)
-            .map((s: string) => s.toLowerCase());
-
-          const match = products.find((p) => {
-            const name = p.product_name.toLowerCase();
-            return searchTerms.every((t: string) => name.includes(t));
-          });
-
-          if (match) {
-            updated.product_key = match.product_key;
-          } else {
-            const partial = products.find((p) => {
-              const name = p.product_name.toLowerCase();
-              return searchTerms.slice(0, 2).some((t: string) => name.includes(t));
-            });
-            if (partial) updated.product_key = partial.product_key;
-          }
-        }
-
+        if (matchedProduct) updated.product_key = matchedProduct.product_key;
         return updated;
       });
 
@@ -286,7 +294,12 @@ export function StockTable() {
       if (data.ram_gb) parts.push(`RAM: ${data.ram_gb}GB`);
       if (data.storage_gb) parts.push(`Storage: ${data.storage_gb}GB`);
       if (data.color) parts.push(`Color: ${data.color}`);
-      setScanResult(parts.length > 0 ? parts.join(" | ") : "Could not detect info from images.");
+      const baseResult = parts.length > 0 ? parts.join(" | ") : "Could not detect info from images.";
+      const noProductMsg =
+        (data.brand || data.model) && !matchedProduct
+          ? " ⚠️ No product key found for that product! Create the product first in the Products page."
+          : "";
+      setScanResult(baseResult + noProductMsg);
     } catch {
       setScanResult("Error: Failed to connect to AI service.");
     } finally {
@@ -295,20 +308,24 @@ export function StockTable() {
   };
 
   const handleSave = async () => {
-    if (!formData.imei1?.trim() || !formData.product_key) {
-      alert("IMEI1 and Product are required.");
+    if (!formData.imei1?.trim()) {
+      alert("IMEI1 is required.");
+      return;
+    }
+    if (!formData.product_key) {
+      alert("Product is required. Create it in the Products page first if it doesn't exist.");
       return;
     }
 
     setSaving(true);
+    const imei1 = formData.imei1.trim();
     const status = formData.status || "in_stock";
     const dateSold =
       status === "sold"
         ? formData.date_sold || editingUnit?.date_sold || todayIsoDate()
         : formData.date_sold || null;
-
     const record: Record<string, unknown> = {
-      imei1: formData.imei1.trim(),
+      imei1,
       imei2: formData.imei2?.trim() || null,
       product_key: formData.product_key,
       purchase_id: formData.purchase_id || null,
@@ -323,6 +340,24 @@ export function StockTable() {
     };
 
     try {
+      // Upload proof images if user added any
+      let proofUrls: string[] = (editingUnit?.proof_image_urls as string[] | null) ?? [];
+      if (scanImages.length > 0) {
+        const productSlug = sanitizeForFilename(formData.product_key);
+        const urls: string[] = [];
+        for (let i = 0; i < scanImages.length; i++) {
+          const filename = `${imei1}_${productSlug}_proof_${i + 1}.jpg`;
+          const file = await dataUrlToFile(scanImages[i].base64, filename);
+          const path = `${imei1}/${filename}`;
+          const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
+          if (error) throw error;
+          const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+          urls.push(data.publicUrl);
+        }
+        proofUrls = urls;
+      }
+      record.proof_image_urls = proofUrls;
+
       if (editingUnit) {
         const { error } = await supabase.from("stock_units").update(record).eq("id", editingUnit.id);
         if (error) throw error;
@@ -340,6 +375,8 @@ export function StockTable() {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
+      } else if (msg.includes("Bucket not found") || msg.includes("storage")) {
+        alert("Storage error: Run the stock_proof_images.sql migration in Supabase first.");
       } else {
         alert("Error saving: " + msg);
       }
@@ -490,7 +527,7 @@ export function StockTable() {
                       <span>Cost: {fmtPrice(unit.cost_unit, unit.cost_currency)}</span>
                       {unit.price_sold != null && (
                         <span className="text-emerald-400">
-                          Sold: {fmtPrice(unit.price_sold, "ARS")}
+                          Sold: {fmtPrice(unit.price_sold, unit.cost_currency)}
                         </span>
                       )}
                       {unit.supplier_name && <span>{unit.supplier_name}</span>}
@@ -546,7 +583,7 @@ export function StockTable() {
                         <TableCell className="whitespace-nowrap">
                           {unit.price_sold != null ? (
                             <span className="text-emerald-400 font-medium">
-                              {fmtPrice(unit.price_sold, "ARS")}
+                              {fmtPrice(unit.price_sold, unit.cost_currency)}
                             </span>
                           ) : "—"}
                         </TableCell>
@@ -691,7 +728,9 @@ export function StockTable() {
                     <div className={`mt-2 rounded-md p-2 text-xs ${
                       scanResult.startsWith("Error")
                         ? "bg-destructive/10 text-destructive"
-                        : "bg-emerald-500/10 text-emerald-400"
+                        : scanResult.includes("No product key found")
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                          : "bg-emerald-500/10 text-emerald-400"
                     }`}>
                       {scanResult}
                     </div>
@@ -709,6 +748,33 @@ export function StockTable() {
                   Scan with Photos
                 </Button>
               )}
+            </div>
+          )}
+
+          {/* Existing proof images (when editing) */}
+          {editingUnit && editingUnit.proof_image_urls && editingUnit.proof_image_urls.length > 0 && (
+            <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3 sm:p-4">
+              <Label className="text-xs sm:text-sm">Proof images (IMEI verification)</Label>
+              <div className="flex flex-wrap gap-2">
+                {editingUnit.proof_image_urls.map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block overflow-hidden rounded-lg border"
+                  >
+                    <img
+                      src={url}
+                      alt={`Proof ${i + 1}`}
+                      className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                    />
+                  </a>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Compare IMEI in these images to the saved value.
+              </p>
             </div>
           )}
 
@@ -753,6 +819,11 @@ export function StockTable() {
                   ))}
                 </SelectContent>
               </Select>
+              {!formData.product_key && (
+                <p className="text-xs text-muted-foreground">
+                  Create the product in Products first if it doesn&apos;t exist.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

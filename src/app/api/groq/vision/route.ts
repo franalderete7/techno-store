@@ -70,10 +70,11 @@ IMPORTANT: Only extract what you can clearly read. Use null for anything unclear
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.2-90b-vision-preview",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         messages: [{ role: "user", content }],
         temperature: 0.1,
-        max_tokens: 512,
+        max_completion_tokens: 512,
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -89,13 +90,17 @@ IMPORTANT: Only extract what you can clearly read. Use null for anything unclear
     const groqData = await groqRes.json();
     const rawText = groqData.choices?.[0]?.message?.content ?? "";
 
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: "Could not parse AI response", raw: rawText }, { status: 422 });
+    try {
+      const parsed = JSON.parse(rawText);
+      return NextResponse.json(parsed);
+    } catch {
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return NextResponse.json({ error: "Could not parse AI response", raw: rawText }, { status: 422 });
+      }
+      const parsed = JSON.parse(jsonMatch[0]);
+      return NextResponse.json(parsed);
     }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    return NextResponse.json(parsed);
   } catch (err) {
     console.error("Vision API error:", err);
     return NextResponse.json(
