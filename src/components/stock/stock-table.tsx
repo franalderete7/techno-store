@@ -242,33 +242,30 @@ export function StockTable() {
       }
 
       // Auto-fill form with detected data
+      // Try to match product by brand + model + specs (before setFormData so we can show "no product" message)
+      const searchTerms =
+        data.brand || data.model
+          ? [data.brand, data.model, data.storage_gb ? `${data.storage_gb}` : ""]
+              .filter(Boolean)
+              .map((s: string) => s.toLowerCase())
+          : [];
+      const matchedProduct =
+        searchTerms.length > 0
+          ? products.find((p) => {
+              const name = p.product_name.toLowerCase();
+              return searchTerms.every((t: string) => name.includes(t));
+            }) ??
+            products.find((p) => {
+              const name = p.product_name.toLowerCase();
+              return searchTerms.slice(0, 2).some((t: string) => name.includes(t));
+            })
+          : null;
+
       setFormData((prev) => {
         const updated = { ...prev };
         if (data.imei1) updated.imei1 = data.imei1;
         if (data.imei2) updated.imei2 = data.imei2;
-
-        // Try to match product by brand + model + specs
-        if (data.brand || data.model) {
-          const searchTerms = [data.brand, data.model, data.storage_gb ? `${data.storage_gb}` : ""]
-            .filter(Boolean)
-            .map((s: string) => s.toLowerCase());
-
-          const match = products.find((p) => {
-            const name = p.product_name.toLowerCase();
-            return searchTerms.every((t: string) => name.includes(t));
-          });
-
-          if (match) {
-            updated.product_key = match.product_key;
-          } else {
-            const partial = products.find((p) => {
-              const name = p.product_name.toLowerCase();
-              return searchTerms.slice(0, 2).some((t: string) => name.includes(t));
-            });
-            if (partial) updated.product_key = partial.product_key;
-          }
-        }
-
+        if (matchedProduct) updated.product_key = matchedProduct.product_key;
         return updated;
       });
 
@@ -280,7 +277,12 @@ export function StockTable() {
       if (data.ram_gb) parts.push(`RAM: ${data.ram_gb}GB`);
       if (data.storage_gb) parts.push(`Storage: ${data.storage_gb}GB`);
       if (data.color) parts.push(`Color: ${data.color}`);
-      setScanResult(parts.length > 0 ? parts.join(" | ") : "Could not detect info from images.");
+      const baseResult = parts.length > 0 ? parts.join(" | ") : "Could not detect info from images.";
+      const noProductMsg =
+        (data.brand || data.model) && !matchedProduct
+          ? " ⚠️ No product key found for that product! Create the product first in the Products page."
+          : "";
+      setScanResult(baseResult + noProductMsg);
     } catch {
       setScanResult("Error: Failed to connect to AI service.");
     } finally {
@@ -289,8 +291,12 @@ export function StockTable() {
   };
 
   const handleSave = async () => {
-    if (!formData.imei1?.trim() || !formData.product_key) {
-      alert("IMEI1 and Product are required.");
+    if (!formData.imei1?.trim()) {
+      alert("IMEI1 is required.");
+      return;
+    }
+    if (!formData.product_key) {
+      alert("Product is required. Create it in the Products page first if it doesn't exist.");
       return;
     }
 
@@ -471,7 +477,7 @@ export function StockTable() {
                       <span>Cost: {fmtPrice(unit.cost_unit, unit.cost_currency)}</span>
                       {unit.price_sold != null && (
                         <span className="text-emerald-400">
-                          Sold: {fmtPrice(unit.price_sold, "ARS")}
+                          Sold: {fmtPrice(unit.price_sold, unit.cost_currency)}
                         </span>
                       )}
                       {unit.supplier_name && <span>{unit.supplier_name}</span>}
@@ -527,7 +533,7 @@ export function StockTable() {
                         <TableCell className="whitespace-nowrap">
                           {unit.price_sold != null ? (
                             <span className="text-emerald-400 font-medium">
-                              {fmtPrice(unit.price_sold, "ARS")}
+                              {fmtPrice(unit.price_sold, unit.cost_currency)}
                             </span>
                           ) : "—"}
                         </TableCell>
@@ -672,7 +678,9 @@ export function StockTable() {
                     <div className={`mt-2 rounded-md p-2 text-xs ${
                       scanResult.startsWith("Error")
                         ? "bg-destructive/10 text-destructive"
-                        : "bg-emerald-500/10 text-emerald-400"
+                        : scanResult.includes("No product key found")
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                          : "bg-emerald-500/10 text-emerald-400"
                     }`}>
                       {scanResult}
                     </div>
@@ -734,6 +742,11 @@ export function StockTable() {
                   ))}
                 </SelectContent>
               </Select>
+              {!formData.product_key && (
+                <p className="text-xs text-muted-foreground">
+                  Create the product in Products first if it doesn&apos;t exist.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -793,7 +806,7 @@ export function StockTable() {
                   inputMode="decimal"
                   value={formData.price_sold ?? ""}
                   onChange={(e) => updateForm("price_sold", e.target.value)}
-                  placeholder="ARS"
+                  placeholder="0.00"
                 />
               </div>
             </div>

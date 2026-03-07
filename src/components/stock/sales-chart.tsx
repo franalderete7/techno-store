@@ -21,7 +21,7 @@ interface SalesChartProps {
   currency?: string;
 }
 
-export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
+export function SalesChart({ units, currency = "USD" }: SalesChartProps) {
   const [period, setPeriod] = useState<Period>("daily");
 
   const soldUnits = useMemo(
