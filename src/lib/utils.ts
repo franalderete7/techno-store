@@ -65,3 +65,11 @@ export function getErrorMessage(error: unknown, fallback = "Unexpected error"): 
 
   return fallback
 }
+
+export function isRowLevelSecurityError(error: unknown): boolean {
+  const message = getErrorMessage(error, "").toLowerCase()
+  return (
+    message.includes("row-level security") ||
+    message.includes("violates row-level security policy")
+  )
+}

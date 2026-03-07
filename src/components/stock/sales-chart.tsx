@@ -135,23 +135,18 @@ export function SalesChart({
     [units]
   );
 
-  const soldUnitsWithDate = useMemo(
-    () => units.filter((unit) => unit.status === "sold" && Boolean(unit.date_sold)),
+  const soldUnitsWithRealizedPrice = useMemo(
+    () =>
+      units.filter(
+        (unit) =>
+          unit.status === "sold" &&
+          unit.price_sold != null &&
+          Number(unit.price_sold) > 0
+      ),
     [units]
   );
 
-  const soldUnitsMissingDateCount = soldStatusCount - soldUnitsWithDate.length;
-
-  const soldUnitsWithRealizedPrice = useMemo(
-    () =>
-      soldUnitsWithDate.filter(
-        (unit) => unit.price_sold != null && Number(unit.price_sold) > 0
-      ),
-    [soldUnitsWithDate]
-  );
-
-  const soldUnitsMissingPriceCount =
-    soldUnitsWithDate.length - soldUnitsWithRealizedPrice.length;
+  const soldUnitsMissingPriceCount = soldStatusCount - soldUnitsWithRealizedPrice.length;
 
   const realizedSales = useMemo<RealizedSale[]>(() => {
     return soldUnitsWithRealizedPrice.map((unit) => {
@@ -171,6 +166,17 @@ export function SalesChart({
       };
     });
   }, [productMap, purchaseMap, soldUnitsWithRealizedPrice]);
+
+  const realizedSalesWithDate = useMemo(
+    () =>
+      realizedSales.filter((sale) => {
+        const soldDate = new Date(sale.dateSold);
+        return !Number.isNaN(soldDate.getTime());
+      }),
+    [realizedSales]
+  );
+
+  const soldUnitsMissingDateCount = realizedSales.length - realizedSalesWithDate.length;
 
   const totals = useMemo(() => {
     const revenue = realizedSales.reduce((sum, sale) => sum + sale.revenue, 0);
@@ -242,10 +248,8 @@ export function SalesChart({
       }
     }
 
-    realizedSales.forEach((sale) => {
+    realizedSalesWithDate.forEach((sale) => {
       const soldDate = new Date(sale.dateSold);
-      if (Number.isNaN(soldDate.getTime())) return;
-
       const key = period === "daily" ? formatDayKey(soldDate) : formatMonthKey(soldDate);
       const entry = buckets.get(key);
       if (!entry) return;
@@ -256,7 +260,7 @@ export function SalesChart({
     });
 
     return Array.from(buckets.values());
-  }, [period, realizedSales]);
+  }, [period, realizedSalesWithDate]);
 
   const activeWindow = useMemo(() => {
     return chartData.reduce(
@@ -275,10 +279,9 @@ export function SalesChart({
     const currentDayKey = formatDayKey(now);
     const currentMonthKey = formatMonthKey(now);
 
-    return realizedSales.reduce(
+    return realizedSalesWithDate.reduce(
       (summary, sale) => {
         const soldDate = new Date(sale.dateSold);
-        if (Number.isNaN(soldDate.getTime())) return summary;
 
         if (formatDayKey(soldDate) === currentDayKey) {
           summary.todayUnits += 1;
@@ -294,7 +297,7 @@ export function SalesChart({
       },
       { todayUnits: 0, todayRevenue: 0, monthUnits: 0, monthRevenue: 0 }
     );
-  }, [realizedSales]);
+  }, [realizedSalesWithDate]);
 
   const funderSummaries = useMemo<FunderSummary[]>(() => {
     const summaryMap = new Map<string, FunderSummary>();
@@ -410,9 +413,9 @@ export function SalesChart({
           <MetricCard
             icon={TrendingUp}
             label="Realized Profit"
-            value={formatMoney(activeWindow.profit)}
+            value={formatMoney(totals.profit)}
             hint={`Avg ticket ${formatMoney(totals.avgTicket)}`}
-            highlight={activeWindow.profit >= 0}
+            highlight={totals.profit >= 0}
           />
           <MetricCard
             icon={Package2}
@@ -467,15 +470,6 @@ export function SalesChart({
                 monthly sales automatically.
               </p>
             </div>
-          ) : soldUnitsWithDate.length === 0 ? (
-            <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
-              <CalendarRange className="mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="text-sm font-medium">Sold items need a sale date</p>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                The chart now uses <span className="font-medium text-foreground">date_sold</span> as
-                the source of truth. Run the SQL backfill below and the history will appear.
-              </p>
-            </div>
           ) : realizedSales.length === 0 ? (
             <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
               <BadgeDollarSign className="mb-3 h-8 w-8 text-muted-foreground" />
@@ -483,6 +477,15 @@ export function SalesChart({
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                 Realized profit only includes sold items with a saved{" "}
                 <span className="font-medium text-foreground">price_sold</span>.
+              </p>
+            </div>
+          ) : realizedSalesWithDate.length === 0 ? (
+            <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
+              <CalendarRange className="mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-medium">Sold items need a valid sale date</p>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                Realized profit already uses sold items with a sale price, but the trend chart still
+                needs <span className="font-medium text-foreground">date_sold</span> to place them in time.
               </p>
             </div>
           ) : (

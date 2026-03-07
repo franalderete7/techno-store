@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
-import { getErrorMessage, parseOptionalNumber, parseOptionalText } from "@/lib/utils";
+import {
+  getErrorMessage,
+  isRowLevelSecurityError,
+  parseOptionalNumber,
+  parseOptionalText,
+} from "@/lib/utils";
 import type { Product } from "@/types/database";
 import type {
   Purchase, PurchaseInsert, StockUnit, StockUnitInsert, PaymentStatus,
@@ -223,7 +228,11 @@ export function PurchasesTable() {
       setEditingPurchase(null);
       fetchAll();
     } catch (err: unknown) {
-      alert(getErrorMessage(err, "Unexpected error saving purchase."));
+      if (isRowLevelSecurityError(err)) {
+        alert("RLS blocked this purchase save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for purchases.");
+      } else {
+        alert(getErrorMessage(err, "Unexpected error saving purchase."));
+      }
     } finally {
       setSaving(false);
     }
@@ -294,6 +303,8 @@ export function PurchasesTable() {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
+      } else if (isRowLevelSecurityError(err)) {
+        alert("RLS blocked this stock save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for stock_units.");
       } else {
         alert(msg);
       }

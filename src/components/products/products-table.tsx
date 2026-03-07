@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { getErrorMessage, parseOptionalText } from "@/lib/utils";
+import { getErrorMessage, isRowLevelSecurityError, parseOptionalText } from "@/lib/utils";
 import type { Product, ProductInsert, ProductUpdate } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import {
@@ -301,6 +301,10 @@ function buildProductInsertPayload(
 
 function getProductErrorMessage(error: unknown, action: "adding" | "updating" | "deleting"): string {
   const message = getErrorMessage(error, `Unexpected error ${action} product.`);
+
+  if (isRowLevelSecurityError(error)) {
+    return "RLS blocked this product save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for products."
+  }
 
   if (message.includes("products_product_key_key") || message.includes("duplicate key")) {
     return "Product Key already exists."

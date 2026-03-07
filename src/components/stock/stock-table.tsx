@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { getErrorMessage, parseOptionalNumber, parseOptionalText } from "@/lib/utils";
+import {
+  getErrorMessage,
+  isRowLevelSecurityError,
+  parseOptionalNumber,
+  parseOptionalText,
+} from "@/lib/utils";
 import type { Product } from "@/types/database";
 import type { StockUnit, StockUnitInsert, StockStatus, Purchase } from "@/types/stock";
 import { STOCK_STATUS_OPTIONS } from "@/types/stock";
@@ -417,6 +422,8 @@ export function StockTable() {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
+      } else if (isRowLevelSecurityError(err)) {
+        alert("RLS blocked this stock save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for stock_units.");
       } else if (msg.includes("Bucket not found") || msg.includes("storage")) {
         alert("Storage error: Run the stock_proof_images.sql migration in Supabase first.");
       } else {
@@ -460,6 +467,11 @@ export function StockTable() {
   const fmtPrice = (val: number | null, cur: string) => {
     if (val == null) return "—";
     return `${cur === "ARS" ? "$" : "US$"}${val.toLocaleString("es-AR")}`;
+  };
+
+  const fmtArsPrice = (val: number | null) => {
+    if (val == null) return "—";
+    return `$${val.toLocaleString("es-AR")}`;
   };
 
   return (
@@ -577,7 +589,7 @@ export function StockTable() {
                       {unit.color && <span>Color: {unit.color}</span>}
                       {unit.price_sold != null && (
                         <span className="text-emerald-400">
-                          Sold: {fmtPrice(unit.price_sold, unit.cost_currency)}
+                          Sold: {fmtArsPrice(unit.price_sold)}
                         </span>
                       )}
                       {unit.supplier_name && <span>{unit.supplier_name}</span>}
@@ -608,7 +620,7 @@ export function StockTable() {
                     <TableHead className="sticky top-0 z-20 bg-background">Color</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Status</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Cost</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background">Price Sold</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Price Sold (ARS)</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Supplier</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Purchase</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Received</TableHead>
@@ -635,7 +647,7 @@ export function StockTable() {
                         <TableCell className="whitespace-nowrap">
                           {unit.price_sold != null ? (
                             <span className="text-emerald-400 font-medium">
-                              {fmtPrice(unit.price_sold, unit.cost_currency)}
+                              {fmtArsPrice(unit.price_sold)}
                             </span>
                           ) : "—"}
                         </TableCell>
@@ -954,14 +966,17 @@ export function StockTable() {
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className="text-xs sm:text-sm">Price Sold</Label>
+                  <Label className="text-xs sm:text-sm">Price Sold (ARS)</Label>
                   <Input
                     type="number"
                     inputMode="decimal"
                     value={formData.price_sold ?? ""}
                     onChange={(e) => updateForm("price_sold", e.target.value)}
-                    placeholder="USD"
+                    placeholder="ARS"
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Your schema stores <span className="font-medium text-foreground">price_sold</span> in ARS.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs sm:text-sm">Date Sold</Label>
