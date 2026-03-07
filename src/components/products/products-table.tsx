@@ -40,7 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Loader2, Columns3, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Columns3, ArrowUpDown, ArrowUp, ArrowDown, Search } from "lucide-react";
 
 const TABLE_COLUMNS = [
   { key: "image_url", label: "Image", alwaysVisible: true },
@@ -869,21 +869,15 @@ export function ProductsTable() {
   }, [columnsOpen]);
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto w-full">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold">Products</h1>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="w-full min-w-[220px] sm:w-72">
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search name, key, category, color..."
-              />
-            </div>
-            <div ref={columnsRef} className="relative">
+    <div className="min-h-screen bg-background px-3 py-4 sm:px-6 sm:py-6">
+      <div className="mx-auto w-full max-w-7xl">
+        <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
+          <h1 className="text-xl font-bold sm:text-2xl">Products</h1>
+          <div className="flex items-center gap-2">
+            <div ref={columnsRef} className="relative hidden sm:block">
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => setColumnsOpen((o) => !o)}
               >
                 <Columns3 className="mr-2 h-4 w-4" />
@@ -941,10 +935,24 @@ export function ProductsTable() {
                 </div>
               )}
             </div>
-            <Button onClick={openAdd}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Product
+            <Button onClick={openAdd} size="sm" className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add Product</span>
+              <span className="sm:hidden">Add</span>
             </Button>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="mb-3 sm:mb-4">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search name, key, category, color..."
+              className="pl-9"
+            />
           </div>
         </div>
 
@@ -953,22 +961,66 @@ export function ProductsTable() {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : products.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-            No products yet. Click &quot;Add Product&quot; to create one.
+          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground sm:p-12">
+            No products yet. Tap &quot;Add&quot; to create one.
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground sm:p-12">
             No products match &quot;{searchQuery}&quot;.
           </div>
         ) : (
           <>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Showing {sortedProducts.length} of {products.length} products.
+            <p className="mb-2 text-xs text-muted-foreground sm:mb-3 sm:text-sm">
+              Showing {sortedProducts.length} of {products.length} products
             </p>
+
+            {/* Mobile: Cards */}
+            <div className="space-y-2 sm:hidden">
+              {sortedProducts.map((p) => (
+                <div key={p.id} className="rounded-lg border bg-card p-3">
+                  <div className="flex gap-3">
+                    <div className="shrink-0">
+                      <ProductImageCell product={p} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{p.product_name}</p>
+                      <p className="text-xs text-muted-foreground">{p.category} &middot; {p.condition}</p>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                        <span className="font-medium text-emerald-400">
+                          ${p.price_ars?.toLocaleString("es-AR") ?? "—"}
+                        </span>
+                        <span className="text-muted-foreground">
+                          US${p.price_usd?.toLocaleString() ?? "—"}
+                        </span>
+                        {p.in_stock ? (
+                          <span className="text-blue-400">In stock</span>
+                        ) : (
+                          <span className="text-muted-foreground">Out of stock</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-1">
+                    <Button variant="outline" size="sm" className="h-8 flex-1" onClick={() => openEdit(p)}>
+                      <Pencil className="mr-1 h-3 w-3" /> Edit
+                    </Button>
+                    <Button
+                      variant="outline" size="sm"
+                      className="h-8 text-destructive hover:text-destructive"
+                      onClick={() => setDeleteProduct(p)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: Table */}
             <div
               ref={tableScrollRef}
-              className="overflow-auto rounded-lg border"
-              style={{ maxHeight: "calc(100vh - 12rem)" }}
+              className="hidden overflow-auto rounded-lg border sm:block"
+              style={{ maxHeight: "calc(100vh - 14rem)" }}
               onWheel={handleTableWheel}
             >
               <Table>

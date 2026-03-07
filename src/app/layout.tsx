@@ -29,7 +29,7 @@ export default function RootLayout({
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased font-sans`}
       >
         <TopNav />
-        {children}
+        <main className="pb-16 sm:pb-0">{children}</main>
       </body>
     </html>
   );

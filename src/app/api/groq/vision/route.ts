@@ -16,29 +16,35 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { imeiImage, specsImage } = body as {
-      imeiImage?: string;
-      specsImage?: string;
-    };
+    const { images } = body as { images: string[] };
 
-    if (!imeiImage && !specsImage) {
+    if (!images || images.length === 0) {
       return NextResponse.json({ error: "At least one image is required" }, { status: 400 });
     }
+
+    const imageCount = images.length;
+    const promptSingle = `You are analyzing a phone image for a stock management system. This single image may contain IMEI numbers, the phone model name, specs, or any combination of these. Extract ALL information you can see.`;
+    const promptMulti = `You are analyzing ${imageCount} phone images for a stock management system. The images may contain IMEI numbers, phone model name, specs, or any combination. Extract ALL information you can find across all images.`;
 
     const content: GroqMessage["content"] = [
       {
         type: "text",
-        text: `You are analyzing phone images for a stock management system. Extract the following information and return ONLY valid JSON (no markdown, no backticks, no explanation).
+        text: `${imageCount === 1 ? promptSingle : promptMulti}
 
-From the IMEI image (first image if provided): extract the 15-digit IMEI numbers.
-From the specs/model image (second image if provided): extract the phone brand, model, RAM, storage, color, and network type.
+Look for:
+- IMEI numbers (exactly 15 digits, usually on a sticker, box, or settings screen)
+- Phone brand (Samsung, Apple/iPhone, Xiaomi/Redmi/POCO, Motorola, etc.)
+- Model name (e.g. "iPhone 16 Pro Max", "Galaxy S25 Ultra", "Redmi Note 13 Pro")
+- RAM and storage capacity
+- Color
+- Network type (4G/5G)
 
-Return this exact JSON structure:
+Return ONLY valid JSON (no markdown, no backticks, no explanation):
 {
   "imei1": "15-digit number or null",
   "imei2": "15-digit number or null",
   "brand": "Samsung/Apple/Xiaomi/etc or null",
-  "model": "full model name like 'iPhone 16 Pro Max' or 'Samsung Galaxy S25 Ultra' or null",
+  "model": "full model name or null",
   "ram_gb": number or null,
   "storage_gb": number or null,
   "color": "color name or null",
@@ -46,21 +52,14 @@ Return this exact JSON structure:
   "condition": "new or used or null"
 }
 
-IMPORTANT: Only extract what you can clearly see. Use null for anything unclear. IMEI numbers are exactly 15 digits.`,
+IMPORTANT: Only extract what you can clearly read. Use null for anything unclear or not visible. IMEI numbers are EXACTLY 15 digits — do not guess or truncate.`,
       },
     ];
 
-    if (imeiImage) {
+    for (const img of images) {
       content.push({
         type: "image_url",
-        image_url: { url: imeiImage },
-      });
-    }
-
-    if (specsImage) {
-      content.push({
-        type: "image_url",
-        image_url: { url: specsImage },
+        image_url: { url: img },
       });
     }
 

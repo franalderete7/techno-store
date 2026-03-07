@@ -39,12 +39,12 @@ function ReservationStatusBadge({ status }: { status: ReservationStatus }) {
 
 function StatCard({ label, value, icon: Icon }: { label: string; value: number; icon: React.ElementType }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="rounded-lg border bg-card p-3 sm:p-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-xs sm:text-sm text-muted-foreground">{label}</p>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </div>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
+      <p className="mt-1 text-xl sm:text-2xl font-bold">{value}</p>
     </div>
   );
 }
@@ -231,26 +231,27 @@ export function ReservationsTable() {
   const updateForm = (key: string, value: string) => setFormData((prev) => ({ ...prev, [key]: value }));
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto w-full">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold">Reservations</h1>
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Reservation
+    <div className="min-h-screen bg-background px-3 py-4 sm:px-6 sm:py-6">
+      <div className="mx-auto w-full max-w-7xl">
+        <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
+          <h1 className="text-xl font-bold sm:text-2xl">Reservations</h1>
+          <Button onClick={openAdd} size="sm" className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">New Reservation</span>
+            <span className="sm:hidden">New</span>
           </Button>
         </div>
 
         {/* Stats */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-4 sm:gap-4">
           <StatCard label="Active" value={stats.active} icon={CheckCircle} />
-          <StatCard label="Interested / Pending" value={stats.interested} icon={Search} />
+          <StatCard label="Interested" value={stats.interested} icon={Search} />
           <StatCard label="Deposit Paid" value={stats.deposit_paid} icon={DollarSign} />
           <StatCard label="Delivered" value={stats.delivered} icon={Truck} />
         </div>
 
         {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-center sm:gap-3">
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -261,7 +262,7 @@ export function ReservationsTable() {
             />
           </div>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ReservationStatus | "active" | "all")}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-full sm:w-44">
               <SelectValue placeholder="Active" />
             </SelectTrigger>
             <SelectContent>
@@ -274,21 +275,80 @@ export function ReservationsTable() {
           </Select>
         </div>
 
-        {/* Table */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-            {reservations.length === 0 ? 'No reservations yet. Click "New Reservation" to create one.' : "No reservations match the current filters."}
+          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground sm:p-12">
+            {reservations.length === 0 ? 'No reservations yet. Tap "New" to create one.' : "No reservations match the current filters."}
           </div>
         ) : (
           <>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Showing {filtered.length} of {reservations.length} reservations.
+            <p className="mb-2 text-xs text-muted-foreground sm:mb-3 sm:text-sm">
+              Showing {filtered.length} of {reservations.length} reservations
             </p>
-            <div className="overflow-auto rounded-lg border" style={{ maxHeight: "calc(100vh - 22rem)" }}>
+
+            {/* Mobile: Cards */}
+            <div className="space-y-2 sm:hidden">
+              {filtered.map((r) => {
+                const product = productMap.get(r.product_key);
+                const available = stockCounts.get(r.product_key) ?? 0;
+                return (
+                  <div key={r.id} className="rounded-lg border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{r.customer_name || "Unknown"}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {product?.product_name ?? r.product_key}
+                        </p>
+                      </div>
+                      <ReservationStatusBadge status={r.status} />
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {r.customer_phone && <span>{r.customer_phone}</span>}
+                      {r.deposit_amount != null && (
+                        <span className="text-emerald-400">Deposit: ${r.deposit_amount.toLocaleString()}</span>
+                      )}
+                      <Badge variant={available > 0 ? "default" : "secondary"} className="text-[10px]">
+                        {available} in stock
+                      </Badge>
+                      <span className="capitalize">{r.source}</span>
+                    </div>
+                    <div className="mt-2 flex gap-1">
+                      {r.status !== "cancelled" && r.status !== "delivered" && (
+                        <>
+                          {(r.status === "interested" || r.status === "pending_deposit") && (
+                            <Button variant="outline" size="sm" className="h-8" onClick={() => quickUpdateStatus(r, "deposit_paid")}>
+                              <DollarSign className="h-3 w-3 text-emerald-400" />
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => quickUpdateStatus(r, "delivered")}>
+                            <Truck className="h-3 w-3 text-purple-400" />
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => quickUpdateStatus(r, "cancelled")}>
+                            <XCircle className="h-3 w-3 text-red-400" />
+                          </Button>
+                        </>
+                      )}
+                      <Button variant="outline" size="sm" className="h-8 flex-1" onClick={() => openEdit(r)}>
+                        <Pencil className="mr-1 h-3 w-3" /> Edit
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteReservation(r)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop: Table */}
+            <div className="hidden overflow-auto rounded-lg border sm:block" style={{ maxHeight: "calc(100vh - 22rem)" }}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -390,12 +450,12 @@ export function ReservationsTable() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditingReservation(null); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[95vh] overflow-y-auto p-4 sm:max-w-xl sm:p-6">
           <DialogHeader>
             <DialogTitle>{editingReservation ? "Edit Reservation" : "New Reservation"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div className="space-y-2">
                 <Label>Customer Name</Label>
                 <Input
@@ -423,7 +483,7 @@ export function ReservationsTable() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div className="space-y-2">
                 <Label>Product *</Label>
                 <Select value={formData.product_key ?? ""} onValueChange={(v) => updateForm("product_key", v)}>
@@ -452,7 +512,7 @@ export function ReservationsTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select value={formData.status ?? "interested"} onValueChange={(v) => updateForm("status", v)}>
@@ -478,7 +538,7 @@ export function ReservationsTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
               <div className="space-y-2">
                 <Label>Deposit Amount</Label>
                 <Input

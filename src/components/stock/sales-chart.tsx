@@ -25,9 +25,13 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
   const [period, setPeriod] = useState<Period>("daily");
 
   const soldUnits = useMemo(
-    () => units.filter((u) => u.status === "sold" && u.date_sold),
+    () => units.filter((u) => u.status === "sold"),
     [units]
   );
+
+  const getSoldDate = (u: StockUnit): string => {
+    return u.date_sold ?? u.updated_at ?? u.created_at;
+  };
 
   const totals = useMemo(() => {
     const revenue = soldUnits.reduce((sum, u) => sum + (u.price_sold ?? 0), 0);
@@ -46,7 +50,7 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
         map.set(key, { count: 0, revenue: 0 });
       }
       soldUnits.forEach((u) => {
-        const key = u.date_sold!.split("T")[0];
+        const key = getSoldDate(u).split("T")[0];
         const entry = map.get(key);
         if (entry) {
           entry.count++;
@@ -70,7 +74,7 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
       map.set(key, { count: 0, revenue: 0 });
     }
     soldUnits.forEach((u) => {
-      const d = new Date(u.date_sold!);
+      const d = new Date(getSoldDate(u));
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const entry = map.get(key);
       if (entry) {

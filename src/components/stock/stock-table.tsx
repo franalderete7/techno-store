@@ -68,67 +68,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function ImageUploadBox({
-  label,
-  hint,
-  preview,
-  onFile,
-  onClear,
-  inputRef,
-}: {
-  label: string;
-  hint: string;
-  preview: string | null;
-  onFile: (f: File) => void;
-  onClear: () => void;
-  inputRef: React.RefObject<HTMLInputElement>;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label className="text-sm font-medium">{label}</Label>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFile(f);
-          e.target.value = "";
-        }}
-      />
-      {preview ? (
-        <div className="relative">
-          <img
-            src={preview}
-            alt={label}
-            className="h-36 w-full rounded-lg border object-cover sm:h-44"
-          />
-          <button
-            type="button"
-            onClick={onClear}
-            className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="flex h-36 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 transition-colors hover:border-primary/50 hover:bg-muted/50 active:scale-[0.98] sm:h-44"
-        >
-          <div className="rounded-full bg-primary/10 p-3">
-            <Camera className="h-6 w-6 text-primary" />
-          </div>
-          <span className="text-sm font-medium">{hint}</span>
-          <span className="text-xs text-muted-foreground">Tap to take photo or upload</span>
-        </button>
-      )}
-    </div>
-  );
-}
 
 /* ─── main component ───────────────────────────────────────────────── */
 
@@ -149,14 +88,10 @@ export function StockTable() {
 
   // AI scan state
   const [scanMode, setScanMode] = useState(false);
-  const [imeiPreview, setImeiPreview] = useState<string | null>(null);
-  const [specsPreview, setSpecsPreview] = useState<string | null>(null);
-  const [imeiBase64, setImeiBase64] = useState<string | null>(null);
-  const [specsBase64, setSpecsBase64] = useState<string | null>(null);
+  const [scanImages, setScanImages] = useState<{ preview: string; base64: string }[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
-  const imeiInputRef = useRef<HTMLInputElement>(null);
-  const specsInputRef = useRef<HTMLInputElement>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
 
   const productMap = useMemo(
     () => new Map(products.map((p) => [p.product_key, p])),
@@ -211,10 +146,7 @@ export function StockTable() {
 
   const resetScan = () => {
     setScanMode(false);
-    setImeiPreview(null);
-    setSpecsPreview(null);
-    setImeiBase64(null);
-    setSpecsBase64(null);
+    setScanImages([]);
     setScanning(false);
     setScanResult(null);
   };
@@ -258,20 +190,20 @@ export function StockTable() {
     setDialogOpen(true);
   };
 
-  const handleImageFile = async (file: File, type: "imei" | "specs") => {
+  const handleAddImage = async (file: File) => {
+    if (scanImages.length >= 2) return;
     const base64 = await fileToBase64(file);
-    if (type === "imei") {
-      setImeiPreview(base64);
-      setImeiBase64(base64);
-    } else {
-      setSpecsPreview(base64);
-      setSpecsBase64(base64);
-    }
+    setScanImages((prev) => [...prev, { preview: base64, base64 }]);
+    setScanResult(null);
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setScanImages((prev) => prev.filter((_, i) => i !== index));
     setScanResult(null);
   };
 
   const handleAiScan = async () => {
-    if (!imeiBase64 && !specsBase64) return;
+    if (scanImages.length === 0) return;
     setScanning(true);
     setScanResult(null);
     try {
@@ -279,8 +211,7 @@ export function StockTable() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imeiImage: imeiBase64,
-          specsImage: specsBase64,
+          images: scanImages.map((img) => img.base64),
         }),
       });
 
@@ -624,7 +555,7 @@ export function StockTable() {
                   <Sparkles className="h-4 w-4 text-primary" />
                   <span className="text-sm font-semibold">AI Auto-Fill</span>
                 </div>
-                {scanMode && (imeiPreview || specsPreview) && (
+                {scanMode && scanImages.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -636,31 +567,69 @@ export function StockTable() {
                 )}
               </div>
 
+              <input
+                ref={scanInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleAddImage(f);
+                  e.target.value = "";
+                }}
+              />
+
               {scanMode && (
                 <>
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Take photos of the phone to auto-fill IMEI and model info. Manual fields (cost, price) stay editable.
+                    Upload 1 or 2 photos showing IMEI and/or model info. One photo with everything visible is enough.
                   </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <ImageUploadBox
-                      label="IMEI Photo"
-                      hint="IMEI sticker/screen"
-                      preview={imeiPreview}
-                      onFile={(f) => handleImageFile(f, "imei")}
-                      onClear={() => { setImeiPreview(null); setImeiBase64(null); }}
-                      inputRef={imeiInputRef}
-                    />
-                    <ImageUploadBox
-                      label="Specs Photo"
-                      hint="Model & specs"
-                      preview={specsPreview}
-                      onFile={(f) => handleImageFile(f, "specs")}
-                      onClear={() => { setSpecsPreview(null); setSpecsBase64(null); }}
-                      inputRef={specsInputRef}
-                    />
+
+                  {/* Image previews */}
+                  <div className={`grid gap-3 ${scanImages.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+                    {scanImages.map((img, i) => (
+                      <div key={i} className="relative">
+                        <img
+                          src={img.preview}
+                          alt={`Photo ${i + 1}`}
+                          className="h-36 w-full rounded-lg border object-cover sm:h-44"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(i)}
+                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <span className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                          Photo {i + 1}
+                        </span>
+                      </div>
+                    ))}
                   </div>
 
-                  {(imeiBase64 || specsBase64) && (
+                  {/* Add photo button */}
+                  {scanImages.length < 2 && (
+                    <button
+                      type="button"
+                      onClick={() => scanInputRef.current?.click()}
+                      className={`flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 transition-colors hover:border-primary/50 hover:bg-muted/50 active:scale-[0.98] ${
+                        scanImages.length === 0 ? "mt-0 h-36 sm:h-44" : "mt-3 h-24 sm:h-28"
+                      }`}
+                    >
+                      <div className="rounded-full bg-primary/10 p-3">
+                        <Camera className="h-6 w-6 text-primary" />
+                      </div>
+                      <span className="text-sm font-medium">
+                        {scanImages.length === 0 ? "Take Photo" : "Add 2nd Photo (optional)"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">Tap to take photo or upload</span>
+                    </button>
+                  )}
+
+                  {/* Analyze button */}
+                  {scanImages.length > 0 && (
                     <Button
                       className="mt-3 w-full gap-2"
                       onClick={handleAiScan}
@@ -669,7 +638,7 @@ export function StockTable() {
                       {scanning ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Analyzing...
+                          Analyzing {scanImages.length === 1 ? "photo" : "photos"}...
                         </>
                       ) : (
                         <>

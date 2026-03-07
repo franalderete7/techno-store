@@ -250,17 +250,18 @@ export function PurchasesTable() {
   const productMap = useMemo(() => new Map(products.map((p) => [p.product_key, p])), [products]);
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto w-full">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold">Purchases</h1>
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Purchase
+    <div className="min-h-screen bg-background px-3 py-4 sm:px-6 sm:py-6">
+      <div className="mx-auto w-full max-w-7xl">
+        <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
+          <h1 className="text-xl font-bold sm:text-2xl">Purchases</h1>
+          <Button onClick={openAdd} size="sm" className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">New Purchase</span>
+            <span className="sm:hidden">New</span>
           </Button>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -277,15 +278,65 @@ export function PurchasesTable() {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-            {purchases.length === 0 ? 'No purchases yet. Click "New Purchase" to create one.' : "No purchases match the search."}
+          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground sm:p-12">
+            {purchases.length === 0 ? 'No purchases yet. Tap "New" to create one.' : "No purchases match the search."}
           </div>
         ) : (
           <>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Showing {filtered.length} of {purchases.length} purchases.
+            <p className="mb-2 text-xs text-muted-foreground sm:mb-3 sm:text-sm">
+              Showing {filtered.length} of {purchases.length} purchases
             </p>
-            <div className="overflow-auto rounded-lg border" style={{ maxHeight: "calc(100vh - 16rem)" }}>
+
+            {/* Mobile: Cards */}
+            <div className="space-y-2 sm:hidden">
+              {filtered.map((p) => (
+                <div key={p.id} className="rounded-lg border bg-card p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-muted-foreground">{p.purchase_id}</p>
+                      <p className="mt-0.5 text-sm font-medium">{p.supplier_name}</p>
+                    </div>
+                    <PaymentStatusBadge status={p.payment_status} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>{new Date(p.date_purchase).toLocaleDateString()}</span>
+                    <span className="font-medium text-foreground">
+                      {p.total_cost != null
+                        ? `${p.currency === "ARS" ? "$" : "US$"}${p.total_cost.toLocaleString()}`
+                        : "—"}
+                    </span>
+                    <span>{p.payment_method.replace(/_/g, " ")}</span>
+                    {p.funded_by && <span>Funded: {p.funded_by}</span>}
+                    <span>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {unitCounts.get(p.purchase_id) ?? 0} units
+                      </Badge>
+                    </span>
+                  </div>
+                  <div className="mt-2 flex gap-1">
+                    <Button variant="outline" size="sm" className="h-8 flex-1" onClick={() => openDetail(p)}>
+                      <Eye className="mr-1 h-3 w-3" /> View
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8" onClick={() => openAddUnit(p)}>
+                      <PackagePlus className="h-3 w-3" />
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8" onClick={() => openEdit(p)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="outline" size="sm"
+                      className="h-8 text-destructive hover:text-destructive"
+                      onClick={() => setDeletePurchase(p)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: Table */}
+            <div className="hidden overflow-auto rounded-lg border sm:block" style={{ maxHeight: "calc(100vh - 16rem)" }}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -350,11 +401,11 @@ export function PurchasesTable() {
 
       {/* Add/Edit Purchase Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditingPurchase(null); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[95vh] overflow-y-auto p-4 sm:max-w-xl sm:p-6">
           <DialogHeader>
             <DialogTitle>{editingPurchase ? "Edit Purchase" : "New Purchase"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-3 sm:gap-4">
             {editingPurchase && (
               <div className="rounded-md border bg-muted/30 px-4 py-3">
                 <p className="text-xs text-muted-foreground">Purchase ID</p>
