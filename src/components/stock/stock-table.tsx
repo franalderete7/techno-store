@@ -59,12 +59,28 @@ function StatCard({ label, value, icon: Icon }: { label: string; value: number; 
   );
 }
 
-function fileToBase64(file: File): Promise<string> {
+function compressImage(file: File, maxDim = 1280, quality = 0.7): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Canvas not supported")); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to load image")); };
+    img.src = url;
   });
 }
 
@@ -192,9 +208,13 @@ export function StockTable() {
 
   const handleAddImage = async (file: File) => {
     if (scanImages.length >= 2) return;
-    const base64 = await fileToBase64(file);
-    setScanImages((prev) => [...prev, { preview: base64, base64 }]);
-    setScanResult(null);
+    try {
+      const base64 = await compressImage(file);
+      setScanImages((prev) => [...prev, { preview: base64, base64 }]);
+      setScanResult(null);
+    } catch {
+      setScanResult("Error: Could not process image. Try a different photo.");
+    }
   };
 
   const handleRemoveImage = (index: number) => {
