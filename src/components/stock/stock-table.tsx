@@ -88,6 +88,21 @@ function todayIsoDate() {
   return new Date().toISOString().split("T")[0];
 }
 
+function formatPurchaseDate(value: string | null | undefined) {
+  if (!value) return "No date";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatPurchaseOption(purchase: Purchase) {
+  return `${purchase.purchase_id} · ${purchase.supplier_name} · ${formatPurchaseDate(purchase.date_purchase)}`;
+}
+
 async function dataUrlToFile(dataUrl: string, filename: string): Promise<File> {
   const res = await fetch(dataUrl);
   const blob = await res.blob();
@@ -401,6 +416,13 @@ export function StockTable() {
   const updateForm = (key: string, value: string) => {
     setFormData((prev) => {
       const next = { ...prev, [key]: value };
+      if (key === "purchase_id") {
+        const selectedPurchase = purchases.find((purchase) => purchase.purchase_id === value);
+        if (selectedPurchase) {
+          next.supplier_name = selectedPurchase.supplier_name ?? next.supplier_name;
+          next.date_received = selectedPurchase.date_purchase ?? next.date_received;
+        }
+      }
       if (key === "status" && value === "sold" && !next.date_sold) {
         next.date_sold = todayIsoDate();
       }
@@ -837,7 +859,7 @@ export function StockTable() {
                     <SelectItem value="__none__">None</SelectItem>
                     {purchases.map((p) => (
                       <SelectItem key={p.purchase_id} value={p.purchase_id}>
-                        {p.purchase_id}
+                        {formatPurchaseOption(p)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -893,7 +915,7 @@ export function StockTable() {
                     inputMode="decimal"
                     value={formData.price_sold ?? ""}
                     onChange={(e) => updateForm("price_sold", e.target.value)}
-                    placeholder="ARS"
+                    placeholder="USD"
                   />
                 </div>
                 <div className="space-y-1.5">
