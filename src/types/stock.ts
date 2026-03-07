@@ -22,6 +22,7 @@ export interface StockUnit {
   reservation_id: number | null;
   sale_id: number | null;
   date_sold: string | null;
+  price_sold: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -37,6 +38,7 @@ export interface StockUnitInsert {
   cost_currency?: string;
   date_received?: string | null;
   status?: StockStatus;
+  price_sold?: number | null;
   notes?: string | null;
 }
 
@@ -49,6 +51,7 @@ export interface Purchase {
   payment_status: PaymentStatus;
   total_cost: number | null;
   currency: string;
+  funded_by: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -63,6 +66,7 @@ export interface PurchaseInsert {
   payment_status?: PaymentStatus;
   total_cost?: number | null;
   currency?: string;
+  funded_by?: string | null;
   notes?: string | null;
   created_by?: string | null;
 }

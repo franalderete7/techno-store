@@ -104,6 +104,7 @@ export function PurchasesTable() {
       payment_status: "pending",
       total_cost: "",
       currency: "USD",
+      funded_by: "",
       notes: "",
       created_by: "",
     });
@@ -119,6 +120,7 @@ export function PurchasesTable() {
       payment_status: purchase.payment_status,
       total_cost: purchase.total_cost != null ? String(purchase.total_cost) : "",
       currency: purchase.currency,
+      funded_by: purchase.funded_by ?? "",
       notes: purchase.notes ?? "",
       created_by: purchase.created_by ?? "",
     });
@@ -163,6 +165,7 @@ export function PurchasesTable() {
       payment_status: formData.payment_status || "pending",
       total_cost: formData.total_cost ? parseFloat(formData.total_cost) : null,
       currency: formData.currency || "USD",
+      funded_by: formData.funded_by?.trim() || null,
       notes: formData.notes?.trim() || null,
       created_by: formData.created_by?.trim() || null,
     };
@@ -292,6 +295,7 @@ export function PurchasesTable() {
                     <TableHead className="sticky top-0 z-20 bg-background">Payment</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Status</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Total</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Funded By</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Units</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Notes</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Actions</TableHead>
@@ -310,6 +314,7 @@ export function PurchasesTable() {
                           ? `${p.currency === "ARS" ? "$" : "US$"}${p.total_cost.toLocaleString()}`
                           : "—"}
                       </TableCell>
+                      <TableCell className="text-sm">{p.funded_by ?? "—"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary">{unitCounts.get(p.purchase_id) ?? 0}</Badge>
                       </TableCell>
@@ -421,13 +426,23 @@ export function PurchasesTable() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Created By</Label>
-              <Input
-                value={formData.created_by ?? ""}
-                onChange={(e) => updateForm("created_by", e.target.value)}
-                placeholder="Your name"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Funded By</Label>
+                <Input
+                  value={formData.funded_by ?? ""}
+                  onChange={(e) => updateForm("funded_by", e.target.value)}
+                  placeholder="e.g. Aldo, Partner, Shared"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Created By</Label>
+                <Input
+                  value={formData.created_by ?? ""}
+                  onChange={(e) => updateForm("created_by", e.target.value)}
+                  placeholder="Your name"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

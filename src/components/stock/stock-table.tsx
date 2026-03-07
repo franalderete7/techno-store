@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types/database";
 import type { StockUnit, StockUnitInsert, StockStatus, Purchase } from "@/types/stock";
@@ -21,10 +21,22 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import {
-  Plus, Pencil, Trash2, Loader2, Search, Warehouse, PackageCheck, Clock, ShoppingBag,
+  Plus, Pencil, Trash2, Loader2, Search, Warehouse, PackageCheck,
+  Clock, ShoppingBag, Camera, Sparkles, X, ImageIcon,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const SalesChart = dynamic(() => import("./sales-chart").then((m) => m.SalesChart), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-64 items-center justify-center rounded-lg border bg-card">
+      <span className="text-sm text-muted-foreground">Loading chart...</span>
+    </div>
+  ),
+});
+
+/* ─── helpers ──────────────────────────────────────────────────────── */
 
 function StatusBadge({ status }: { status: StockStatus }) {
   const opt = STOCK_STATUS_OPTIONS.find((o) => o.value === status);
@@ -37,15 +49,88 @@ function StatusBadge({ status }: { status: StockStatus }) {
 
 function StatCard({ label, value, icon: Icon }: { label: string; value: number; icon: React.ElementType }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="rounded-lg border bg-card p-3 sm:p-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-xs sm:text-sm text-muted-foreground">{label}</p>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </div>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
+      <p className="mt-1 text-xl sm:text-2xl font-bold">{value}</p>
     </div>
   );
 }
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function ImageUploadBox({
+  label,
+  hint,
+  preview,
+  onFile,
+  onClear,
+  inputRef,
+}: {
+  label: string;
+  hint: string;
+  preview: string | null;
+  onFile: (f: File) => void;
+  onClear: () => void;
+  inputRef: React.RefObject<HTMLInputElement>;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">{label}</Label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onFile(f);
+          e.target.value = "";
+        }}
+      />
+      {preview ? (
+        <div className="relative">
+          <img
+            src={preview}
+            alt={label}
+            className="h-36 w-full rounded-lg border object-cover sm:h-44"
+          />
+          <button
+            type="button"
+            onClick={onClear}
+            className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="flex h-36 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 transition-colors hover:border-primary/50 hover:bg-muted/50 active:scale-[0.98] sm:h-44"
+        >
+          <div className="rounded-full bg-primary/10 p-3">
+            <Camera className="h-6 w-6 text-primary" />
+          </div>
+          <span className="text-sm font-medium">{hint}</span>
+          <span className="text-xs text-muted-foreground">Tap to take photo or upload</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ─── main component ───────────────────────────────────────────────── */
 
 export function StockTable() {
   const [units, setUnits] = useState<StockUnit[]>([]);
@@ -55,11 +140,23 @@ export function StockTable() {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus | "all">("all");
+  const [showChart, setShowChart] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<StockUnit | null>(null);
   const [deleteUnit, setDeleteUnit] = useState<StockUnit | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
+
+  // AI scan state
+  const [scanMode, setScanMode] = useState(false);
+  const [imeiPreview, setImeiPreview] = useState<string | null>(null);
+  const [specsPreview, setSpecsPreview] = useState<string | null>(null);
+  const [imeiBase64, setImeiBase64] = useState<string | null>(null);
+  const [specsBase64, setSpecsBase64] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
+  const imeiInputRef = useRef<HTMLInputElement>(null);
+  const specsInputRef = useRef<HTMLInputElement>(null);
 
   const productMap = useMemo(
     () => new Map(products.map((p) => [p.product_key, p])),
@@ -97,7 +194,7 @@ export function StockTable() {
     return result;
   }, [units, statusFilter, searchQuery, productMap]);
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     const [stockRes, prodRes, purchRes] = await Promise.all([
       supabase.from("stock_units").select("*").order("created_at", { ascending: false }),
@@ -108,9 +205,19 @@ export function StockTable() {
     setProducts((prodRes.data as Product[]) ?? []);
     setPurchases((purchRes.data as Purchase[]) ?? []);
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const resetScan = () => {
+    setScanMode(false);
+    setImeiPreview(null);
+    setSpecsPreview(null);
+    setImeiBase64(null);
+    setSpecsBase64(null);
+    setScanning(false);
+    setScanResult(null);
+  };
 
   const openAdd = () => {
     setEditingUnit(null);
@@ -122,10 +229,13 @@ export function StockTable() {
       supplier_name: "",
       cost_unit: "",
       cost_currency: "USD",
+      price_sold: "",
       date_received: new Date().toISOString().split("T")[0],
       status: "in_stock",
       notes: "",
     });
+    resetScan();
+    setScanMode(true);
     setDialogOpen(true);
   };
 
@@ -139,11 +249,92 @@ export function StockTable() {
       supplier_name: unit.supplier_name ?? "",
       cost_unit: unit.cost_unit != null ? String(unit.cost_unit) : "",
       cost_currency: unit.cost_currency ?? "USD",
+      price_sold: unit.price_sold != null ? String(unit.price_sold) : "",
       date_received: unit.date_received ?? "",
       status: unit.status,
       notes: unit.notes ?? "",
     });
+    resetScan();
     setDialogOpen(true);
+  };
+
+  const handleImageFile = async (file: File, type: "imei" | "specs") => {
+    const base64 = await fileToBase64(file);
+    if (type === "imei") {
+      setImeiPreview(base64);
+      setImeiBase64(base64);
+    } else {
+      setSpecsPreview(base64);
+      setSpecsBase64(base64);
+    }
+    setScanResult(null);
+  };
+
+  const handleAiScan = async () => {
+    if (!imeiBase64 && !specsBase64) return;
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const res = await fetch("/api/groq/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imeiImage: imeiBase64,
+          specsImage: specsBase64,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setScanResult(`Error: ${data.error || "Failed to analyze"}`);
+        return;
+      }
+
+      // Auto-fill form with detected data
+      setFormData((prev) => {
+        const updated = { ...prev };
+        if (data.imei1) updated.imei1 = data.imei1;
+        if (data.imei2) updated.imei2 = data.imei2;
+
+        // Try to match product by brand + model + specs
+        if (data.brand || data.model) {
+          const searchTerms = [data.brand, data.model, data.storage_gb ? `${data.storage_gb}` : ""]
+            .filter(Boolean)
+            .map((s: string) => s.toLowerCase());
+
+          const match = products.find((p) => {
+            const name = p.product_name.toLowerCase();
+            return searchTerms.every((t: string) => name.includes(t));
+          });
+
+          if (match) {
+            updated.product_key = match.product_key;
+          } else {
+            const partial = products.find((p) => {
+              const name = p.product_name.toLowerCase();
+              return searchTerms.slice(0, 2).some((t: string) => name.includes(t));
+            });
+            if (partial) updated.product_key = partial.product_key;
+          }
+        }
+
+        return updated;
+      });
+
+      const parts: string[] = [];
+      if (data.imei1) parts.push(`IMEI1: ${data.imei1}`);
+      if (data.imei2) parts.push(`IMEI2: ${data.imei2}`);
+      if (data.brand) parts.push(`Brand: ${data.brand}`);
+      if (data.model) parts.push(`Model: ${data.model}`);
+      if (data.ram_gb) parts.push(`RAM: ${data.ram_gb}GB`);
+      if (data.storage_gb) parts.push(`Storage: ${data.storage_gb}GB`);
+      if (data.color) parts.push(`Color: ${data.color}`);
+      setScanResult(parts.length > 0 ? parts.join(" | ") : "Could not detect info from images.");
+    } catch {
+      setScanResult("Error: Failed to connect to AI service.");
+    } finally {
+      setScanning(false);
+    }
   };
 
   const handleSave = async () => {
@@ -161,6 +352,7 @@ export function StockTable() {
       supplier_name: formData.supplier_name?.trim() || null,
       cost_unit: formData.cost_unit ? parseFloat(formData.cost_unit) : null,
       cost_currency: formData.cost_currency || "USD",
+      price_sold: formData.price_sold ? parseFloat(formData.price_sold) : null,
       date_received: formData.date_received || null,
       status: formData.status || "in_stock",
       notes: formData.notes?.trim() || null,
@@ -168,10 +360,7 @@ export function StockTable() {
 
     try {
       if (editingUnit) {
-        const { error } = await supabase
-          .from("stock_units")
-          .update(record)
-          .eq("id", editingUnit.id);
+        const { error } = await supabase.from("stock_units").update(record).eq("id", editingUnit.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("stock_units").insert(record as unknown as StockUnitInsert);
@@ -179,6 +368,7 @@ export function StockTable() {
       }
       setDialogOpen(false);
       setEditingUnit(null);
+      resetScan();
       fetchAll();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -211,27 +401,65 @@ export function StockTable() {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
+  const fmtPrice = (val: number | null, cur: string) => {
+    if (val == null) return "—";
+    return `${cur === "ARS" ? "$" : "US$"}${val.toLocaleString("es-AR")}`;
+  };
+
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto w-full">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold">Stock</h1>
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Unit
-          </Button>
+    <div className="min-h-screen bg-background px-3 py-4 sm:px-6 sm:py-6">
+      <div className="mx-auto w-full max-w-7xl">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
+          <h1 className="text-xl font-bold sm:text-2xl">Stock</h1>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowChart((p) => !p)}
+              className="hidden sm:flex"
+            >
+              <ShoppingBag className="mr-1.5 h-4 w-4" />
+              {showChart ? "Hide Chart" : "Sales"}
+            </Button>
+            <Button onClick={openAdd} size="sm" className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add Unit</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <StatCard label="Total Units" value={stats.total} icon={Warehouse} />
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-4 sm:gap-4">
+          <StatCard label="Total" value={stats.total} icon={Warehouse} />
           <StatCard label="In Stock" value={stats.in_stock} icon={PackageCheck} />
           <StatCard label="Reserved" value={stats.reserved} icon={Clock} />
           <StatCard label="Sold" value={stats.sold} icon={ShoppingBag} />
         </div>
 
+        {/* Mobile chart toggle */}
+        <div className="mb-3 sm:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => setShowChart((p) => !p)}
+          >
+            <ShoppingBag className="mr-1.5 h-4 w-4" />
+            {showChart ? "Hide Sales Chart" : "Show Sales Chart"}
+          </Button>
+        </div>
+
+        {/* Sales Chart */}
+        {showChart && (
+          <div className="mb-4 sm:mb-6">
+            <SalesChart units={units} />
+          </div>
+        )}
+
         {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-center sm:gap-3">
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -242,7 +470,7 @@ export function StockTable() {
             />
           </div>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StockStatus | "all")}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-full sm:w-40">
               <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
@@ -254,21 +482,67 @@ export function StockTable() {
           </Select>
         </div>
 
-        {/* Table */}
+        {/* Data */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-            {units.length === 0 ? 'No stock units yet. Click "Add Unit" to create one.' : "No units match the current filters."}
+          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground sm:p-12">
+            {units.length === 0
+              ? 'No stock units yet. Tap "Add" to create one.'
+              : "No units match the current filters."}
           </div>
         ) : (
           <>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Showing {filtered.length} of {units.length} units.
+            <p className="mb-2 text-xs text-muted-foreground sm:mb-3 sm:text-sm">
+              Showing {filtered.length} of {units.length} units
             </p>
-            <div className="overflow-auto rounded-lg border" style={{ maxHeight: "calc(100vh - 22rem)" }}>
+
+            {/* Mobile: Cards | Desktop: Table */}
+            <div className="sm:hidden space-y-2">
+              {filtered.map((unit) => {
+                const product = productMap.get(unit.product_key);
+                return (
+                  <div key={unit.id} className="rounded-lg border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {product?.product_name ?? unit.product_key}
+                        </p>
+                        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                          IMEI: {unit.imei1}
+                        </p>
+                      </div>
+                      <StatusBadge status={unit.status} />
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>Cost: {fmtPrice(unit.cost_unit, unit.cost_currency)}</span>
+                      {unit.price_sold != null && (
+                        <span className="text-emerald-400">
+                          Sold: {fmtPrice(unit.price_sold, "ARS")}
+                        </span>
+                      )}
+                      {unit.supplier_name && <span>{unit.supplier_name}</span>}
+                    </div>
+                    <div className="mt-2 flex gap-1">
+                      <Button variant="outline" size="sm" className="h-8 flex-1" onClick={() => openEdit(unit)}>
+                        <Pencil className="mr-1 h-3 w-3" /> Edit
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteUnit(unit)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden sm:block overflow-auto rounded-lg border" style={{ maxHeight: "calc(100vh - 24rem)" }}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -276,10 +550,10 @@ export function StockTable() {
                     <TableHead className="sticky top-0 z-20 bg-background">Product</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Status</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Cost</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Price Sold</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Supplier</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Purchase</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Received</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background">Notes</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -297,14 +571,20 @@ export function StockTable() {
                         </TableCell>
                         <TableCell><StatusBadge status={unit.status} /></TableCell>
                         <TableCell className="whitespace-nowrap">
-                          {unit.cost_unit != null
-                            ? `${unit.cost_currency === "ARS" ? "$" : "US$"}${unit.cost_unit.toLocaleString()}`
-                            : "—"}
+                          {fmtPrice(unit.cost_unit, unit.cost_currency)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {unit.price_sold != null ? (
+                            <span className="text-emerald-400 font-medium">
+                              {fmtPrice(unit.price_sold, "ARS")}
+                            </span>
+                          ) : "—"}
                         </TableCell>
                         <TableCell>{unit.supplier_name ?? "—"}</TableCell>
                         <TableCell className="font-mono text-xs">{unit.purchase_id ?? "—"}</TableCell>
-                        <TableCell>{unit.date_received ? new Date(unit.date_received).toLocaleDateString() : "—"}</TableCell>
-                        <TableCell className="max-w-[200px] truncate text-xs">{unit.notes ?? "—"}</TableCell>
+                        <TableCell>
+                          {unit.date_received ? new Date(unit.date_received).toLocaleDateString() : "—"}
+                        </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openEdit(unit)}>
@@ -329,37 +609,131 @@ export function StockTable() {
         )}
       </div>
 
-      {/* Add/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditingUnit(null); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      {/* ─── Add/Edit Dialog ───────────────────────────────────────── */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditingUnit(null); resetScan(); } }}>
+        <DialogContent className="max-h-[95vh] overflow-y-auto p-4 sm:max-w-xl sm:p-6">
           <DialogHeader>
             <DialogTitle>{editingUnit ? "Edit Unit" : "Add Stock Unit"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>IMEI1 *</Label>
+
+          {/* AI Scan Section (only for new units) */}
+          {!editingUnit && (
+            <div className="rounded-lg border bg-muted/30 p-3 sm:p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold">AI Auto-Fill</span>
+                </div>
+                {scanMode && (imeiPreview || specsPreview) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={resetScan}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+
+              {scanMode && (
+                <>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Take photos of the phone to auto-fill IMEI and model info. Manual fields (cost, price) stay editable.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <ImageUploadBox
+                      label="IMEI Photo"
+                      hint="IMEI sticker/screen"
+                      preview={imeiPreview}
+                      onFile={(f) => handleImageFile(f, "imei")}
+                      onClear={() => { setImeiPreview(null); setImeiBase64(null); }}
+                      inputRef={imeiInputRef}
+                    />
+                    <ImageUploadBox
+                      label="Specs Photo"
+                      hint="Model & specs"
+                      preview={specsPreview}
+                      onFile={(f) => handleImageFile(f, "specs")}
+                      onClear={() => { setSpecsPreview(null); setSpecsBase64(null); }}
+                      inputRef={specsInputRef}
+                    />
+                  </div>
+
+                  {(imeiBase64 || specsBase64) && (
+                    <Button
+                      className="mt-3 w-full gap-2"
+                      onClick={handleAiScan}
+                      disabled={scanning}
+                    >
+                      {scanning ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          Analyze with AI
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {scanResult && (
+                    <div className={`mt-2 rounded-md p-2 text-xs ${
+                      scanResult.startsWith("Error")
+                        ? "bg-destructive/10 text-destructive"
+                        : "bg-emerald-500/10 text-emerald-400"
+                    }`}>
+                      {scanResult}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!scanMode && (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={() => setScanMode(true)}
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  Scan with Photos
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Form */}
+          <div className="grid gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">IMEI1 *</Label>
                 <Input
                   value={formData.imei1 ?? ""}
                   onChange={(e) => updateForm("imei1", e.target.value)}
                   placeholder="354276621670502"
                   maxLength={15}
+                  inputMode="numeric"
+                  className="font-mono text-sm"
                 />
-                <p className="text-xs text-muted-foreground">Exactly 15 digits</p>
               </div>
-              <div className="space-y-2">
-                <Label>IMEI2</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">IMEI2</Label>
                 <Input
                   value={formData.imei2 ?? ""}
                   onChange={(e) => updateForm("imei2", e.target.value)}
                   placeholder="Optional"
                   maxLength={15}
+                  inputMode="numeric"
+                  className="font-mono text-sm"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Product *</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs sm:text-sm">Product *</Label>
               <Select value={formData.product_key ?? ""} onValueChange={(v) => updateForm("product_key", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select product..." />
@@ -374,9 +748,9 @@ export function StockTable() {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Purchase</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Purchase</Label>
                 <Select value={formData.purchase_id ?? ""} onValueChange={(v) => updateForm("purchase_id", v === "__none__" ? "" : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="None" />
@@ -385,34 +759,35 @@ export function StockTable() {
                     <SelectItem value="__none__">None</SelectItem>
                     {purchases.map((p) => (
                       <SelectItem key={p.purchase_id} value={p.purchase_id}>
-                        {p.purchase_id} — {p.supplier_name}
+                        {p.purchase_id}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Supplier</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Supplier</Label>
                 <Input
                   value={formData.supplier_name ?? ""}
                   onChange={(e) => updateForm("supplier_name", e.target.value)}
-                  placeholder="Supplier name"
+                  placeholder="Supplier"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Cost</Label>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Cost</Label>
                 <Input
                   type="number"
+                  inputMode="decimal"
                   value={formData.cost_unit ?? ""}
                   onChange={(e) => updateForm("cost_unit", e.target.value)}
                   placeholder="0.00"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Currency</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Currency</Label>
                 <Select value={formData.cost_currency ?? "USD"} onValueChange={(v) => updateForm("cost_currency", v)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -423,19 +798,29 @@ export function StockTable() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Date Received</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Price Sold</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={formData.price_sold ?? ""}
+                  onChange={(e) => updateForm("price_sold", e.target.value)}
+                  placeholder="ARS"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Date Received</Label>
                 <Input
                   type="date"
                   value={formData.date_received ?? ""}
                   onChange={(e) => updateForm("date_received", e.target.value)}
                 />
               </div>
-            </div>
-
-            {editingUnit && (
-              <div className="space-y-2">
-                <Label>Status</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Status</Label>
                 <Select value={formData.status ?? "in_stock"} onValueChange={(v) => updateForm("status", v)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -447,25 +832,26 @@ export function StockTable() {
                   </SelectContent>
                 </Select>
               </div>
-            )}
+            </div>
 
-            <div className="space-y-2">
-              <Label>Notes</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs sm:text-sm">Notes</Label>
               <textarea
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={formData.notes ?? ""}
                 onChange={(e) => updateForm("notes", e.target.value)}
                 placeholder="Optional notes..."
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingUnit(null); }}>
+
+          <DialogFooter className="mt-2 flex-col gap-2 sm:flex-row">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => { setDialogOpen(false); setEditingUnit(null); resetScan(); }}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button className="w-full sm:w-auto" onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingUnit ? "Save" : "Add"}
+              {editingUnit ? "Save" : "Add Unit"}
             </Button>
           </DialogFooter>
         </DialogContent>

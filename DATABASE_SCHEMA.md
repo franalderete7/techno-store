@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-06
 
 ## Overview
 
@@ -95,6 +95,7 @@ Physical inventory — 1 row = 1 phone unit identified by IMEI1.
 | reservation_id | integer | YES | - | FK → reservations.id |
 | sale_id | integer | YES | - | FK → sales.id |
 | date_sold | date | YES | - | Date sold |
+| price_sold | numeric(12, 2) | YES | - | Sale price in ARS |
 | notes | text | YES | - | Notes |
 | created_at | timestamptz | YES | now() | Created timestamp |
 | updated_at | timestamptz | YES | now() | Updated timestamp |
@@ -131,6 +132,7 @@ Purchase orders from suppliers.
 | payment_status | payment_status | YES | 'pending' | Payment status |
 | total_cost | numeric(12, 2) | YES | - | Total cost of purchase |
 | currency | text | YES | 'USD' | ARS or USD |
+| funded_by | text | YES | 'own' | Capital source (e.g. own, partner name) |
 | notes | text | YES | - | Notes |
 | created_by | text | YES | - | Who created this record |
 | created_at | timestamptz | YES | now() | Created timestamp |
