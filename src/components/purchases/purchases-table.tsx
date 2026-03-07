@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types/database";
 import type {
-  Purchase, PurchaseInsert, StockUnit, StockUnitInsert, PaymentMethod, PaymentStatus,
+  Purchase, PurchaseInsert, StockUnit, StockUnitInsert, PaymentStatus,
 } from "@/types/stock";
 import { PAYMENT_METHOD_OPTIONS, PAYMENT_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/types/stock";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,43 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
       {labels[status] ?? status}
     </span>
   );
+}
+
+function PurchaseDetailField({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-1 text-sm font-medium">{value}</div>
+    </div>
+  );
+}
+
+function formatPurchaseDate(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatMoney(value: number | null | undefined, currency: string | null | undefined) {
+  if (value == null) return "—";
+  const prefix = currency === "ARS" ? "$" : "US$";
+  return `${prefix}${value.toLocaleString("es-AR")}`;
+}
+
+function handleOpenFromKeyboard(event: KeyboardEvent<HTMLElement>, onOpen: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    onOpen();
+  }
+}
+
+function stopRowEvent(event: MouseEvent<HTMLElement>) {
+  event.stopPropagation();
 }
 
 
@@ -129,6 +166,7 @@ export function PurchasesTable() {
 
   const openDetail = async (purchase: Purchase) => {
     setDetailPurchase(purchase);
+    setDetailUnits([]);
     setLoadingDetail(true);
     const { data } = await supabase
       .from("stock_units")
@@ -290,7 +328,14 @@ export function PurchasesTable() {
             {/* Mobile: Cards */}
             <div className="space-y-2 sm:hidden">
               {filtered.map((p) => (
-                <div key={p.id} className="rounded-lg border bg-card p-3">
+                <div
+                  key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDetail(p)}
+                  onKeyDown={(event) => handleOpenFromKeyboard(event, () => openDetail(p))}
+                  className="rounded-lg border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-mono text-xs text-muted-foreground">{p.purchase_id}</p>
@@ -299,11 +344,9 @@ export function PurchasesTable() {
                     <PaymentStatusBadge status={p.payment_status} />
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>{new Date(p.date_purchase).toLocaleDateString()}</span>
+                    <span>{formatPurchaseDate(p.date_purchase)}</span>
                     <span className="font-medium text-foreground">
-                      {p.total_cost != null
-                        ? `${p.currency === "ARS" ? "$" : "US$"}${p.total_cost.toLocaleString()}`
-                        : "—"}
+                      {formatMoney(p.total_cost, p.currency)}
                     </span>
                     <span>{p.payment_method.replace(/_/g, " ")}</span>
                     {p.funded_by && <span>Funded: {p.funded_by}</span>}
@@ -314,19 +357,46 @@ export function PurchasesTable() {
                     </span>
                   </div>
                   <div className="mt-2 flex gap-1">
-                    <Button variant="outline" size="sm" className="h-8 flex-1" onClick={() => openDetail(p)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 flex-1"
+                      onClick={(event) => {
+                        stopRowEvent(event);
+                        openDetail(p);
+                      }}
+                    >
                       <Eye className="mr-1 h-3 w-3" /> View
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8" onClick={() => openAddUnit(p)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={(event) => {
+                        stopRowEvent(event);
+                        openAddUnit(p);
+                      }}
+                    >
                       <PackagePlus className="h-3 w-3" />
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8" onClick={() => openEdit(p)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={(event) => {
+                        stopRowEvent(event);
+                        openEdit(p);
+                      }}
+                    >
                       <Pencil className="h-3 w-3" />
                     </Button>
                     <Button
                       variant="outline" size="sm"
                       className="h-8 text-destructive hover:text-destructive"
-                      onClick={() => setDeletePurchase(p)}
+                      onClick={(event) => {
+                        stopRowEvent(event);
+                        setDeletePurchase(p);
+                      }}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -354,16 +424,18 @@ export function PurchasesTable() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((p) => (
-                    <TableRow key={p.id}>
+                    <TableRow
+                      key={p.id}
+                      className="cursor-pointer transition-colors hover:bg-muted/30"
+                      onClick={() => openDetail(p)}
+                    >
                       <TableCell className="font-mono text-xs">{p.purchase_id}</TableCell>
-                      <TableCell>{new Date(p.date_purchase).toLocaleDateString()}</TableCell>
+                      <TableCell>{formatPurchaseDate(p.date_purchase)}</TableCell>
                       <TableCell className="font-medium">{p.supplier_name}</TableCell>
                       <TableCell className="text-xs capitalize">{p.payment_method.replace(/_/g, " ")}</TableCell>
                       <TableCell><PaymentStatusBadge status={p.payment_status} /></TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {p.total_cost != null
-                          ? `${p.currency === "ARS" ? "$" : "US$"}${p.total_cost.toLocaleString()}`
-                          : "—"}
+                        {formatMoney(p.total_cost, p.currency)}
                       </TableCell>
                       <TableCell className="text-sm">{p.funded_by ?? "—"}</TableCell>
                       <TableCell>
@@ -372,19 +444,45 @@ export function PurchasesTable() {
                       <TableCell className="max-w-[150px] truncate text-xs">{p.notes ?? "—"}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" title="View units" onClick={() => openDetail(p)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="View units"
+                            onClick={(event) => {
+                              stopRowEvent(event);
+                              openDetail(p);
+                            }}
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="Add unit" onClick={() => openAddUnit(p)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Add unit"
+                            onClick={(event) => {
+                              stopRowEvent(event);
+                              openAddUnit(p);
+                            }}
+                          >
                             <PackagePlus className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(p)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(event) => {
+                              stopRowEvent(event);
+                              openEdit(p);
+                            }}
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost" size="icon"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => setDeletePurchase(p)}
+                            onClick={(event) => {
+                              stopRowEvent(event);
+                              setDeletePurchase(p);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -517,56 +615,91 @@ export function PurchasesTable() {
       </Dialog>
 
       {/* Detail Dialog */}
-      <Dialog open={!!detailPurchase} onOpenChange={(open) => { if (!open) setDetailPurchase(null); }}>
+      <Dialog open={!!detailPurchase} onOpenChange={(open) => {
+        if (!open) {
+          setDetailPurchase(null);
+          setDetailUnits([]);
+        }
+      }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
               Purchase {detailPurchase?.purchase_id} — {detailPurchase?.supplier_name}
             </DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            {loadingDetail ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : detailUnits.length === 0 ? (
-              <p className="py-4 text-center text-muted-foreground">No units in this purchase yet.</p>
-            ) : (
-              <div className="overflow-auto rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>IMEI1</TableHead>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Cost</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {detailUnits.map((u) => {
-                      const prod = productMap.get(u.product_key);
-                      const statusOpt = STOCK_STATUS_OPTIONS.find((o) => o.value === u.status);
-                      return (
-                        <TableRow key={u.id}>
-                          <TableCell className="font-mono text-xs">{u.imei1}</TableCell>
-                          <TableCell>{prod?.product_name ?? u.product_key}</TableCell>
-                          <TableCell>
-                            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusOpt?.color ?? ""}`}>
-                              {statusOpt?.label ?? u.status}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {u.cost_unit != null
-                              ? `${u.cost_currency === "ARS" ? "$" : "US$"}${u.cost_unit.toLocaleString()}`
-                              : "—"}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+          <div className="space-y-4 py-4">
+            {detailPurchase && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <PurchaseDetailField label="Date" value={formatPurchaseDate(detailPurchase.date_purchase)} />
+                  <PurchaseDetailField label="Supplier" value={detailPurchase.supplier_name} />
+                  <PurchaseDetailField label="Total" value={formatMoney(detailPurchase.total_cost, detailPurchase.currency)} />
+                  <PurchaseDetailField label="Units" value={loadingDetail ? "Loading..." : String(detailUnits.length)} />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <PurchaseDetailField label="Payment Method" value={detailPurchase.payment_method.replace(/_/g, " ")} />
+                  <PurchaseDetailField label="Payment Status" value={<PaymentStatusBadge status={detailPurchase.payment_status} />} />
+                  <PurchaseDetailField label="Funded By" value={detailPurchase.funded_by ?? "—"} />
+                </div>
+                {detailPurchase.notes ? (
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Notes</p>
+                    <p className="mt-1 text-sm">{detailPurchase.notes}</p>
+                  </div>
+                ) : null}
+              </>
             )}
+
+            <div>
+              <div className="mb-3">
+                <p className="text-sm font-medium">Stock units in this purchase</p>
+                <p className="text-xs text-muted-foreground">
+                  Every unit linked to {detailPurchase?.purchase_id} is listed here.
+                </p>
+              </div>
+              {loadingDetail ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : detailUnits.length === 0 ? (
+                <p className="py-4 text-center text-muted-foreground">No units in this purchase yet.</p>
+              ) : (
+                <div className="overflow-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>IMEI1</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detailUnits.map((u) => {
+                        const prod = productMap.get(u.product_key);
+                        const statusOpt = STOCK_STATUS_OPTIONS.find((o) => o.value === u.status);
+                        return (
+                          <TableRow key={u.id}>
+                            <TableCell className="font-mono text-xs">{u.imei1}</TableCell>
+                            <TableCell>{prod?.product_name ?? u.product_key}</TableCell>
+                            <TableCell>
+                              <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusOpt?.color ?? ""}`}>
+                                {statusOpt?.label ?? u.status}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {u.cost_unit != null
+                                ? `${u.cost_currency === "ARS" ? "$" : "US$"}${u.cost_unit.toLocaleString()}`
+                                : "—"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => detailPurchase && openAddUnit(detailPurchase)}>
