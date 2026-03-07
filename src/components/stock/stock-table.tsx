@@ -488,7 +488,7 @@ export function StockTable() {
         {/* Sales Chart */}
         {showChart && (
           <div className="mb-4 sm:mb-6">
-            <SalesChart units={units} />
+            <SalesChart units={units} purchases={purchases} products={products} />
           </div>
         )}
 

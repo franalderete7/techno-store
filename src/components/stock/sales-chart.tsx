@@ -16,17 +16,22 @@ import {
   BadgeDollarSign,
   BarChart3,
   CalendarRange,
+  CircleDollarSign,
   Package2,
+  ReceiptText,
   ShoppingBag,
   TrendingUp,
 } from "lucide-react";
-import type { StockStatus, StockUnit } from "@/types/stock";
+import type { Product } from "@/types/database";
+import type { Purchase, StockStatus, StockUnit } from "@/types/stock";
 import { STOCK_STATUS_OPTIONS } from "@/types/stock";
 
 type Period = "daily" | "monthly";
 
 interface SalesChartProps {
   units: StockUnit[];
+  purchases: Purchase[];
+  products: Product[];
   currency?: string;
 }
 
@@ -44,6 +49,23 @@ type ChartPoint = {
   label: string;
   units: number;
   revenue: number;
+  profit: number;
+};
+
+type RealizedSale = {
+  fundedBy: string;
+  fundedByKey: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  dateSold: string;
+};
+
+type FunderSummary = {
+  fundedBy: string;
+  units: number;
+  revenue: number;
+  cost: number;
   profit: number;
 };
 
@@ -65,8 +87,48 @@ const formatMonthKey = (date: Date) =>
 
 const getSaleDate = (unit: StockUnit) => unit.date_sold ?? "";
 
-export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
+const DEFAULT_USD_RATE = 1460;
+
+function normalizeFunderName(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return {
+      label: "Unassigned",
+      key: "unassigned",
+    };
+  }
+
+  return {
+    label: trimmed,
+    key: trimmed.toLocaleLowerCase("es-AR"),
+  };
+}
+
+function getUnitCostArs(unit: StockUnit, product: Product | undefined) {
+  if (unit.cost_unit == null) return 0;
+  if ((unit.cost_currency ?? "USD").toUpperCase() === "ARS") return unit.cost_unit;
+
+  const usdRate = product?.usd_rate && product.usd_rate > 0 ? product.usd_rate : DEFAULT_USD_RATE;
+  return unit.cost_unit * usdRate;
+}
+
+export function SalesChart({
+  units,
+  purchases,
+  products,
+  currency = "ARS",
+}: SalesChartProps) {
   const [period, setPeriod] = useState<Period>("daily");
+
+  const purchaseMap = useMemo(
+    () => new Map(purchases.map((purchase) => [purchase.purchase_id, purchase])),
+    [purchases]
+  );
+
+  const productMap = useMemo(
+    () => new Map(products.map((product) => [product.product_key, product])),
+    [products]
+  );
 
   const soldStatusCount = useMemo(
     () => units.filter((unit) => unit.status === "sold").length,
@@ -80,13 +142,29 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
 
   const soldUnitsMissingDateCount = soldStatusCount - soldUnits.length;
 
+  const realizedSales = useMemo<RealizedSale[]>(() => {
+    return soldUnits.map((unit) => {
+      const purchase = unit.purchase_id ? purchaseMap.get(unit.purchase_id) : undefined;
+      const product = productMap.get(unit.product_key);
+      const funder = normalizeFunderName(purchase?.funded_by);
+      const revenue = unit.price_sold ?? 0;
+      const cost = getUnitCostArs(unit, product);
+
+      return {
+        fundedBy: funder.label,
+        fundedByKey: funder.key,
+        revenue,
+        cost,
+        profit: revenue - cost,
+        dateSold: getSaleDate(unit),
+      };
+    });
+  }, [productMap, purchaseMap, soldUnits]);
+
   const totals = useMemo(() => {
-    const revenue = soldUnits.reduce((sum, unit) => sum + (unit.price_sold ?? 0), 0);
-    const count = soldUnits.length;
-    const profit = soldUnits.reduce(
-      (sum, unit) => sum + (unit.price_sold ?? 0) - (unit.cost_unit ?? 0),
-      0
-    );
+    const revenue = realizedSales.reduce((sum, sale) => sum + sale.revenue, 0);
+    const count = realizedSales.length;
+    const profit = realizedSales.reduce((sum, sale) => sum + sale.profit, 0);
 
     return {
       count: soldStatusCount,
@@ -95,7 +173,7 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
       avgTicket: count > 0 ? revenue / count : 0,
       sellThrough: units.length > 0 ? (soldStatusCount / units.length) * 100 : 0,
     };
-  }, [soldStatusCount, soldUnits, units.length]);
+  }, [realizedSales, soldStatusCount, units.length]);
 
   const statusCards = useMemo<StatusCard[]>(() => {
     return STOCK_STATUS_OPTIONS.map((option) => {
@@ -153,8 +231,8 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
       }
     }
 
-    soldUnits.forEach((unit) => {
-      const soldDate = new Date(getSaleDate(unit));
+    realizedSales.forEach((sale) => {
+      const soldDate = new Date(sale.dateSold);
       if (Number.isNaN(soldDate.getTime())) return;
 
       const key = period === "daily" ? formatDayKey(soldDate) : formatMonthKey(soldDate);
@@ -162,12 +240,12 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
       if (!entry) return;
 
       entry.units += 1;
-      entry.revenue += unit.price_sold ?? 0;
-      entry.profit += (unit.price_sold ?? 0) - (unit.cost_unit ?? 0);
+      entry.revenue += sale.revenue;
+      entry.profit += sale.profit;
     });
 
     return Array.from(buckets.values());
-  }, [period, soldUnits]);
+  }, [period, realizedSales]);
 
   const activeWindow = useMemo(() => {
     return chartData.reduce(
@@ -186,26 +264,63 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
     const currentDayKey = formatDayKey(now);
     const currentMonthKey = formatMonthKey(now);
 
-    return soldUnits.reduce(
-      (summary, unit) => {
-        const soldDate = new Date(getSaleDate(unit));
+    return realizedSales.reduce(
+      (summary, sale) => {
+        const soldDate = new Date(sale.dateSold);
         if (Number.isNaN(soldDate.getTime())) return summary;
 
         if (formatDayKey(soldDate) === currentDayKey) {
           summary.todayUnits += 1;
-          summary.todayRevenue += unit.price_sold ?? 0;
+          summary.todayRevenue += sale.revenue;
         }
 
         if (formatMonthKey(soldDate) === currentMonthKey) {
           summary.monthUnits += 1;
-          summary.monthRevenue += unit.price_sold ?? 0;
+          summary.monthRevenue += sale.revenue;
         }
 
         return summary;
       },
       { todayUnits: 0, todayRevenue: 0, monthUnits: 0, monthRevenue: 0 }
     );
-  }, [soldUnits]);
+  }, [realizedSales]);
+
+  const funderSummaries = useMemo<FunderSummary[]>(() => {
+    const summaryMap = new Map<string, FunderSummary>();
+
+    realizedSales.forEach((sale) => {
+      const existing = summaryMap.get(sale.fundedByKey);
+      if (existing) {
+        existing.units += 1;
+        existing.revenue += sale.revenue;
+        existing.cost += sale.cost;
+        existing.profit += sale.profit;
+        return;
+      }
+
+      summaryMap.set(sale.fundedByKey, {
+        fundedBy: sale.fundedBy,
+        units: 1,
+        revenue: sale.revenue,
+        cost: sale.cost,
+        profit: sale.profit,
+      });
+    });
+
+    return Array.from(summaryMap.values()).sort((a, b) => {
+      if (b.profit !== a.profit) return b.profit - a.profit;
+      if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+      return a.fundedBy.localeCompare(b.fundedBy, "es-AR");
+    });
+  }, [realizedSales]);
+
+  const maxFunderProfitAbs = useMemo(() => {
+    return funderSummaries.reduce((max, funder) => {
+      return Math.max(max, Math.abs(funder.profit));
+    }, 0);
+  }, [funderSummaries]);
+
+  const topFunder = funderSummaries[0] ?? null;
 
   const peakPoint = useMemo(() => {
     return chartData.reduce<ChartPoint | null>((best, point) => {
@@ -239,7 +354,9 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
                 Daily and monthly sales are calculated from stock items marked as{" "}
                 <span className="font-medium text-foreground">Sold</span>. Inventory
-                status keeps the full current mix on the side.
+                status keeps the full current mix on the side, and realized profit is
+                assigned through <code className="mx-1 rounded bg-background/70 px-1 py-0.5">purchase_id</code>
+                to the purchase owner in <code className="mx-1 rounded bg-background/70 px-1 py-0.5">funded_by</code>.
               </p>
             </div>
           </div>
@@ -490,6 +607,64 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
 
           <div className="rounded-2xl border bg-background/70 p-4">
             <div className="mb-4">
+              <p className="text-sm font-medium">Profit by funded by</p>
+              <p className="text-xs text-muted-foreground">
+                Sold units inherit ownership from the linked purchase. USD costs are converted
+                with the product USD rate to compare against sale price in ARS.
+              </p>
+            </div>
+
+            {funderSummaries.length === 0 ? (
+              <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+                No sold items with purchase ownership yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {funderSummaries.map((funder) => {
+                  const width =
+                    maxFunderProfitAbs > 0
+                      ? (Math.abs(funder.profit) / maxFunderProfitAbs) * 100
+                      : 0;
+
+                  return (
+                    <div key={funder.fundedBy} className="rounded-xl border bg-card/60 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{funder.fundedBy}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {funder.units} sold · Revenue {formatMoney(funder.revenue)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p
+                            className={`text-sm font-semibold ${
+                              funder.profit >= 0 ? "text-emerald-500" : "text-red-500"
+                            }`}
+                          >
+                            {formatMoney(funder.profit)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Cost {formatMoney(funder.cost)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full ${
+                            funder.profit >= 0 ? "bg-emerald-500" : "bg-red-500"
+                          }`}
+                          style={{ width: `${funder.profit === 0 ? 0 : Math.max(width, 6)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border bg-background/70 p-4">
+            <div className="mb-4">
               <p className="text-sm font-medium">Quick read</p>
               <p className="text-xs text-muted-foreground">
                 A fast summary for sales and stock movement.
@@ -517,6 +692,17 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
                 label="Top selling window"
                 value={peakPoint?.label ?? "No sales yet"}
                 icon={CalendarRange}
+              />
+              <InsightRow
+                label="Top funded by"
+                value={topFunder ? `${topFunder.fundedBy} · ${formatMoney(topFunder.profit)}` : "No sales yet"}
+                icon={CircleDollarSign}
+                positive={topFunder ? topFunder.profit >= 0 : undefined}
+              />
+              <InsightRow
+                label="Owned sold items"
+                value={`${funderSummaries.reduce((sum, item) => sum + item.units, 0)} sold`}
+                icon={ReceiptText}
               />
             </div>
           </div>
