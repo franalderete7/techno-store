@@ -24,6 +24,7 @@ export interface StockUnit {
   date_sold: string | null;
   price_sold: number | null;
   notes: string | null;
+  proof_image_urls: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +41,7 @@ export interface StockUnitInsert {
   status?: StockStatus;
   price_sold?: number | null;
   notes?: string | null;
+  proof_image_urls?: string[] | null;
 }
 
 export interface Purchase {

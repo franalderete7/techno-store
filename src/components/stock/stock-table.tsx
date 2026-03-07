@@ -84,6 +84,14 @@ function compressImage(file: File, maxDim = 800, quality = 0.5): Promise<string>
   });
 }
 
+async function dataUrlToFile(dataUrl: string, filename: string): Promise<File> {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/jpeg" });
+}
+
+const BUCKET = "stock-proof-images";
+
 
 /* ─── main component ───────────────────────────────────────────────── */
 
@@ -301,8 +309,9 @@ export function StockTable() {
     }
 
     setSaving(true);
+    const imei1 = formData.imei1.trim();
     const record: Record<string, unknown> = {
-      imei1: formData.imei1.trim(),
+      imei1,
       imei2: formData.imei2?.trim() || null,
       product_key: formData.product_key,
       purchase_id: formData.purchase_id || null,
@@ -316,6 +325,22 @@ export function StockTable() {
     };
 
     try {
+      // Upload proof images if user added any
+      let proofUrls: string[] = (editingUnit?.proof_image_urls as string[] | null) ?? [];
+      if (scanImages.length > 0) {
+        const urls: string[] = [];
+        for (let i = 0; i < scanImages.length; i++) {
+          const file = await dataUrlToFile(scanImages[i].base64, `proof_${i + 1}.jpg`);
+          const path = `${imei1}/proof_${i + 1}.jpg`;
+          const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
+          if (error) throw error;
+          const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+          urls.push(data.publicUrl);
+        }
+        proofUrls = urls;
+      }
+      record.proof_image_urls = proofUrls;
+
       if (editingUnit) {
         const { error } = await supabase.from("stock_units").update(record).eq("id", editingUnit.id);
         if (error) throw error;
@@ -333,6 +358,8 @@ export function StockTable() {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
+      } else if (msg.includes("Bucket not found") || msg.includes("storage")) {
+        alert("Storage error: Run the stock_proof_images.sql migration in Supabase first.");
       } else {
         alert("Error saving: " + msg);
       }
@@ -697,6 +724,33 @@ export function StockTable() {
                   <ImageIcon className="h-4 w-4" />
                   Scan with Photos
                 </Button>
+              )}
+
+              {/* Existing proof images (when editing) */}
+              {editingUnit?.proof_image_urls && editingUnit.proof_image_urls.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Proof images (IMEI verification)</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {editingUnit.proof_image_urls.map((url, i) => (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block overflow-hidden rounded-lg border"
+                      >
+                        <img
+                          src={url}
+                          alt={`Proof ${i + 1}`}
+                          className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Compare IMEI in these images to the saved value.
+                  </p>
+                </div>
               )}
             </div>
           )}

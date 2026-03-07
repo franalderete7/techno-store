@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2026-03-06
+**Last updated:** 2026-03-05
 
 ## Overview
 
@@ -97,8 +97,11 @@ Physical inventory — 1 row = 1 phone unit identified by IMEI1.
 | date_sold | date | YES | - | Date sold |
 | price_sold | numeric(12, 2) | YES | - | Sale price in ARS |
 | notes | text | YES | - | Notes |
+| proof_image_urls | text[] | YES | '{}' | URLs of proof images (IMEI photos) in Supabase Storage |
 | created_at | timestamptz | YES | now() | Created timestamp |
 | updated_at | timestamptz | YES | now() | Updated timestamp |
+
+**Storage:** Proof images are stored in bucket `stock-proof-images` at path `{imei1}/proof_1.jpg`, etc.
 
 **Constraints:**
 - Primary key: `id`
@@ -294,6 +297,12 @@ Error tracking for stock operations.
 | `v_customer_context` | Full customer profile for bot context |
 | `v_recent_conversations` | Conversation history |
 | `v_product_catalog` | Product catalog with all pricing and specs |
+
+## Storage Buckets
+
+| Bucket | Public | Description |
+|--------|--------|-------------|
+| `stock-proof-images` | yes | Proof images (IMEI photos) uploaded when adding stock. Path: `{imei1}/proof_1.jpg`, etc. |
 
 ## RLS Policies
 
