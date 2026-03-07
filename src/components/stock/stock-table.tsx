@@ -725,33 +725,33 @@ export function StockTable() {
                   Scan with Photos
                 </Button>
               )}
+            </div>
+          )}
 
-              {/* Existing proof images (when editing) */}
-              {editingUnit?.proof_image_urls && editingUnit.proof_image_urls.length > 0 && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs sm:text-sm">Proof images (IMEI verification)</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {editingUnit.proof_image_urls.map((url, i) => (
-                      <a
-                        key={i}
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block overflow-hidden rounded-lg border"
-                      >
-                        <img
-                          src={url}
-                          alt={`Proof ${i + 1}`}
-                          className="h-24 w-24 object-cover sm:h-28 sm:w-28"
-                        />
-                      </a>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Compare IMEI in these images to the saved value.
-                  </p>
-                </div>
-              )}
+          {/* Existing proof images (when editing) */}
+          {editingUnit && editingUnit.proof_image_urls && editingUnit.proof_image_urls.length > 0 && (
+            <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3 sm:p-4">
+              <Label className="text-xs sm:text-sm">Proof images (IMEI verification)</Label>
+              <div className="flex flex-wrap gap-2">
+                {editingUnit.proof_image_urls.map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block overflow-hidden rounded-lg border"
+                  >
+                    <img
+                      src={url}
+                      alt={`Proof ${i + 1}`}
+                      className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                    />
+                  </a>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Compare IMEI in these images to the saved value.
+              </p>
             </div>
           )}
 
