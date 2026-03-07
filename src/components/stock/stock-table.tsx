@@ -30,7 +30,7 @@ import dynamic from "next/dynamic";
 const SalesChart = dynamic(() => import("./sales-chart").then((m) => m.SalesChart), {
   ssr: false,
   loading: () => (
-    <div className="flex h-64 items-center justify-center rounded-lg border bg-card">
+    <div className="flex h-[28rem] items-center justify-center rounded-2xl border bg-card">
       <span className="text-sm text-muted-foreground">Loading chart...</span>
     </div>
   ),
@@ -84,6 +84,10 @@ function compressImage(file: File, maxDim = 800, quality = 0.5): Promise<string>
   });
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().split("T")[0];
+}
+
 async function dataUrlToFile(dataUrl: string, filename: string): Promise<File> {
   const res = await fetch(dataUrl);
   const blob = await res.blob();
@@ -96,7 +100,6 @@ function sanitizeForFilename(s: string): string {
 
 const BUCKET = "stock-proof-images";
 
-
 /* ─── main component ───────────────────────────────────────────────── */
 
 export function StockTable() {
@@ -107,7 +110,7 @@ export function StockTable() {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus | "all">("all");
-  const [showChart, setShowChart] = useState(false);
+  const [showChart, setShowChart] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<StockUnit | null>(null);
@@ -190,7 +193,8 @@ export function StockTable() {
       cost_unit: "",
       cost_currency: "USD",
       price_sold: "",
-      date_received: new Date().toISOString().split("T")[0],
+      date_received: todayIsoDate(),
+      date_sold: "",
       status: "in_stock",
       notes: "",
     });
@@ -211,6 +215,7 @@ export function StockTable() {
       cost_currency: unit.cost_currency ?? "USD",
       price_sold: unit.price_sold != null ? String(unit.price_sold) : "",
       date_received: unit.date_received ?? "",
+      date_sold: unit.date_sold ?? "",
       status: unit.status,
       notes: unit.notes ?? "",
     });
@@ -314,6 +319,11 @@ export function StockTable() {
 
     setSaving(true);
     const imei1 = formData.imei1.trim();
+    const status = formData.status || "in_stock";
+    const dateSold =
+      status === "sold"
+        ? formData.date_sold || editingUnit?.date_sold || todayIsoDate()
+        : formData.date_sold || null;
     const record: Record<string, unknown> = {
       imei1,
       imei2: formData.imei2?.trim() || null,
@@ -324,7 +334,8 @@ export function StockTable() {
       cost_currency: formData.cost_currency || "USD",
       price_sold: formData.price_sold ? parseFloat(formData.price_sold) : null,
       date_received: formData.date_received || null,
-      status: formData.status || "in_stock",
+      status,
+      date_sold: dateSold,
       notes: formData.notes?.trim() || null,
     };
 
@@ -388,7 +399,13 @@ export function StockTable() {
   };
 
   const updateForm = (key: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "status" && value === "sold" && !next.date_sold) {
+        next.date_sold = todayIsoDate();
+      }
+      return next;
+    });
   };
 
   const fmtPrice = (val: number | null, cur: string) => {
@@ -410,7 +427,7 @@ export function StockTable() {
               className="hidden sm:flex"
             >
               <ShoppingBag className="mr-1.5 h-4 w-4" />
-              {showChart ? "Hide Chart" : "Sales"}
+              {showChart ? "Hide Analytics" : "Show Analytics"}
             </Button>
             <Button onClick={openAdd} size="sm" className="gap-1.5">
               <Plus className="h-4 w-4" />
@@ -437,7 +454,7 @@ export function StockTable() {
             onClick={() => setShowChart((p) => !p)}
           >
             <ShoppingBag className="mr-1.5 h-4 w-4" />
-            {showChart ? "Hide Sales Chart" : "Show Sales Chart"}
+            {showChart ? "Hide Sales Analytics" : "Show Sales Analytics"}
           </Button>
         </div>
 
@@ -836,7 +853,7 @@ export function StockTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Cost</Label>
                 <Input
@@ -859,15 +876,37 @@ export function StockTable() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-2 space-y-1.5 sm:col-span-1">
-                <Label className="text-xs sm:text-sm">Price Sold</Label>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  value={formData.price_sold ?? ""}
-                  onChange={(e) => updateForm("price_sold", e.target.value)}
-                  placeholder="0.00"
-                />
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="mb-3">
+                <p className="text-sm font-medium">Sale details</p>
+                <p className="text-xs text-muted-foreground">
+                  These fields drive the sales chart and should be set when the unit is sold.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Price Sold</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    value={formData.price_sold ?? ""}
+                    onChange={(e) => updateForm("price_sold", e.target.value)}
+                    placeholder="ARS"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Date Sold</Label>
+                  <Input
+                    type="date"
+                    value={formData.date_sold ?? ""}
+                    onChange={(e) => updateForm("date_sold", e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    If status is Sold and this is empty, today is used.
+                  </p>
+                </div>
               </div>
             </div>
 
