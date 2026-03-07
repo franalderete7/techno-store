@@ -38,6 +38,7 @@ export interface StockUnitInsert {
   cost_currency?: string;
   date_received?: string | null;
   status?: StockStatus;
+  date_sold?: string | null;
   price_sold?: number | null;
   notes?: string | null;
 }

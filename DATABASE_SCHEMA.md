@@ -111,10 +111,12 @@ Physical inventory — 1 row = 1 phone unit identified by IMEI1.
 - `idx_stock_units_status` on `status`
 - `idx_stock_units_purchase_id` on `purchase_id`
 - `idx_stock_units_sale_id` on `sale_id`
+- `idx_stock_units_date_sold` on `date_sold DESC`
 - `idx_stock_units_reserved_customer` on `reserved_for_customer_id`
 
 **Triggers:**
 - `trg_stock_units_updated` – updates `updated_at` on row update
+- `trg_stock_units_sale_fields` – auto-fills `date_sold` when a unit is marked as sold
 
 ---
 

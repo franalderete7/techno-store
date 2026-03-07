@@ -108,6 +108,7 @@ CREATE TABLE stock_units (
   -- Sale fields
   sale_id integer,
   date_sold date,
+  price_sold numeric(12, 2),
   -- Metadata
   notes text,
   created_at timestamptz DEFAULT now(),
@@ -121,11 +122,33 @@ CREATE INDEX idx_stock_units_product_key ON stock_units(product_key);
 CREATE INDEX idx_stock_units_status ON stock_units(status);
 CREATE INDEX idx_stock_units_purchase_id ON stock_units(purchase_id);
 CREATE INDEX idx_stock_units_sale_id ON stock_units(sale_id);
+CREATE INDEX idx_stock_units_date_sold ON stock_units(date_sold DESC);
 CREATE INDEX idx_stock_units_reserved_customer ON stock_units(reserved_for_customer_id);
 
 CREATE TRIGGER trg_stock_units_updated
   BEFORE UPDATE ON stock_units
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE OR REPLACE FUNCTION sync_stock_unit_sale_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.date_sold IS NULL AND OLD.date_sold IS NOT NULL THEN
+    NEW.date_sold := OLD.date_sold;
+  END IF;
+
+  IF NEW.status = 'sold' AND NEW.date_sold IS NULL THEN
+    NEW.date_sold := CURRENT_DATE;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_stock_units_sale_fields
+  BEFORE INSERT OR UPDATE OF status, date_sold ON stock_units
+  FOR EACH ROW EXECUTE FUNCTION sync_stock_unit_sale_fields();
 
 -- ============================================================
 -- 4. Sales (sales to customers)

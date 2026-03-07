@@ -84,6 +84,10 @@ function compressImage(file: File, maxDim = 800, quality = 0.5): Promise<string>
   });
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().split("T")[0];
+}
+
 
 /* ─── main component ───────────────────────────────────────────────── */
 
@@ -178,7 +182,8 @@ export function StockTable() {
       cost_unit: "",
       cost_currency: "USD",
       price_sold: "",
-      date_received: new Date().toISOString().split("T")[0],
+      date_received: todayIsoDate(),
+      date_sold: "",
       status: "in_stock",
       notes: "",
     });
@@ -199,6 +204,7 @@ export function StockTable() {
       cost_currency: unit.cost_currency ?? "USD",
       price_sold: unit.price_sold != null ? String(unit.price_sold) : "",
       date_received: unit.date_received ?? "",
+      date_sold: unit.date_sold ?? "",
       status: unit.status,
       notes: unit.notes ?? "",
     });
@@ -295,6 +301,12 @@ export function StockTable() {
     }
 
     setSaving(true);
+    const status = formData.status || "in_stock";
+    const dateSold =
+      status === "sold"
+        ? formData.date_sold || editingUnit?.date_sold || todayIsoDate()
+        : formData.date_sold || null;
+
     const record: Record<string, unknown> = {
       imei1: formData.imei1.trim(),
       imei2: formData.imei2?.trim() || null,
@@ -305,7 +317,8 @@ export function StockTable() {
       cost_currency: formData.cost_currency || "USD",
       price_sold: formData.price_sold ? parseFloat(formData.price_sold) : null,
       date_received: formData.date_received || null,
-      status: formData.status || "in_stock",
+      status,
+      date_sold: dateSold,
       notes: formData.notes?.trim() || null,
     };
 
@@ -349,7 +362,13 @@ export function StockTable() {
   };
 
   const updateForm = (key: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "status" && value === "sold" && !next.date_sold) {
+        next.date_sold = todayIsoDate();
+      }
+      return next;
+    });
   };
 
   const fmtPrice = (val: number | null, cur: string) => {
@@ -798,7 +817,7 @@ export function StockTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Date Received</Label>
                 <Input
@@ -819,6 +838,17 @@ export function StockTable() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs sm:text-sm">Date Sold</Label>
+                <Input
+                  type="date"
+                  value={formData.date_sold ?? ""}
+                  onChange={(e) => updateForm("date_sold", e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Used by the sales chart. If status is Sold and this is empty, today is used.
+                </p>
               </div>
             </div>
 

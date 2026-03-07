@@ -63,15 +63,22 @@ const formatDayKey = (date: Date) =>
 const formatMonthKey = (date: Date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
 
-const getSaleDate = (unit: StockUnit) => unit.date_sold ?? unit.updated_at ?? unit.created_at;
+const getSaleDate = (unit: StockUnit) => unit.date_sold ?? "";
 
 export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
   const [period, setPeriod] = useState<Period>("daily");
 
-  const soldUnits = useMemo(
-    () => units.filter((unit) => unit.status === "sold"),
+  const soldStatusCount = useMemo(
+    () => units.filter((unit) => unit.status === "sold").length,
     [units]
   );
+
+  const soldUnits = useMemo(
+    () => units.filter((unit) => unit.status === "sold" && Boolean(unit.date_sold)),
+    [units]
+  );
+
+  const soldUnitsMissingDateCount = soldStatusCount - soldUnits.length;
 
   const totals = useMemo(() => {
     const revenue = soldUnits.reduce((sum, unit) => sum + (unit.price_sold ?? 0), 0);
@@ -82,13 +89,13 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
     );
 
     return {
-      count,
+      count: soldStatusCount,
       revenue,
       profit,
       avgTicket: count > 0 ? revenue / count : 0,
-      sellThrough: units.length > 0 ? (count / units.length) * 100 : 0,
+      sellThrough: units.length > 0 ? (soldStatusCount / units.length) * 100 : 0,
     };
-  }, [soldUnits, units.length]);
+  }, [soldStatusCount, soldUnits, units.length]);
 
   const statusCards = useMemo<StatusCard[]>(() => {
     return STOCK_STATUS_OPTIONS.map((option) => {
@@ -286,6 +293,14 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
             hint={`${totals.count} sold of ${units.length} total`}
           />
         </div>
+
+        {soldUnitsMissingDateCount > 0 && (
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            {soldUnitsMissingDateCount} sold item{soldUnitsMissingDateCount === 1 ? "" : "s"} still
+            missing <code className="mx-1 rounded bg-background/70 px-1 py-0.5">date_sold</code>.
+            Run the SQL backfill so the daily/monthly chart is exact.
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(280px,0.9fr)]">
@@ -308,13 +323,22 @@ export function SalesChart({ units, currency = "ARS" }: SalesChartProps) {
             )}
           </div>
 
-          {soldUnits.length === 0 ? (
+          {soldStatusCount === 0 ? (
             <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
               <ShoppingBag className="mb-3 h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-medium">No sold units yet</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                 As soon as items are marked as Sold, this chart will show daily and
                 monthly sales automatically.
+              </p>
+            </div>
+          ) : soldUnits.length === 0 ? (
+            <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
+              <CalendarRange className="mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-medium">Sold items need a sale date</p>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                The chart now uses <span className="font-medium text-foreground">date_sold</span> as
+                the source of truth. Run the SQL backfill below and the history will appear.
               </p>
             </div>
           ) : (
