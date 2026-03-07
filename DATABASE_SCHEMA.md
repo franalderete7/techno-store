@@ -101,7 +101,7 @@ Physical inventory — 1 row = 1 phone unit identified by IMEI1.
 | created_at | timestamptz | YES | now() | Created timestamp |
 | updated_at | timestamptz | YES | now() | Updated timestamp |
 
-**Storage:** Proof images are stored in bucket `stock-proof-images` at path `{imei1}/proof_1.jpg`, etc.
+**Storage:** Proof images are stored in bucket `stock-proof-images` at path `{imei1}/{imei1}_{product_key}_proof_{i}.jpg`.
 
 **Constraints:**
 - Primary key: `id`
@@ -302,7 +302,7 @@ Error tracking for stock operations.
 
 | Bucket | Public | Description |
 |--------|--------|-------------|
-| `stock-proof-images` | yes | Proof images (IMEI photos) uploaded when adding stock. Path: `{imei1}/proof_1.jpg`, etc. |
+| `stock-proof-images` | yes | Proof images (IMEI photos) uploaded when adding stock. Path: `{imei1}/{imei1}_{product_key}_proof_{i}.jpg` |
 
 ## RLS Policies
 

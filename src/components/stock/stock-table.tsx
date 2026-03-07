@@ -90,6 +90,10 @@ async function dataUrlToFile(dataUrl: string, filename: string): Promise<File> {
   return new File([blob], filename, { type: blob.type || "image/jpeg" });
 }
 
+function sanitizeForFilename(s: string): string {
+  return s.replace(/[\s/\\:*?"<>|]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "") || "product";
+}
+
 const BUCKET = "stock-proof-images";
 
 
@@ -328,10 +332,12 @@ export function StockTable() {
       // Upload proof images if user added any
       let proofUrls: string[] = (editingUnit?.proof_image_urls as string[] | null) ?? [];
       if (scanImages.length > 0) {
+        const productSlug = sanitizeForFilename(formData.product_key);
         const urls: string[] = [];
         for (let i = 0; i < scanImages.length; i++) {
-          const file = await dataUrlToFile(scanImages[i].base64, `proof_${i + 1}.jpg`);
-          const path = `${imei1}/proof_${i + 1}.jpg`;
+          const filename = `${imei1}_${productSlug}_proof_${i + 1}.jpg`;
+          const file = await dataUrlToFile(scanImages[i].base64, filename);
+          const path = `${imei1}/${filename}`;
           const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
           if (error) throw error;
           const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
