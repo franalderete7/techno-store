@@ -30,7 +30,7 @@ import dynamic from "next/dynamic";
 const SalesChart = dynamic(() => import("./sales-chart").then((m) => m.SalesChart), {
   ssr: false,
   loading: () => (
-    <div className="flex h-64 items-center justify-center rounded-lg border bg-card">
+    <div className="flex h-[28rem] items-center justify-center rounded-2xl border bg-card">
       <span className="text-sm text-muted-foreground">Loading chart...</span>
     </div>
   ),
@@ -95,7 +95,7 @@ export function StockTable() {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus | "all">("all");
-  const [showChart, setShowChart] = useState(false);
+  const [showChart, setShowChart] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<StockUnit | null>(null);
@@ -371,7 +371,7 @@ export function StockTable() {
               className="hidden sm:flex"
             >
               <ShoppingBag className="mr-1.5 h-4 w-4" />
-              {showChart ? "Hide Chart" : "Sales"}
+              {showChart ? "Hide Analytics" : "Show Analytics"}
             </Button>
             <Button onClick={openAdd} size="sm" className="gap-1.5">
               <Plus className="h-4 w-4" />
@@ -398,7 +398,7 @@ export function StockTable() {
             onClick={() => setShowChart((p) => !p)}
           >
             <ShoppingBag className="mr-1.5 h-4 w-4" />
-            {showChart ? "Hide Sales Chart" : "Show Sales Chart"}
+            {showChart ? "Hide Sales Analytics" : "Show Sales Analytics"}
           </Button>
         </div>
 
