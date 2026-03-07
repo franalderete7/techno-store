@@ -782,7 +782,7 @@ export function StockTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Cost</Label>
                 <Input
@@ -805,19 +805,41 @@ export function StockTable() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-2 space-y-1.5 sm:col-span-1">
-                <Label className="text-xs sm:text-sm">Price Sold</Label>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  value={formData.price_sold ?? ""}
-                  onChange={(e) => updateForm("price_sold", e.target.value)}
-                  placeholder="ARS"
-                />
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="mb-3">
+                <p className="text-sm font-medium">Sale details</p>
+                <p className="text-xs text-muted-foreground">
+                  These fields drive the sales chart and should be set when the unit is sold.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Price Sold</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    value={formData.price_sold ?? ""}
+                    onChange={(e) => updateForm("price_sold", e.target.value)}
+                    placeholder="ARS"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Date Sold</Label>
+                  <Input
+                    type="date"
+                    value={formData.date_sold ?? ""}
+                    onChange={(e) => updateForm("date_sold", e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    If status is Sold and this is empty, today is used.
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Date Received</Label>
                 <Input
@@ -838,17 +860,6 @@ export function StockTable() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs sm:text-sm">Date Sold</Label>
-                <Input
-                  type="date"
-                  value={formData.date_sold ?? ""}
-                  onChange={(e) => updateForm("date_sold", e.target.value)}
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Used by the sales chart. If status is Sold and this is empty, today is used.
-                </p>
               </div>
             </div>
 
