@@ -59,7 +59,7 @@ function StatCard({ label, value, icon: Icon }: { label: string; value: number; 
   );
 }
 
-function compressImage(file: File, maxDim = 1280, quality = 0.7): Promise<string> {
+function compressImage(file: File, maxDim = 800, quality = 0.5): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -591,7 +591,6 @@ export function StockTable() {
                 ref={scanInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -764,7 +763,7 @@ export function StockTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Cost</Label>
                 <Input
@@ -787,7 +786,7 @@ export function StockTable() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
+              <div className="col-span-2 space-y-1.5 sm:col-span-1">
                 <Label className="text-xs sm:text-sm">Price Sold</Label>
                 <Input
                   type="number"
@@ -799,7 +798,7 @@ export function StockTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">Date Received</Label>
                 <Input
