@@ -3,7 +3,7 @@
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getErrorMessage, isRowLevelSecurityError, parseOptionalText } from "@/lib/utils";
-import type { Product, ProductInsert, ProductUpdate } from "@/types/database";
+import type { Product, ProductInsert, ProductUpdate, VProductCatalog } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -101,6 +101,8 @@ const PRICING_BANDS = [
   { maxCostUsd: Number.POSITIVE_INFINITY, marginPct: 0.15, label: "USD 801+" },
 ] as const;
 
+type ProductDisplay = Product & Pick<VProductCatalog, "color" | "battery_health">;
+
 function normalizeVisibleColumns(columns: string[]): string[] {
   const validColumns = new Set(TABLE_COLUMNS.map((column) => column.key));
   return [...new Set([...ALWAYS_VISIBLE_COLUMNS, ...columns])].filter((column) =>
@@ -143,8 +145,8 @@ function formatArs(value: number): string {
   })}`;
 }
 
-function formatCellValue(product: Product, key: string): string {
-  const val = product[key as keyof Product];
+function formatCellValue(product: ProductDisplay, key: string): string {
+  const val = product[key as keyof ProductDisplay];
   if (val === null || val === undefined) return "—";
   if (key === "margin_pct" || key === "bancarizada_interest" || key === "macro_interest") {
     return typeof val === "number" ? formatPercentValue(val) : String(val);
@@ -187,9 +189,7 @@ const EDITABLE_COLUMNS = [
   { key: "usd_rate", label: "USD Rate", type: "number" as const },
   { key: "ram_gb", label: "RAM GB", type: "number" as const },
   { key: "storage_gb", label: "Storage GB", type: "number" as const },
-  { key: "color", label: "Color", type: "text" as const },
   { key: "network", label: "Network", type: "text" as const },
-  { key: "battery_health", label: "Battery Health", type: "number" as const },
   { key: "condition", label: "Condition", type: "text" as const },
   { key: "image_url", label: "Image URL", type: "text" as const },
 ];
@@ -207,7 +207,6 @@ const DEFAULT_VALUES: Partial<ProductInsert> = {
   delivery_type: "immediate",
   delivery_days: 0,
   usd_rate: 1460,
-  battery_health: 100,
   condition: "new",
 };
 
@@ -291,7 +290,6 @@ function buildProductInsertPayload(
       category,
       product_name: productName,
       delivery_type: parseOptionalText(insert.delivery_type) ?? "immediate",
-      color: parseOptionalText(insert.color),
       network: parseOptionalText(insert.network),
       image_url: parseOptionalText(insert.image_url),
       condition,
@@ -326,14 +324,14 @@ function getProductErrorMessage(error: unknown, action: "adding" | "updating" | 
   return message
 }
 
-function getSortValue(product: Product, key: string): string | number | boolean | null {
-  const val = product[key as keyof Product];
+function getSortValue(product: ProductDisplay, key: string): string | number | boolean | null {
+  const val = product[key as keyof ProductDisplay];
   if (val === null || val === undefined) return null;
   if (key === "created_at" || key === "updated_at") return new Date(val as string).getTime();
   return val as string | number | boolean;
 }
 
-function sortProducts(products: Product[], column: string, direction: "asc" | "desc"): Product[] {
+function sortProducts(products: ProductDisplay[], column: string, direction: "asc" | "desc"): ProductDisplay[] {
   return [...products].sort((a, b) => {
     const aVal = getSortValue(a, column);
     const bVal = getSortValue(b, column);
@@ -356,12 +354,12 @@ function sortProducts(products: Product[], column: string, direction: "asc" | "d
   });
 }
 
-function toFormValue(product: Product | null, key: string): string | number | boolean {
+function toFormValue(product: ProductDisplay | null, key: string): string | number | boolean {
   if (!product) {
     const def = DEFAULT_VALUES[key as keyof ProductInsert];
     return def ?? "";
   }
-  const val = product[key as keyof Product];
+  const val = product[key as keyof ProductDisplay];
   if (val === null || val === undefined) return "";
   return val;
 }
@@ -420,7 +418,7 @@ function inferCategoryFromName(name: string): string {
   return "GENERAL";
 }
 
-function buildUniqueProductKey(name: string, products: Product[]): string {
+function buildUniqueProductKey(name: string, products: ProductDisplay[]): string {
   const baseKey = slugifyProductName(name);
   const existingKeys = new Set(products.map((product) => product.product_key.toLowerCase()));
 
@@ -452,7 +450,7 @@ type QuickAddPreview = {
 function buildQuickAddPreview(
   productName: string,
   rawCostUsd: string | number | boolean | undefined,
-  products: Product[]
+  products: ProductDisplay[]
 ): QuickAddPreview | null {
   const trimmedName = productName.trim();
   const costUsd = parseNumericValue(rawCostUsd);
@@ -498,10 +496,8 @@ function buildQuickAddPreview(
       usd_rate: usdRate,
       ram_gb: null,
       storage_gb: null,
-      color: null,
       network: null,
       image_url: null,
-      battery_health: Number(DEFAULT_VALUES.battery_health ?? 100),
       condition: String(DEFAULT_VALUES.condition ?? "new"),
     },
   };
@@ -537,7 +533,7 @@ function buildQuickAddInsertWithOverrides(
   return resolved as ProductInsert;
 }
 
-function ProductImageCell({ product }: { product: Product }) {
+function ProductImageCell({ product }: { product: ProductDisplay }) {
   const [hasError, setHasError] = useState(false);
   const imageUrl = typeof product.image_url === "string" ? product.image_url.trim() : "";
 
@@ -562,7 +558,7 @@ function ProductImageCell({ product }: { product: Product }) {
   );
 }
 
-function matchesProductSearch(product: Product, query: string): boolean {
+function matchesProductSearch(product: ProductDisplay, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return true;
 
@@ -588,11 +584,11 @@ function matchesProductSearch(product: Product, query: string): boolean {
 }
 
 export function ProductsTable() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductDisplay[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [editProduct, setEditProduct] = useState<ProductDisplay | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<ProductDisplay | null>(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Record<string, string | number | boolean>>({});
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
@@ -711,15 +707,29 @@ export function ProductsTable() {
 
   const fetchProducts = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .order("id", { ascending: true });
-    if (error) {
-      console.error("Error fetching products:", error);
+    const [productsRes, catalogRes] = await Promise.all([
+      supabase.from("products").select("*").order("id", { ascending: true }),
+      supabase.from("v_product_catalog").select("product_key,color,battery_health"),
+    ]);
+
+    if (productsRes.error) {
+      console.error("Error fetching products:", productsRes.error);
       setProducts([]);
     } else {
-      setProducts(data ?? []);
+      const catalogByKey = new Map(
+        (catalogRes.data ?? []).map((row) => [row.product_key, row])
+      );
+
+      setProducts(
+        (productsRes.data ?? []).map((product) => {
+          const catalog = catalogByKey.get(product.product_key);
+          return {
+            ...product,
+            color: catalog?.color ?? null,
+            battery_health: catalog?.battery_health ?? null,
+          };
+        })
+      );
     }
     setLoading(false);
   };
@@ -728,7 +738,7 @@ export function ProductsTable() {
     fetchProducts();
   }, []);
 
-  const openEdit = (product: Product) => {
+  const openEdit = (product: ProductDisplay) => {
     setEditProduct(product);
     const data: Record<string, string | number | boolean> = {};
     EDITABLE_COLUMNS.forEach(({ key }) => {
@@ -960,10 +970,6 @@ export function ProductsTable() {
           value: formatUsd(resolvedQuickAddInsert.total_cost_usd ?? 0),
         },
         {
-          label: "Battery Health",
-          value: `${resolvedQuickAddInsert.battery_health ?? 100}%`,
-        },
-        {
           label: "Condition",
           value: String(resolvedQuickAddInsert.condition ?? "new"),
         },
@@ -1066,7 +1072,7 @@ export function ProductsTable() {
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search name, key, category, color..."
+              placeholder="Search name, key, category, specs..."
               className="pl-9"
             />
           </div>
@@ -1444,9 +1450,11 @@ export function ProductsTable() {
                   placeholder="499"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Margin is assigned automatically from the cost band chart. New products default to
-                  <span className="font-medium text-foreground"> condition = new</span> and
-                  <span className="font-medium text-foreground"> battery health = 100%</span>.
+                  Margin is assigned automatically from the cost band chart. Product-level specs stay
+                  here, while unit-level details like
+                  <span className="font-medium text-foreground"> color</span> and
+                  <span className="font-medium text-foreground"> battery health</span> belong in
+                  Stock.
                 </p>
               </div>
             </div>
@@ -1529,7 +1537,7 @@ export function ProductsTable() {
                         <p className="text-sm font-medium">Editable defaults</p>
                         <p className="text-xs text-muted-foreground">
                           Review the generated product data and change it here if this upload is not a
-                          brand-new item.
+                          brand-new item. Color and battery health now belong to Stock units.
                         </p>
                       </div>
                       <Button

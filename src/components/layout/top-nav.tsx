@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, Warehouse, ShoppingCart, BookmarkCheck } from "lucide-react";
+import { Package, Warehouse, ShoppingCart } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Products", icon: Package },
   { href: "/stock", label: "Stock", icon: Warehouse },
   { href: "/purchases", label: "Purchases", icon: ShoppingCart },
-  { href: "/reservations", label: "Reservas", icon: BookmarkCheck },
 ];
 
 export function TopNav() {

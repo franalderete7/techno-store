@@ -6,7 +6,8 @@
     "dev": "node scripts/dev.js",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:types:pull": "node scripts/generate-supabase-types.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

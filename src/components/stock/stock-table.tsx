@@ -149,6 +149,10 @@ export function StockTable() {
     () => new Map(products.map((p) => [p.product_key, p])),
     [products]
   );
+  const purchaseMap = useMemo(
+    () => new Map(purchases.map((purchase) => [purchase.purchase_id, purchase])),
+    [purchases]
+  );
 
   const stats = useMemo(() => {
     const s = { total: units.length, in_stock: 0, reserved: 0, sold: 0 };
@@ -169,18 +173,20 @@ export function StockTable() {
       const q = searchQuery.toLowerCase();
       result = result.filter((u) => {
         const product = productMap.get(u.product_key);
+        const supplierName = purchaseMap.get(u.purchase_id ?? "")?.supplier_name ?? u.supplier_name ?? "";
         return (
           u.imei1.includes(q) ||
           u.product_key.toLowerCase().includes(q) ||
           (u.color ?? "").toLowerCase().includes(q) ||
+          (u.battery_health != null ? String(u.battery_health) : "").includes(q) ||
           (product?.product_name ?? "").toLowerCase().includes(q) ||
-          (u.supplier_name ?? "").toLowerCase().includes(q) ||
+          supplierName.toLowerCase().includes(q) ||
           (u.notes ?? "").toLowerCase().includes(q)
         );
       });
     }
     return result;
-  }, [units, statusFilter, searchQuery, productMap]);
+  }, [units, statusFilter, searchQuery, productMap, purchaseMap]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -211,6 +217,7 @@ export function StockTable() {
       imei2: "",
       product_key: "",
       color: "",
+      battery_health: "",
       purchase_id: "",
       supplier_name: "",
       cost_unit: "",
@@ -233,6 +240,7 @@ export function StockTable() {
       imei2: unit.imei2 ?? "",
       product_key: unit.product_key,
       color: unit.color ?? "",
+      battery_health: unit.battery_health != null ? String(unit.battery_health) : "",
       purchase_id: unit.purchase_id ?? "",
       supplier_name: unit.supplier_name ?? "",
       cost_unit: unit.cost_unit != null ? String(unit.cost_unit) : "",
@@ -360,13 +368,15 @@ export function StockTable() {
       status === "sold"
         ? formData.date_sold || editingUnit?.date_sold || todayIsoDate()
         : formData.date_sold || null;
+    const purchaseId = parseOptionalText(formData.purchase_id);
     const record: StockUnitInsert = {
       imei1,
       imei2,
       product_key: productKey,
       color: parseOptionalText(formData.color),
-      purchase_id: parseOptionalText(formData.purchase_id),
-      supplier_name: parseOptionalText(formData.supplier_name),
+      battery_health: parseOptionalNumber(formData.battery_health),
+      purchase_id: purchaseId,
+      supplier_name: purchaseId ? null : parseOptionalText(formData.supplier_name),
       cost_unit: parseOptionalNumber(formData.cost_unit),
       cost_currency: parseOptionalText(formData.cost_currency) ?? "USD",
       price_sold: parseOptionalNumber(formData.price_sold),
@@ -413,6 +423,11 @@ export function StockTable() {
         msg.includes("color")
       ) {
         alert("Database error: run the stock_units_color.sql migration in Supabase first.");
+      } else if (
+        (msg.includes("Could not find the 'battery_health' column") || msg.includes("schema cache")) &&
+        msg.includes("battery_health")
+      ) {
+        alert("Database error: run the normalize_inventory_schema.sql migration in Supabase first.");
       } else if (
         (msg.includes("Could not find the 'proof_image_urls' column") || msg.includes("schema cache")) &&
         msg.includes("proof_image_urls")
@@ -464,7 +479,7 @@ export function StockTable() {
     });
   };
 
-  const fmtPrice = (val: number | null, cur: string) => {
+  const fmtPrice = (val: number | null, cur: string | null | undefined) => {
     if (val == null) return "—";
     return `${cur === "ARS" ? "$" : "US$"}${val.toLocaleString("es-AR")}`;
   };
@@ -569,8 +584,9 @@ export function StockTable() {
 
             {/* Mobile: Cards | Desktop: Table */}
             <div className="sm:hidden space-y-2">
-              {filtered.map((unit) => {
+            {filtered.map((unit) => {
                 const product = productMap.get(unit.product_key);
+                const supplierName = purchaseMap.get(unit.purchase_id ?? "")?.supplier_name ?? unit.supplier_name;
                 return (
                   <div key={unit.id} className="rounded-lg border bg-card p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -587,12 +603,13 @@ export function StockTable() {
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>Cost: {fmtPrice(unit.cost_unit, unit.cost_currency)}</span>
                       {unit.color && <span>Color: {unit.color}</span>}
+                      {unit.battery_health != null && <span>Battery: {unit.battery_health}%</span>}
                       {unit.price_sold != null && (
                         <span className="text-emerald-400">
                           Sold: {fmtArsPrice(unit.price_sold)}
                         </span>
                       )}
-                      {unit.supplier_name && <span>{unit.supplier_name}</span>}
+                      {supplierName && <span>{supplierName}</span>}
                     </div>
                     <div className="mt-2 flex gap-1">
                       <Button variant="outline" size="sm" className="h-8 flex-1" onClick={() => openEdit(unit)}>
@@ -618,6 +635,7 @@ export function StockTable() {
                     <TableHead className="sticky top-0 z-20 bg-background">IMEI1</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Product</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Color</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Battery</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Status</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Cost</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Price Sold (ARS)</TableHead>
@@ -630,6 +648,7 @@ export function StockTable() {
                 <TableBody>
                   {filtered.map((unit) => {
                     const product = productMap.get(unit.product_key);
+                    const supplierName = purchaseMap.get(unit.purchase_id ?? "")?.supplier_name ?? unit.supplier_name;
                     return (
                       <TableRow key={unit.id}>
                         <TableCell className="font-mono text-xs">{unit.imei1}</TableCell>
@@ -640,6 +659,7 @@ export function StockTable() {
                           </div>
                         </TableCell>
                         <TableCell>{unit.color ?? "—"}</TableCell>
+                        <TableCell>{unit.battery_health != null ? `${unit.battery_health}%` : "—"}</TableCell>
                         <TableCell><StatusBadge status={unit.status} /></TableCell>
                         <TableCell className="whitespace-nowrap">
                           {fmtPrice(unit.cost_unit, unit.cost_currency)}
@@ -651,7 +671,7 @@ export function StockTable() {
                             </span>
                           ) : "—"}
                         </TableCell>
-                        <TableCell>{unit.supplier_name ?? "—"}</TableCell>
+                        <TableCell>{supplierName ?? "—"}</TableCell>
                         <TableCell className="font-mono text-xs">{unit.purchase_id ?? "—"}</TableCell>
                         <TableCell>
                           {unit.date_received ? new Date(unit.date_received).toLocaleDateString() : "—"}
@@ -902,6 +922,22 @@ export function StockTable() {
               </p>
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs sm:text-sm">Battery Health</Label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                max="100"
+                value={formData.battery_health ?? ""}
+                onChange={(e) => updateForm("battery_health", e.target.value)}
+                placeholder="92"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Unit-level value. Use this for used or like-new devices instead of the product row.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="min-w-0 space-y-1.5">
                 <Label className="text-xs sm:text-sm">Purchase</Label>
@@ -924,8 +960,12 @@ export function StockTable() {
                 <Input
                   value={formData.supplier_name ?? ""}
                   onChange={(e) => updateForm("supplier_name", e.target.value)}
-                  placeholder="Supplier"
+                  placeholder={formData.purchase_id ? "Inherited from purchase" : "Supplier"}
+                  disabled={Boolean(formData.purchase_id)}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  If a purchase is linked, supplier is derived from that purchase to avoid duplicate data.
+                </p>
               </div>
             </div>
 
