@@ -47,6 +47,7 @@ A Next.js admin app for managing products in Supabase. Built with shadcn/ui and 
    - `TIENDANUBE_STORE_ID`
    - `TIENDANUBE_ACCESS_TOKEN`
    - `TIENDANUBE_USER_AGENT`
+   - `SUPABASE_SERVICE_ROLE_KEY` (required for the "Sync to products" action)
 
    The integration uses the official Tienda Nube products API from a Next.js server route, so the token is never exposed to the browser.
 
@@ -68,4 +69,5 @@ Open [http://localhost:3000](http://localhost:3000).
    - `TIENDANUBE_STORE_ID` (optional, for the Tienda Nube tab)
    - `TIENDANUBE_ACCESS_TOKEN` (optional, for the Tienda Nube tab)
    - `TIENDANUBE_USER_AGENT` (optional but recommended, for the Tienda Nube tab)
+   - `SUPABASE_SERVICE_ROLE_KEY` (required for Tienda Nube sync into local products)
 4. Deploy

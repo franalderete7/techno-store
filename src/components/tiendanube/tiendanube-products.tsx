@@ -65,6 +65,18 @@ type TiendaNubeResponse = {
   error?: string;
 };
 
+type SyncResponse = {
+  fetched_at: string;
+  store_id: string;
+  processed: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: Array<{ product: string; message: string }>;
+  error?: string;
+};
+
 function formatMoney(value: number | null): string {
   if (value === null) return "—";
   return `$${value.toLocaleString("es-AR", {
@@ -139,10 +151,12 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
 export function TiendaNubeProducts() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [data, setData] = useState<TiendaNubeResponse | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<TiendaNubeProduct | null>(null);
+  const [syncResult, setSyncResult] = useState<SyncResponse | null>(null);
 
   async function load(forceRefresh = false) {
     if (forceRefresh) setRefreshing(true);
@@ -173,6 +187,29 @@ export function TiendaNubeProducts() {
   useEffect(() => {
     load();
   }, []);
+
+  async function syncProducts() {
+    setSyncing(true);
+
+    try {
+      const response = await fetch("/api/tiendanube/products", {
+        method: "POST",
+      });
+      const body = (await response.json()) as SyncResponse;
+
+      if (!response.ok) {
+        throw new Error(body.error || "Failed to sync Tienda Nube products into Supabase");
+      }
+
+      setSyncResult(body);
+      await load(true);
+    } catch (syncError) {
+      setSyncResult(null);
+      setError(syncError instanceof Error ? syncError.message : "Unknown sync error");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const filteredProducts = useMemo(() => {
     const products = data?.products || [];
@@ -231,6 +268,10 @@ export function TiendaNubeProducts() {
               )}
               Refresh
             </Button>
+            <Button type="button" variant="outline" onClick={syncProducts} disabled={syncing || loading}>
+              {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Store className="mr-2 h-4 w-4" />}
+              Sync into products
+            </Button>
           </div>
         </div>
 
@@ -261,6 +302,10 @@ export function TiendaNubeProducts() {
             hint="Products marked with free shipping"
           />
         </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Current behavior: this is a one-way sync from Tienda Nube into local <code>products</code>.
+          Local product edits do not push back to Tienda Nube yet.
+        </p>
       </div>
 
       {loading ? (
@@ -277,127 +322,153 @@ export function TiendaNubeProducts() {
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border bg-card shadow-sm">
-          <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-muted-foreground">
-            <span>{filteredProducts.length} products shown</span>
-            <span>Read-only API view with raw payload</span>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[72px]">Image</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Stock</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead className="w-[100px] text-right">Details</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProducts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center gap-2">
-                      <PackageSearch className="h-5 w-5" />
-                      <span>No Tienda Nube products matched this search.</span>
+        <div className="space-y-4">
+          {syncResult ? (
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm">
+              <div className="flex flex-wrap items-center gap-3 text-emerald-800 dark:text-emerald-200">
+                <span className="font-medium">Tienda Nube sync completed.</span>
+                <span>{syncResult.processed} processed</span>
+                <span>{syncResult.inserted} inserted</span>
+                <span>{syncResult.updated} updated</span>
+                <span>{syncResult.failed} failed</span>
+              </div>
+              {syncResult.errors.length > 0 ? (
+                <div className="mt-3 space-y-1 text-xs text-emerald-900/90 dark:text-emerald-100/90">
+                  {syncResult.errors.slice(0, 5).map((entry) => (
+                    <div key={`${entry.product}-${entry.message}`}>
+                      {entry.product}: {entry.message}
                     </div>
-                  </TableCell>
+                  ))}
+                  {syncResult.errors.length > 5 ? (
+                    <div>+{syncResult.errors.length - 5} more sync errors</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="rounded-2xl border bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-muted-foreground">
+              <span>{filteredProducts.length} products shown</span>
+              <span>Read-only API view with raw payload</span>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[72px]">Image</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>Stock</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="w-[100px] text-right">Details</TableHead>
                 </TableRow>
-              ) : (
-                filteredProducts.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell>
-                      <div className="h-12 w-12 overflow-hidden rounded-xl border bg-muted">
-                        {product.image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                            <Globe className="h-4 w-4" />
-                          </div>
-                        )}
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2">
+                        <PackageSearch className="h-5 w-5" />
+                        <span>No Tienda Nube products matched this search.</span>
                       </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="space-y-1">
-                        <p className="font-medium text-foreground">{product.name}</p>
-                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          <span>ID {product.id}</span>
-                          {product.handle ? <span>/{product.handle}</span> : null}
-                          {product.brand ? <span>{product.brand}</span> : null}
-                          <span>{product.variant_count} variants</span>
-                          <span>{product.image_count} images</span>
-                        </div>
-                        {product.sku_list.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {product.sku_list.slice(0, 3).map((sku) => (
-                              <Badge key={sku} variant="secondary" className="text-[10px]">
-                                {sku}
-                              </Badge>
-                            ))}
-                            {product.sku_list.length > 3 ? (
-                              <Badge variant="outline" className="text-[10px]">
-                                +{product.sku_list.length - 3} more
-                              </Badge>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1 text-sm">
-                        <div>{formatMoney(product.price_min)}</div>
-                        {product.price_max !== null && product.price_max !== product.price_min ? (
-                          <div className="text-xs text-muted-foreground">
-                            up to {formatMoney(product.price_max)}
-                          </div>
-                        ) : null}
-                        {product.promo_price_min !== null ? (
-                          <div className="text-xs text-emerald-600 dark:text-emerald-400">
-                            promo {formatMoney(product.promo_price_min)}
-                          </div>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1 text-sm">
-                        {product.has_untracked_stock ? (
-                          <Badge variant="secondary">Untracked</Badge>
-                        ) : product.stock_total !== null ? (
-                          <span>{product.stock_total}</span>
-                        ) : (
-                          <span>—</span>
-                        )}
-                        <div className="text-xs text-muted-foreground">
-                          API has_stock: {product.has_stock ? "true" : "false"}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={product.published ? "default" : "secondary"}>
-                          {product.published ? "Published" : "Draft"}
-                        </Badge>
-                        {product.free_shipping ? <Badge variant="outline">Free shipping</Badge> : null}
-                        {product.requires_shipping ? <Badge variant="outline">Ships</Badge> : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatDate(product.updated_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setSelectedProduct(product)}>
-                        View
-                      </Button>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  filteredProducts.map((product) => (
+                    <TableRow key={product.id}>
+                      <TableCell>
+                        <div className="h-12 w-12 overflow-hidden rounded-xl border bg-muted">
+                          {product.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={product.image_url}
+                              alt={product.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                              <Globe className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          <p className="font-medium text-foreground">{product.name}</p>
+                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>ID {product.id}</span>
+                            {product.handle ? <span>/{product.handle}</span> : null}
+                            {product.brand ? <span>{product.brand}</span> : null}
+                            <span>{product.variant_count} variants</span>
+                            <span>{product.image_count} images</span>
+                          </div>
+                          {product.sku_list.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {product.sku_list.slice(0, 3).map((sku) => (
+                                <Badge key={sku} variant="secondary" className="text-[10px]">
+                                  {sku}
+                                </Badge>
+                              ))}
+                              {product.sku_list.length > 3 ? (
+                                <Badge variant="outline" className="text-[10px]">
+                                  +{product.sku_list.length - 3} more
+                                </Badge>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1 text-sm">
+                          <div>{formatMoney(product.price_min)}</div>
+                          {product.price_max !== null && product.price_max !== product.price_min ? (
+                            <div className="text-xs text-muted-foreground">
+                              up to {formatMoney(product.price_max)}
+                            </div>
+                          ) : null}
+                          {product.promo_price_min !== null ? (
+                            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                              promo {formatMoney(product.promo_price_min)}
+                            </div>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1 text-sm">
+                          {product.has_untracked_stock ? (
+                            <Badge variant="secondary">Untracked</Badge>
+                          ) : product.stock_total !== null ? (
+                            <span>{product.stock_total}</span>
+                          ) : (
+                            <span>—</span>
+                          )}
+                          <div className="text-xs text-muted-foreground">
+                            API has_stock: {product.has_stock ? "true" : "false"}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant={product.published ? "default" : "secondary"}>
+                            {product.published ? "Published" : "Draft"}
+                          </Badge>
+                          {product.free_shipping ? <Badge variant="outline">Free shipping</Badge> : null}
+                          {product.requires_shipping ? <Badge variant="outline">Ships</Badge> : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatDate(product.updated_at)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setSelectedProduct(product)}>
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

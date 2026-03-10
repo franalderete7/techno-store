@@ -41,7 +41,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Loader2, Columns3, ArrowUpDown, ArrowUp, ArrowDown, Search } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  Columns3,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Search,
+  Download,
+} from "lucide-react";
 
 const TABLE_COLUMNS = [
   { key: "image_url", label: "Image", alwaysVisible: true },
@@ -103,6 +114,41 @@ const PRICING_BANDS = [
 
 type ProductDisplay = Product & Pick<VProductCatalog, "color" | "battery_health">;
 
+const EXPORT_COLUMNS: Array<{ key: keyof ProductDisplay; label: string }> = [
+  { key: "product_key", label: "Product Key" },
+  { key: "category", label: "Category" },
+  { key: "product_name", label: "Product Name" },
+  { key: "condition", label: "Condition" },
+  { key: "ram_gb", label: "RAM GB" },
+  { key: "storage_gb", label: "Storage GB" },
+  { key: "color", label: "Color" },
+  { key: "network", label: "Network" },
+  { key: "battery_health", label: "Battery Health" },
+  { key: "cost_usd", label: "Cost USD" },
+  { key: "logistics_usd", label: "Logistics USD" },
+  { key: "total_cost_usd", label: "Total Cost USD" },
+  { key: "margin_pct", label: "Margin %" },
+  { key: "price_usd", label: "Price USD" },
+  { key: "price_ars", label: "Price ARS" },
+  { key: "promo_price_ars", label: "Promo Price ARS" },
+  { key: "bancarizada_total", label: "Bancarizada Total" },
+  { key: "bancarizada_cuota", label: "Bancarizada Cuota" },
+  { key: "bancarizada_interest", label: "Bancarizada Interest %" },
+  { key: "macro_total", label: "Macro Total" },
+  { key: "macro_cuota", label: "Macro Cuota" },
+  { key: "macro_interest", label: "Macro Interest %" },
+  { key: "cuotas_qty", label: "Cuotas Qty" },
+  { key: "in_stock", label: "In Stock" },
+  { key: "delivery_type", label: "Delivery Type" },
+  { key: "delivery_days", label: "Delivery Days" },
+  { key: "usd_rate", label: "USD Rate" },
+  { key: "image_url", label: "Image URL" },
+  { key: "tiendanube_product_id", label: "Tienda Nube Product ID" },
+  { key: "tiendanube_handle", label: "Tienda Nube Handle" },
+  { key: "tiendanube_published", label: "Tienda Nube Published" },
+  { key: "tiendanube_synced_at", label: "Tienda Nube Synced At" },
+];
+
 function normalizeVisibleColumns(columns: string[]): string[] {
   const validColumns = new Set(TABLE_COLUMNS.map((column) => column.key));
   return [...new Set([...ALWAYS_VISIBLE_COLUMNS, ...columns])].filter((column) =>
@@ -163,6 +209,25 @@ function formatCellValue(product: ProductDisplay, key: string): string {
   if (key === "created_at" || key === "updated_at")
     return new Date(val as string).toLocaleDateString();
   return String(val);
+}
+
+function escapeCsvValue(value: string): string {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function getExportValue(product: ProductDisplay, key: keyof ProductDisplay): string {
+  const value = product[key];
+
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.join(" | ");
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+
+  return JSON.stringify(value);
 }
 
 const EDITABLE_COLUMNS = [
@@ -338,11 +403,11 @@ function sortProducts(products: ProductDisplay[], column: string, direction: "as
 function toFormValue(product: ProductDisplay | null, key: string): string | number | boolean {
   if (!product) {
     const def = DEFAULT_VALUES[key as keyof ProductInsert];
-    return def ?? "";
+    return (def as string | number | boolean | undefined) ?? "";
   }
   const val = product[key as keyof ProductDisplay];
   if (val === null || val === undefined) return "";
-  return val;
+  return val as string | number | boolean;
 }
 
 function parseNumericValue(value: string | number | boolean | undefined): number | null {
@@ -989,6 +1054,28 @@ export function ProductsTable() {
   const [columnsOpen, setColumnsOpen] = useState(false);
   const columnsRef = useRef<HTMLDivElement>(null);
 
+  const handleExportProducts = () => {
+    if (sortedProducts.length === 0 || typeof window === "undefined") return;
+
+    const header = EXPORT_COLUMNS.map((column) => escapeCsvValue(column.label)).join(",");
+    const rows = sortedProducts.map((product) =>
+      EXPORT_COLUMNS.map((column) =>
+        escapeCsvValue(getExportValue(product, column.key))
+      ).join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `technostore-products-${dateStamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (columnsRef.current && !columnsRef.current.contains(event.target as Node)) {
@@ -1007,6 +1094,17 @@ export function ProductsTable() {
         <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
           <h1 className="text-xl font-bold sm:text-2xl">Products</h1>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={handleExportProducts}
+              disabled={sortedProducts.length === 0}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Export CSV</span>
+              <span className="sm:hidden">Export</span>
+            </Button>
             <div ref={columnsRef} className="relative hidden sm:block">
               <Button
                 variant="outline"
