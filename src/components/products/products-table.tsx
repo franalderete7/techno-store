@@ -52,6 +52,7 @@ import {
   ArrowDown,
   Search,
   Download,
+  Store,
 } from "lucide-react";
 
 const TABLE_COLUMNS = [
@@ -84,6 +85,36 @@ const TABLE_COLUMNS = [
   { key: "network", label: "Network", alwaysVisible: false },
   { key: "battery_health", label: "Battery Health", alwaysVisible: false },
   { key: "condition", label: "Condition", alwaysVisible: false },
+  { key: "tiendanube_product_id", label: "TN Product ID", alwaysVisible: false },
+  { key: "tiendanube_primary_variant_id", label: "TN Variant ID", alwaysVisible: false },
+  { key: "tiendanube_handle", label: "TN Handle", alwaysVisible: false },
+  { key: "tiendanube_brand", label: "TN Brand", alwaysVisible: false },
+  { key: "tiendanube_published", label: "TN Published", alwaysVisible: false },
+  { key: "tiendanube_free_shipping", label: "TN Free Shipping", alwaysVisible: false },
+  { key: "tiendanube_requires_shipping", label: "TN Requires Shipping", alwaysVisible: false },
+  { key: "tiendanube_has_stock", label: "TN Has Stock", alwaysVisible: false },
+  { key: "tiendanube_price_min", label: "TN Price Min", alwaysVisible: false },
+  { key: "tiendanube_price_max", label: "TN Price Max", alwaysVisible: false },
+  {
+    key: "tiendanube_promotional_price_min",
+    label: "TN Promo Price Min",
+    alwaysVisible: false,
+  },
+  { key: "tiendanube_description", label: "TN Description", alwaysVisible: false },
+  { key: "tiendanube_seo_title", label: "TN SEO Title", alwaysVisible: false },
+  { key: "tiendanube_seo_description", label: "TN SEO Description", alwaysVisible: false },
+  { key: "tiendanube_tags", label: "TN Tags", alwaysVisible: false },
+  { key: "tiendanube_canonical_url", label: "TN URL", alwaysVisible: false },
+  { key: "tiendanube_video_url", label: "TN Video URL", alwaysVisible: false },
+  { key: "tiendanube_image_urls", label: "TN Images", alwaysVisible: false },
+  { key: "tiendanube_attributes_json", label: "TN Attributes", alwaysVisible: false },
+  { key: "tiendanube_categories_json", label: "TN Categories", alwaysVisible: false },
+  { key: "tiendanube_variants_json", label: "TN Variants", alwaysVisible: false },
+  { key: "tiendanube_raw_json", label: "TN Raw JSON", alwaysVisible: false },
+  { key: "tiendanube_synced_at", label: "TN Synced At", alwaysVisible: false },
+  { key: "tiendanube_last_pushed_at", label: "TN Last Pushed", alwaysVisible: false },
+  { key: "tiendanube_sync_status", label: "TN Sync Status", alwaysVisible: false },
+  { key: "tiendanube_sync_error", label: "TN Sync Error", alwaysVisible: false },
   { key: "created_at", label: "Created", alwaysVisible: false },
   { key: "updated_at", label: "Updated", alwaysVisible: false },
 ];
@@ -97,13 +128,17 @@ const DEFAULT_VISIBLE_COLUMNS = [
   "price_usd",
   "price_ars",
   "in_stock",
+  "tiendanube_product_id",
+  "tiendanube_published",
+  "tiendanube_price_min",
+  "tiendanube_synced_at",
 ];
 
 const ALWAYS_VISIBLE_COLUMNS = TABLE_COLUMNS.filter((column) => column.alwaysVisible).map(
   (column) => column.key
 );
 
-const STORAGE_KEY = "techno-store-visible-columns";
+const STORAGE_KEY = "techno-store-visible-columns-v2";
 
 const PRICING_BANDS = [
   { maxCostUsd: 200, marginPct: 0.3, label: "USD 0 - 200" },
@@ -144,10 +179,24 @@ const EXPORT_COLUMNS: Array<{ key: keyof ProductDisplay; label: string }> = [
   { key: "usd_rate", label: "USD Rate" },
   { key: "image_url", label: "Image URL" },
   { key: "tiendanube_product_id", label: "Tienda Nube Product ID" },
+  { key: "tiendanube_primary_variant_id", label: "Tienda Nube Variant ID" },
   { key: "tiendanube_handle", label: "Tienda Nube Handle" },
   { key: "tiendanube_published", label: "Tienda Nube Published" },
   { key: "tiendanube_synced_at", label: "Tienda Nube Synced At" },
+  { key: "tiendanube_last_pushed_at", label: "Tienda Nube Last Pushed At" },
+  { key: "tiendanube_sync_status", label: "Tienda Nube Sync Status" },
+  { key: "tiendanube_sync_error", label: "Tienda Nube Sync Error" },
 ];
+
+type TiendaNubePushResponse = {
+  processed: number;
+  created_remote: number;
+  updated_remote: number;
+  succeeded: number;
+  failed: number;
+  errors: Array<{ product: string; message: string }>;
+  error?: string;
+};
 
 function normalizeVisibleColumns(columns: string[]): string[] {
   const validColumns = new Set(TABLE_COLUMNS.map((column) => column.key));
@@ -203,11 +252,37 @@ function formatCellValue(product: ProductDisplay, key: string): string {
   if (key === "in_stock") return val ? "Yes" : "No";
   if (key === "price_usd" || key === "cost_usd" || key === "logistics_usd" || key === "total_cost_usd")
     return typeof val === "number" ? formatUsd(val) : String(val);
+  if (
+    key === "price_ars" ||
+    key === "promo_price_ars" ||
+    key === "tiendanube_price_min" ||
+    key === "tiendanube_price_max" ||
+    key === "tiendanube_promotional_price_min"
+  ) {
+    return typeof val === "number" ? formatArs(val) : String(val);
+  }
   if (key.includes("price") || key.includes("bancarizada") || key.includes("macro"))
     return typeof val === "number" ? formatArs(val) : String(val);
   if (typeof val === "boolean") return val ? "Yes" : "No";
-  if (key === "created_at" || key === "updated_at")
-    return new Date(val as string).toLocaleDateString();
+  if (
+    key === "created_at" ||
+    key === "updated_at" ||
+    key === "tiendanube_synced_at" ||
+    key === "tiendanube_last_pushed_at"
+  )
+    return new Date(val as string).toLocaleString();
+  if (Array.isArray(val)) {
+    if (val.length === 0) return "[]";
+    if (typeof val[0] === "string") return (val as string[]).join(" | ");
+    return `${val.length} items`;
+  }
+  if (typeof val === "object") {
+    if (key === "tiendanube_variants_json" && Array.isArray(val)) return `${val.length} variants`;
+    if (key === "tiendanube_categories_json" && Array.isArray(val)) return `${val.length} categories`;
+    if (key === "tiendanube_attributes_json" && Array.isArray(val)) return `${val.length} attributes`;
+    if (key === "tiendanube_raw_json") return "JSON payload";
+    return JSON.stringify(val);
+  }
   return String(val);
 }
 
@@ -643,6 +718,10 @@ function matchesProductSearch(product: ProductDisplay, query: string): boolean {
     product.product_name,
     product.product_key,
     product.category,
+    product.tiendanube_product_id,
+    product.tiendanube_handle,
+    product.tiendanube_sync_status,
+    product.tiendanube_sync_error,
     product.color,
     product.network,
     product.image_url,
@@ -667,6 +746,7 @@ export function ProductsTable() {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteProduct, setDeleteProduct] = useState<ProductDisplay | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pushingToTiendaNube, setPushingToTiendaNube] = useState(false);
   const [formData, setFormData] = useState<Record<string, string | number | boolean>>({});
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null);
@@ -1076,6 +1156,60 @@ export function ProductsTable() {
     URL.revokeObjectURL(url);
   };
 
+  const handlePushToTiendaNube = async () => {
+    if (sortedProducts.length === 0 || typeof window === "undefined") return;
+
+    const confirmed = window.confirm(
+      `Push ${sortedProducts.length} product(s) from the current view to Tienda Nube?\n\nThis will use local price_ars as the regular Tienda Nube price and promo_price_ars as the promotional price.`
+    );
+
+    if (!confirmed) return;
+
+    setPushingToTiendaNube(true);
+
+    try {
+      const response = await fetch("/api/tiendanube/products", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "push_local_to_remote",
+          product_ids: sortedProducts.map((product) => product.id),
+        }),
+      });
+
+      const body = (await response.json()) as TiendaNubePushResponse;
+      if (!response.ok) {
+        throw new Error(body.error || "Failed to push local products into Tienda Nube.");
+      }
+
+      const previewErrors =
+        body.failed > 0
+          ? `\n\nErrors:\n${body.errors
+              .slice(0, 5)
+              .map((item) => `- ${item.product}: ${item.message}`)
+              .join("\n")}`
+          : "";
+
+      alert(
+        [
+          `Processed: ${body.processed}`,
+          `Succeeded: ${body.succeeded}`,
+          `Created remotely: ${body.created_remote}`,
+          `Updated remotely: ${body.updated_remote}`,
+          `Failed: ${body.failed}`,
+        ].join("\n") + previewErrors
+      );
+
+      await fetchProducts();
+    } catch (pushError) {
+      alert(pushError instanceof Error ? pushError.message : "Unknown Tienda Nube push error.");
+    } finally {
+      setPushingToTiendaNube(false);
+    }
+  };
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (columnsRef.current && !columnsRef.current.contains(event.target as Node)) {
@@ -1094,6 +1228,21 @@ export function ProductsTable() {
         <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
           <h1 className="text-xl font-bold sm:text-2xl">Products</h1>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={handlePushToTiendaNube}
+              disabled={sortedProducts.length === 0 || pushingToTiendaNube}
+            >
+              {pushingToTiendaNube ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Store className="mr-2 h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">Push View to TN</span>
+              <span className="sm:hidden">Push TN</span>
+            </Button>
             <Button
               variant="outline"
               size="sm"

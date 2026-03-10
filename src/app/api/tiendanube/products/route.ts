@@ -9,16 +9,34 @@ type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type TiendaNubeLocalized = Record<string, string | null | undefined> | string | null | undefined;
 
 type TiendaNubeImage = {
+  id?: number | string | null;
   src?: string | null;
   alt?: JsonValue;
 } & Record<string, JsonValue>;
 
 type TiendaNubeVariant = {
+  id?: number | string | null;
+  image_id?: number | string | null;
+  product_id?: number | string | null;
+  position?: number | null;
   price?: string | number | null;
+  compare_at_price?: string | number | null;
   promotional_price?: string | number | null;
   stock?: number | string | null;
   stock_management?: boolean | null;
+  weight?: string | number | null;
+  width?: string | number | null;
+  height?: string | number | null;
+  depth?: string | number | null;
   sku?: string | null;
+  values?: JsonValue[] | null;
+  barcode?: string | null;
+  mpn?: string | null;
+  age_group?: string | null;
+  gender?: string | null;
+  cost?: string | number | null;
+  visible?: boolean | null;
+  inventory_levels?: JsonValue[] | null;
 } & Record<string, JsonValue>;
 
 type TiendaNubeProductApi = {
@@ -104,6 +122,44 @@ type ExistingProductSyncRow = Pick<
   | "tiendanube_product_id"
 >;
 
+type LocalProductPushRow = Pick<
+  Product,
+  | "id"
+  | "product_key"
+  | "product_name"
+  | "price_ars"
+  | "promo_price_ars"
+  | "in_stock"
+  | "image_url"
+  | "tiendanube_product_id"
+  | "tiendanube_primary_variant_id"
+  | "tiendanube_handle"
+  | "tiendanube_published"
+  | "tiendanube_free_shipping"
+  | "tiendanube_requires_shipping"
+  | "tiendanube_description"
+  | "tiendanube_seo_title"
+  | "tiendanube_seo_description"
+  | "tiendanube_tags"
+  | "tiendanube_video_url"
+  | "tiendanube_variants_json"
+>;
+
+type PostRequestBody = {
+  action?: "pull_remote_into_local" | "push_local_to_remote";
+  product_ids?: number[];
+};
+
+class TiendaNubeRequestError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "TiendaNubeRequestError";
+    this.status = status;
+  }
+}
+
 const API_BASE_URL = process.env.TIENDANUBE_API_BASE_URL || "https://api.tiendanube.com/v1";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
@@ -152,6 +208,11 @@ function roundArsAmount(value: number): number {
   return Math.round(value);
 }
 
+function formatTiendaNubeMoney(value: number | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  return value.toFixed(2);
+}
+
 function slugifyValue(value: string): string {
   return value
     .normalize("NFD")
@@ -164,6 +225,76 @@ function slugifyValue(value: string): string {
 
 function canonicalizeProductKey(value: string): string {
   return slugifyValue(value).replace(/-/g, "");
+}
+
+function getVariantId(variant: TiendaNubeVariant | null | undefined): string | null {
+  if (!variant?.id) return null;
+  const value = String(variant.id).trim();
+  return value || null;
+}
+
+function resolvePrimaryVariantIdFromVariants(
+  variants: TiendaNubeVariant[],
+  linkedProductKey?: string | null
+): string | null {
+  if (!Array.isArray(variants) || variants.length === 0) return null;
+
+  if (linkedProductKey) {
+    const matchingSku = variants.find(
+      (variant) => String(variant.sku || "").trim() === linkedProductKey
+    );
+    const matchingSkuId = getVariantId(matchingSku);
+    if (matchingSkuId) return matchingSkuId;
+  }
+
+  if (variants.length === 1) {
+    return getVariantId(variants[0]);
+  }
+
+  return null;
+}
+
+function buildTiendaNubeHeaders(userAgent: string, accessToken: string) {
+  return {
+    Authentication: `bearer ${accessToken}`,
+    "User-Agent": userAgent,
+    "Content-Type": "application/json",
+  };
+}
+
+async function requestTiendaNubeJson<T>(
+  path: string,
+  {
+    method = "GET",
+    body,
+    storeId,
+    accessToken,
+    userAgent,
+  }: {
+    method?: "GET" | "POST" | "PUT";
+    body?: JsonValue;
+    storeId: string;
+    accessToken: string;
+    userAgent: string;
+  }
+): Promise<T> {
+  const url = new URL(`${API_BASE_URL}/${storeId}${path}`);
+  const response = await fetch(url.toString(), {
+    method,
+    cache: "no-store",
+    headers: buildTiendaNubeHeaders(userAgent, accessToken),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new TiendaNubeRequestError(
+      response.status,
+      `Tienda Nube API error (${response.status}): ${errorText}`
+    );
+  }
+
+  return (await response.json()) as T;
 }
 
 function inferCategoryFromName(name: string): string {
@@ -248,16 +379,15 @@ async function fetchProductsPage(
   const response = await fetch(url.toString(), {
     method: "GET",
     cache: "no-store",
-    headers: {
-      Authentication: `bearer ${accessToken}`,
-      "User-Agent": userAgent,
-      "Content-Type": "application/json",
-    },
+    headers: buildTiendaNubeHeaders(userAgent, accessToken),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Tienda Nube API error (${response.status}): ${errorText}`);
+    throw new TiendaNubeRequestError(
+      response.status,
+      `Tienda Nube API error (${response.status}): ${errorText}`
+    );
   }
 
   const data = (await response.json()) as TiendaNubeProductApi[];
@@ -279,6 +409,20 @@ async function fetchAllProducts(
   }
 
   return products.map(normalizeProduct).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function fetchProductById(
+  storeId: string,
+  accessToken: string,
+  userAgent: string,
+  productId: string
+): Promise<TiendaNubeProductApi> {
+  return requestTiendaNubeJson<TiendaNubeProductApi>(`/products/${productId}`, {
+    method: "GET",
+    storeId,
+    accessToken,
+    userAgent,
+  });
 }
 
 function getRequiredEnv() {
@@ -444,9 +588,12 @@ function resolveProductKey(
   return { existing: null, productKey: normalizedHandle || slugifyValue(product.name) };
 }
 
-function buildTiendaNubeColumns(product: TiendaNubeProductRow) {
+function buildTiendaNubeColumns(product: TiendaNubeProductRow, linkedProductKey?: string | null) {
+  const variants = Array.isArray(product.raw.variants) ? product.raw.variants : [];
+
   return {
     tiendanube_product_id: product.id,
+    tiendanube_primary_variant_id: resolvePrimaryVariantIdFromVariants(variants, linkedProductKey),
     tiendanube_handle: product.handle || null,
     tiendanube_brand: product.brand,
     tiendanube_published: product.published,
@@ -473,6 +620,8 @@ function buildTiendaNubeColumns(product: TiendaNubeProductRow) {
     tiendanube_variants_json: (product.raw.variants ?? null) as Database["public"]["Tables"]["products"]["Insert"]["tiendanube_variants_json"],
     tiendanube_raw_json: product.raw as Database["public"]["Tables"]["products"]["Insert"]["tiendanube_raw_json"],
     tiendanube_synced_at: new Date().toISOString(),
+    tiendanube_sync_status: "linked",
+    tiendanube_sync_error: null,
   };
 }
 
@@ -521,7 +670,7 @@ async function syncProductsToSupabase(products: TiendaNubeProductRow[]) {
         continue;
       }
 
-      const tiendanubeColumns = buildTiendaNubeColumns(product);
+      const tiendanubeColumns = buildTiendaNubeColumns(product, productKey);
       const category = existing?.category || inferCategoryFromName(product.name);
       const imageUrl = existing?.image_url || product.image_url;
 
@@ -591,6 +740,290 @@ async function syncProductsToSupabase(products: TiendaNubeProductRow[]) {
   };
 }
 
+function parseLocalVariantsJson(
+  value: LocalProductPushRow["tiendanube_variants_json"]
+): TiendaNubeVariant[] {
+  return Array.isArray(value) ? (value as TiendaNubeVariant[]) : [];
+}
+
+function resolveVariantForLocalProduct(
+  product: LocalProductPushRow,
+  variants: TiendaNubeVariant[]
+): { variantId: string; variant: TiendaNubeVariant } | null {
+  const explicitVariantId = String(product.tiendanube_primary_variant_id || "").trim();
+  if (explicitVariantId) {
+    const explicitMatch = variants.find((variant) => getVariantId(variant) === explicitVariantId);
+    if (explicitMatch) {
+      return { variantId: explicitVariantId, variant: explicitMatch };
+    }
+  }
+
+  const matchingSku = variants.find(
+    (variant) => String(variant.sku || "").trim() === product.product_key
+  );
+  const matchingSkuId = getVariantId(matchingSku);
+  if (matchingSku && matchingSkuId) {
+    return { variantId: matchingSkuId, variant: matchingSku };
+  }
+
+  if (variants.length === 1) {
+    const singleId = getVariantId(variants[0]);
+    if (singleId) {
+      return { variantId: singleId, variant: variants[0] };
+    }
+  }
+
+  return null;
+}
+
+function buildCreateProductPayload(product: LocalProductPushRow): JsonValue {
+  const payload: Record<string, JsonValue> = {
+    name: product.product_name,
+    published: Boolean(product.tiendanube_published ?? false),
+    free_shipping: Boolean(product.tiendanube_free_shipping ?? false),
+    requires_shipping: product.tiendanube_requires_shipping ?? true,
+    variants: [
+      {
+        price: formatTiendaNubeMoney(product.price_ars) || "0.00",
+        compare_at_price: product.promo_price_ars ? formatTiendaNubeMoney(product.price_ars) : null,
+        promotional_price: formatTiendaNubeMoney(product.promo_price_ars),
+        stock_management: true,
+        stock: product.in_stock ? 1 : 0,
+        sku: product.product_key,
+      },
+    ],
+  };
+
+  const description = String(product.tiendanube_description || "").trim();
+  if (description) payload.description = description;
+
+  const seoTitle = String(product.tiendanube_seo_title || "").trim();
+  if (seoTitle) payload.seo_title = seoTitle;
+
+  const seoDescription = String(product.tiendanube_seo_description || "").trim();
+  if (seoDescription) payload.seo_description = seoDescription;
+
+  const videoUrl = String(product.tiendanube_video_url || "").trim();
+  if (videoUrl) payload.video_url = videoUrl;
+
+  const tags = String(product.tiendanube_tags || "").trim();
+  if (tags) payload.tags = tags;
+
+  const imageUrl = String(product.image_url || "").trim();
+  if (imageUrl) {
+    payload.images = [{ src: imageUrl }];
+  }
+
+  return payload;
+}
+
+function buildVariantUpdatePayload(
+  product: LocalProductPushRow,
+  variant: TiendaNubeVariant
+): JsonValue {
+  return {
+    image_id: variant.image_id ?? null,
+    price: formatTiendaNubeMoney(product.price_ars) || "0.00",
+    compare_at_price: product.promo_price_ars ? formatTiendaNubeMoney(product.price_ars) : null,
+    promotional_price: formatTiendaNubeMoney(product.promo_price_ars),
+    stock_management: true,
+    stock: product.in_stock ? 1 : 0,
+    weight: variant.weight ?? "0.000",
+    width: variant.width ?? "0.00",
+    height: variant.height ?? "0.00",
+    depth: variant.depth ?? "0.00",
+    sku: product.product_key,
+    values: Array.isArray(variant.values) ? variant.values : [],
+    barcode: variant.barcode ?? null,
+    mpn: variant.mpn ?? null,
+    age_group: variant.age_group ?? null,
+    gender: variant.gender ?? null,
+    cost: variant.cost ?? null,
+    visible: variant.visible ?? true,
+  };
+}
+
+async function createRemoteProductFromLocal(
+  product: LocalProductPushRow,
+  {
+    storeId,
+    accessToken,
+    userAgent,
+  }: {
+    storeId: string;
+    accessToken: string;
+    userAgent: string;
+  }
+): Promise<TiendaNubeProductApi> {
+  return requestTiendaNubeJson<TiendaNubeProductApi>("/products", {
+    method: "POST",
+    body: buildCreateProductPayload(product),
+    storeId,
+    accessToken,
+    userAgent,
+  });
+}
+
+async function updateRemoteVariantFromLocal(
+  product: LocalProductPushRow,
+  {
+    storeId,
+    accessToken,
+    userAgent,
+  }: {
+    storeId: string;
+    accessToken: string;
+    userAgent: string;
+  }
+): Promise<TiendaNubeProductApi> {
+  const remoteProductId = String(product.tiendanube_product_id || "").trim();
+  if (!remoteProductId) {
+    throw new Error("Missing linked Tienda Nube product id.");
+  }
+
+  const remoteProduct = await fetchProductById(storeId, accessToken, userAgent, remoteProductId);
+  const remoteVariants = Array.isArray(remoteProduct.variants)
+    ? remoteProduct.variants
+    : parseLocalVariantsJson(product.tiendanube_variants_json);
+  const resolvedVariant = resolveVariantForLocalProduct(product, remoteVariants);
+
+  if (!resolvedVariant) {
+    throw new Error(
+      "Linked Tienda Nube product has multiple variants and no primary variant could be resolved. Save tiendanube_primary_variant_id first."
+    );
+  }
+
+  await requestTiendaNubeJson<TiendaNubeVariant>(
+    `/products/${remoteProductId}/variants/${resolvedVariant.variantId}`,
+    {
+      method: "PUT",
+      body: buildVariantUpdatePayload(product, resolvedVariant.variant),
+      storeId,
+      accessToken,
+      userAgent,
+    }
+  );
+
+  return fetchProductById(storeId, accessToken, userAgent, remoteProductId);
+}
+
+async function pushLocalProductsToTiendaNube(
+  productIds: number[] | undefined,
+  {
+    storeId,
+    accessToken,
+    userAgent,
+  }: {
+    storeId: string;
+    accessToken: string;
+    userAgent: string;
+  }
+) {
+  const admin = buildAdminClient();
+  let query = admin.from("products").select(
+    [
+      "id",
+      "product_key",
+      "product_name",
+      "price_ars",
+      "promo_price_ars",
+      "in_stock",
+      "image_url",
+      "tiendanube_product_id",
+      "tiendanube_primary_variant_id",
+      "tiendanube_handle",
+      "tiendanube_published",
+      "tiendanube_free_shipping",
+      "tiendanube_requires_shipping",
+      "tiendanube_description",
+      "tiendanube_seo_title",
+      "tiendanube_seo_description",
+      "tiendanube_tags",
+      "tiendanube_video_url",
+      "tiendanube_variants_json",
+    ].join(",")
+  );
+
+  if (Array.isArray(productIds) && productIds.length > 0) {
+    query = query.in("id", productIds);
+  }
+
+  const { data, error } = await query.order("id", { ascending: true });
+  if (error) throw error;
+
+  const products = ((data ?? []) as unknown) as LocalProductPushRow[];
+  let createdRemote = 0;
+  let updatedRemote = 0;
+  const errors: Array<{ product: string; message: string }> = [];
+
+  for (const product of products) {
+    try {
+      let remoteApi: TiendaNubeProductApi;
+
+      if (!product.tiendanube_product_id) {
+        remoteApi = await createRemoteProductFromLocal(product, { storeId, accessToken, userAgent });
+        createdRemote += 1;
+      } else {
+        try {
+          remoteApi = await updateRemoteVariantFromLocal(product, {
+            storeId,
+            accessToken,
+            userAgent,
+          });
+          updatedRemote += 1;
+        } catch (pushError) {
+          if (pushError instanceof TiendaNubeRequestError && pushError.status === 404) {
+            remoteApi = await createRemoteProductFromLocal(product, {
+              storeId,
+              accessToken,
+              userAgent,
+            });
+            createdRemote += 1;
+          } else {
+            throw pushError;
+          }
+        }
+      }
+
+      const remoteProduct = normalizeProduct(remoteApi);
+      const pushedAt = new Date().toISOString();
+      const updatePayload: Database["public"]["Tables"]["products"]["Update"] = {
+        ...buildTiendaNubeColumns(remoteProduct, product.product_key),
+        tiendanube_last_pushed_at: pushedAt,
+        tiendanube_sync_status: "push_ok",
+        tiendanube_sync_error: null,
+      };
+
+      const { error: updateError } = await admin
+        .from("products")
+        .update(updatePayload)
+        .eq("id", product.id);
+
+      if (updateError) throw updateError;
+    } catch (pushError) {
+      const message = pushError instanceof Error ? pushError.message : "Unknown push sync error";
+      errors.push({ product: product.product_name, message });
+
+      await admin
+        .from("products")
+        .update({
+          tiendanube_sync_status: "push_error",
+          tiendanube_sync_error: message,
+        })
+        .eq("id", product.id);
+    }
+  }
+
+  return {
+    processed: products.length,
+    created_remote: createdRemote,
+    updated_remote: updatedRemote,
+    failed: errors.length,
+    succeeded: products.length - errors.length,
+    errors,
+  };
+}
+
 export async function GET() {
   const env = getRequiredEnv();
   if ("error" in env) {
@@ -625,19 +1058,38 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const env = getRequiredEnv();
   if ("error" in env) {
     return NextResponse.json({ error: env.error }, { status: 503 });
   }
 
   try {
+    let body: PostRequestBody = {};
+    const rawBody = await request.text();
+
+    if (rawBody.trim()) {
+      body = JSON.parse(rawBody) as PostRequestBody;
+    }
+
+    if (body.action === "push_local_to_remote") {
+      const result = await pushLocalProductsToTiendaNube(body.product_ids, env);
+
+      return NextResponse.json({
+        fetched_at: new Date().toISOString(),
+        store_id: env.storeId,
+        action: "push_local_to_remote",
+        ...result,
+      });
+    }
+
     const products = await fetchAllProducts(env.storeId, env.accessToken, env.userAgent);
     const result = await syncProductsToSupabase(products);
 
     return NextResponse.json({
       fetched_at: new Date().toISOString(),
       store_id: env.storeId,
+      action: "pull_remote_into_local",
       ...result,
     });
   } catch (error) {

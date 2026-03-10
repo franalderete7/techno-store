@@ -327,6 +327,7 @@ export interface Database {
           "condition": string;
           "pricing_source_stock_unit_id": number | null;
           "tiendanube_product_id": string | null;
+          "tiendanube_primary_variant_id": string | null;
           "tiendanube_handle": string | null;
           "tiendanube_brand": string | null;
           "tiendanube_published": boolean | null;
@@ -348,6 +349,9 @@ export interface Database {
           "tiendanube_variants_json": Json | null;
           "tiendanube_raw_json": Json | null;
           "tiendanube_synced_at": string | null;
+          "tiendanube_last_pushed_at": string | null;
+          "tiendanube_sync_status": string | null;
+          "tiendanube_sync_error": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -381,6 +385,7 @@ export interface Database {
           "condition"?: string | null;
           "pricing_source_stock_unit_id"?: number | null;
           "tiendanube_product_id"?: string | null;
+          "tiendanube_primary_variant_id"?: string | null;
           "tiendanube_handle"?: string | null;
           "tiendanube_brand"?: string | null;
           "tiendanube_published"?: boolean | null;
@@ -402,6 +407,9 @@ export interface Database {
           "tiendanube_variants_json"?: Json | null;
           "tiendanube_raw_json"?: Json | null;
           "tiendanube_synced_at"?: string | null;
+          "tiendanube_last_pushed_at"?: string | null;
+          "tiendanube_sync_status"?: string | null;
+          "tiendanube_sync_error"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -435,6 +443,7 @@ export interface Database {
           "condition"?: string | null;
           "pricing_source_stock_unit_id"?: number | null;
           "tiendanube_product_id"?: string | null;
+          "tiendanube_primary_variant_id"?: string | null;
           "tiendanube_handle"?: string | null;
           "tiendanube_brand"?: string | null;
           "tiendanube_published"?: boolean | null;
@@ -456,6 +465,9 @@ export interface Database {
           "tiendanube_variants_json"?: Json | null;
           "tiendanube_raw_json"?: Json | null;
           "tiendanube_synced_at"?: string | null;
+          "tiendanube_last_pushed_at"?: string | null;
+          "tiendanube_sync_status"?: string | null;
+          "tiendanube_sync_error"?: string | null;
         };
         Relationships: [];
       };
