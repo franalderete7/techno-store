@@ -32,6 +32,14 @@ export interface Database {
           "was_audio": boolean | null;
           "audio_transcription": string | null;
           "created_at": string | null;
+          "channel": string | null;
+          "external_message_id": string | null;
+          "whatsapp_phone_number_id": string | null;
+          "applied_tags": string[];
+          "payment_methods_detected": string[];
+          "brands_detected": string[];
+          "topics_detected": string[];
+          "funnel_stage_after": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -46,6 +54,14 @@ export interface Database {
           "was_audio"?: boolean | null;
           "audio_transcription"?: string | null;
           "created_at"?: string | null;
+          "channel"?: string | null;
+          "external_message_id"?: string | null;
+          "whatsapp_phone_number_id"?: string | null;
+          "applied_tags": string[];
+          "payment_methods_detected": string[];
+          "brands_detected": string[];
+          "topics_detected": string[];
+          "funnel_stage_after"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -60,6 +76,83 @@ export interface Database {
           "was_audio"?: boolean | null;
           "audio_transcription"?: string | null;
           "created_at"?: string | null;
+          "channel"?: string | null;
+          "external_message_id"?: string | null;
+          "whatsapp_phone_number_id"?: string | null;
+          "applied_tags"?: string[] | null;
+          "payment_methods_detected"?: string[] | null;
+          "brands_detected"?: string[] | null;
+          "topics_detected"?: string[] | null;
+          "funnel_stage_after"?: string | null;
+        };
+        Relationships: [];
+      };
+      "crm_funnel_stages": {
+        Row: {
+          "stage_key": string;
+          "label": string;
+          "description": string;
+          "sort_order": number;
+          "color_hex": string;
+          "is_terminal": boolean;
+          "created_at": string;
+          "updated_at": string;
+        };
+        Insert: {
+          "stage_key"?: string | null;
+          "label": string;
+          "description": string;
+          "sort_order": number;
+          "color_hex": string;
+          "is_terminal"?: boolean | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Update: {
+          "stage_key"?: string | null;
+          "label"?: string | null;
+          "description"?: string | null;
+          "sort_order"?: number | null;
+          "color_hex"?: string | null;
+          "is_terminal"?: boolean | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Relationships: [];
+      };
+      "crm_tag_definitions": {
+        Row: {
+          "tag_key": string;
+          "tag_group": string;
+          "label": string;
+          "description": string;
+          "color_hex": string | null;
+          "sort_order": number;
+          "active": boolean;
+          "created_at": string;
+          "updated_at": string;
+        };
+        Insert: {
+          "tag_key"?: string | null;
+          "tag_group": string;
+          "label": string;
+          "description": string;
+          "color_hex"?: string | null;
+          "sort_order"?: number | null;
+          "active"?: boolean | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Update: {
+          "tag_key"?: string | null;
+          "tag_group"?: string | null;
+          "label"?: string | null;
+          "description"?: string | null;
+          "color_hex"?: string | null;
+          "sort_order"?: number | null;
+          "active"?: boolean | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
         };
         Relationships: [];
       };
@@ -98,6 +191,16 @@ export interface Database {
           "phone_area_code": string | null;
           "phone_area_name": string | null;
           "phone_area_province": string | null;
+          "whatsapp_wa_id": string | null;
+          "brands_mentioned": string[];
+          "topics_mentioned": string[];
+          "first_seen_at": string | null;
+          "lead_source": string | null;
+          "lead_source_detail": string | null;
+          "browsing_at": string | null;
+          "interested_at": string | null;
+          "closing_at": string | null;
+          "human_handoff_at": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -133,6 +236,16 @@ export interface Database {
           "phone_area_code"?: string | null;
           "phone_area_name"?: string | null;
           "phone_area_province"?: string | null;
+          "whatsapp_wa_id"?: string | null;
+          "brands_mentioned": string[];
+          "topics_mentioned": string[];
+          "first_seen_at"?: string | null;
+          "lead_source"?: string | null;
+          "lead_source_detail"?: string | null;
+          "browsing_at"?: string | null;
+          "interested_at"?: string | null;
+          "closing_at"?: string | null;
+          "human_handoff_at"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -168,6 +281,16 @@ export interface Database {
           "phone_area_code"?: string | null;
           "phone_area_name"?: string | null;
           "phone_area_province"?: string | null;
+          "whatsapp_wa_id"?: string | null;
+          "brands_mentioned"?: string[] | null;
+          "topics_mentioned"?: string[] | null;
+          "first_seen_at"?: string | null;
+          "lead_source"?: string | null;
+          "lead_source_detail"?: string | null;
+          "browsing_at"?: string | null;
+          "interested_at"?: string | null;
+          "closing_at"?: string | null;
+          "human_handoff_at"?: string | null;
         };
         Relationships: [];
       };
@@ -318,6 +441,57 @@ export interface Database {
         };
         Relationships: [];
       };
+      "stickers": {
+        Row: {
+          "id": number;
+          "sticker_key": string;
+          "label": string;
+          "description": string | null;
+          "media_id": string | null;
+          "sticker_url": string | null;
+          "enabled": boolean;
+          "intents": string[];
+          "funnel_stages": string[];
+          "required_tags": string[];
+          "excluded_tags": string[];
+          "priority": number;
+          "created_at": string;
+          "updated_at": string;
+        };
+        Insert: {
+          "id"?: number | null;
+          "sticker_key": string;
+          "label": string;
+          "description"?: string | null;
+          "media_id"?: string | null;
+          "sticker_url"?: string | null;
+          "enabled"?: boolean | null;
+          "intents": string[];
+          "funnel_stages": string[];
+          "required_tags": string[];
+          "excluded_tags": string[];
+          "priority"?: number | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Update: {
+          "id"?: number | null;
+          "sticker_key"?: string | null;
+          "label"?: string | null;
+          "description"?: string | null;
+          "media_id"?: string | null;
+          "sticker_url"?: string | null;
+          "enabled"?: boolean | null;
+          "intents"?: string[] | null;
+          "funnel_stages"?: string[] | null;
+          "required_tags"?: string[] | null;
+          "excluded_tags"?: string[] | null;
+          "priority"?: number | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Relationships: [];
+      };
       "stock_errors_log": {
         Row: {
           "id": number;
@@ -443,6 +617,16 @@ export interface Database {
       };
     };
     Views: {
+      "v_conversation_signal_daily": {
+        Row: {
+          "activity_date": string | null;
+          "signal_type": string | null;
+          "signal_key": string | null;
+          "mentions": number | null;
+          "unique_customers": number | null;
+        };
+        Relationships: [];
+      };
       "v_customer_context": {
         Row: {
           "id": number | null;
@@ -478,6 +662,36 @@ export interface Database {
           "manychat_tags": string[] | null;
           "created_at": string | null;
           "updated_at": string | null;
+          "brands_mentioned": string[] | null;
+          "topics_mentioned": string[] | null;
+          "browsing_at": string | null;
+          "interested_at": string | null;
+          "closing_at": string | null;
+          "human_handoff_at": string | null;
+          "first_seen_at": string | null;
+          "lead_source": string | null;
+          "lead_source_detail": string | null;
+          "whatsapp_wa_id": string | null;
+        };
+        Relationships: [];
+      };
+      "v_customer_stage_reached": {
+        Row: {
+          "customer_id": number | null;
+          "manychat_id": string | null;
+          "funnel_stage": string | null;
+          "reached_at": string | null;
+        };
+        Relationships: [];
+      };
+      "v_funnel_daily": {
+        Row: {
+          "activity_date": string | null;
+          "funnel_stage": string | null;
+          "stage_label": string | null;
+          "sort_order": number | null;
+          "color_hex": string | null;
+          "customers_reached": number | null;
         };
         Relationships: [];
       };
@@ -574,6 +788,9 @@ export interface Database {
           "customer_payment_mentions_supported": string | null;
           "store_financing_scope": string | null;
           "usd_to_ars": string | null;
+          "store_location_name": string | null;
+          "store_latitude": string | null;
+          "store_longitude": string | null;
         };
         Relationships: [];
       };
@@ -591,6 +808,14 @@ export type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
 export type ConversationInsert = Database["public"]["Tables"]["conversations"]["Insert"];
 export type ConversationUpdate = Database["public"]["Tables"]["conversations"]["Update"];
 
+export type CrmFunnelStage = Database["public"]["Tables"]["crm_funnel_stages"]["Row"];
+export type CrmFunnelStageInsert = Database["public"]["Tables"]["crm_funnel_stages"]["Insert"];
+export type CrmFunnelStageUpdate = Database["public"]["Tables"]["crm_funnel_stages"]["Update"];
+
+export type CrmTagDefinition = Database["public"]["Tables"]["crm_tag_definitions"]["Row"];
+export type CrmTagDefinitionInsert = Database["public"]["Tables"]["crm_tag_definitions"]["Insert"];
+export type CrmTagDefinitionUpdate = Database["public"]["Tables"]["crm_tag_definitions"]["Update"];
+
 export type Customer = Database["public"]["Tables"]["customers"]["Row"];
 export type CustomerInsert = Database["public"]["Tables"]["customers"]["Insert"];
 export type CustomerUpdate = Database["public"]["Tables"]["customers"]["Update"];
@@ -602,6 +827,10 @@ export type ProductUpdate = Database["public"]["Tables"]["products"]["Update"];
 export type Purchase = Database["public"]["Tables"]["purchases"]["Row"];
 export type PurchaseInsert = Database["public"]["Tables"]["purchases"]["Insert"];
 export type PurchaseUpdate = Database["public"]["Tables"]["purchases"]["Update"];
+
+export type Sticker = Database["public"]["Tables"]["stickers"]["Row"];
+export type StickerInsert = Database["public"]["Tables"]["stickers"]["Insert"];
+export type StickerUpdate = Database["public"]["Tables"]["stickers"]["Update"];
 
 export type StockErrorsLog = Database["public"]["Tables"]["stock_errors_log"]["Row"];
 export type StockErrorsLogInsert = Database["public"]["Tables"]["stock_errors_log"]["Insert"];
@@ -615,7 +844,10 @@ export type StoreSetting = Database["public"]["Tables"]["store_settings"]["Row"]
 export type StoreSettingInsert = Database["public"]["Tables"]["store_settings"]["Insert"];
 export type StoreSettingUpdate = Database["public"]["Tables"]["store_settings"]["Update"];
 
+export type VConversationSignalDaily = Database["public"]["Views"]["v_conversation_signal_daily"]["Row"];
 export type VCustomerContext = Database["public"]["Views"]["v_customer_context"]["Row"];
+export type VCustomerStageReached = Database["public"]["Views"]["v_customer_stage_reached"]["Row"];
+export type VFunnelDaily = Database["public"]["Views"]["v_funnel_daily"]["Row"];
 export type VProductCatalog = Database["public"]["Views"]["v_product_catalog"]["Row"];
 export type VRecentConversations = Database["public"]["Views"]["v_recent_conversations"]["Row"];
 export type VRecentPurchases = Database["public"]["Views"]["v_recent_purchases"]["Row"];

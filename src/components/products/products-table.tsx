@@ -169,21 +169,11 @@ const EDITABLE_COLUMNS = [
   { key: "product_key", label: "Product Key", type: "text" as const },
   { key: "category", label: "Category", type: "text" as const },
   { key: "product_name", label: "Product Name", type: "text" as const },
-  { key: "cost_usd", label: "Cost USD", type: "number" as const },
   { key: "logistics_usd", label: "Logistics USD", type: "number" as const },
-  { key: "total_cost_usd", label: "Total Cost USD", type: "number" as const },
-  { key: "margin_pct", label: "Margin %", type: "number" as const },
-  { key: "price_usd", label: "Price USD", type: "number" as const },
-  { key: "price_ars", label: "Price ARS", type: "number" as const },
   { key: "promo_price_ars", label: "Promo Price ARS", type: "number" as const },
-  { key: "bancarizada_total", label: "Bancarizada Total", type: "number" as const },
-  { key: "bancarizada_cuota", label: "Bancarizada Cuota", type: "number" as const },
   { key: "bancarizada_interest", label: "Bancarizada Interest %", type: "number" as const },
-  { key: "macro_total", label: "Macro Total", type: "number" as const },
-  { key: "macro_cuota", label: "Macro Cuota", type: "number" as const },
   { key: "macro_interest", label: "Macro Interest %", type: "number" as const },
   { key: "cuotas_qty", label: "Cuotas Qty", type: "number" as const },
-  { key: "in_stock", label: "In Stock", type: "boolean" as const },
   { key: "delivery_type", label: "Delivery Type", type: "text" as const },
   { key: "delivery_days", label: "Delivery Days", type: "number" as const },
   { key: "usd_rate", label: "USD Rate", type: "number" as const },
@@ -195,7 +185,7 @@ const EDITABLE_COLUMNS = [
 ];
 
 const QUICK_ADD_ADVANCED_COLUMNS = EDITABLE_COLUMNS.filter(
-  ({ key }) => !["product_name", "cost_usd", "image_url"].includes(key)
+  ({ key }) => !["product_name", "image_url"].includes(key)
 );
 
 const DEFAULT_VALUES: Partial<ProductInsert> = {
@@ -203,7 +193,7 @@ const DEFAULT_VALUES: Partial<ProductInsert> = {
   bancarizada_interest: 0.5,
   macro_interest: 0.35,
   cuotas_qty: 6,
-  in_stock: true,
+  in_stock: false,
   delivery_type: "immediate",
   delivery_days: 0,
   usd_rate: 1460,
@@ -234,11 +224,6 @@ function buildProductUpdatePayload(
       return;
     }
 
-    if (type === "boolean") {
-      update[key] = Boolean(value);
-      return;
-    }
-
     update[key] = parseOptionalText(value);
   });
 
@@ -246,14 +231,10 @@ function buildProductUpdatePayload(
   const category = parseOptionalText(update.category);
   const productName = parseOptionalText(update.product_name);
   const condition = parseOptionalText(update.condition);
-  const priceUsd = typeof update.price_usd === "number" ? update.price_usd : null;
-  const priceArs = typeof update.price_ars === "number" ? update.price_ars : null;
 
   if (!productKey) return { payload: null, error: "Product Key is required." };
   if (!category) return { payload: null, error: "Category is required." };
   if (!productName) return { payload: null, error: "Product Name is required." };
-  if (priceUsd == null) return { payload: null, error: "Price USD is required." };
-  if (priceArs == null) return { payload: null, error: "Price ARS is required." };
   if (!condition || !PRODUCT_CONDITION_SET.has(condition as (typeof PRODUCT_CONDITION_OPTIONS)[number]["value"])) {
     return { payload: null, error: "Condition must be New, Like New, Used, or Refurbished." };
   }
@@ -490,7 +471,7 @@ function buildQuickAddPreview(
       macro_cuota: roundArsAmount(macroTotal / cuotasQty),
       macro_interest: macroInterest,
       cuotas_qty: cuotasQty,
-      in_stock: Boolean(DEFAULT_VALUES.in_stock ?? true),
+      in_stock: Boolean(DEFAULT_VALUES.in_stock ?? false),
       delivery_type: String(DEFAULT_VALUES.delivery_type ?? "immediate"),
       delivery_days: Number(DEFAULT_VALUES.delivery_days ?? 0),
       usd_rate: usdRate,
@@ -519,11 +500,6 @@ function buildQuickAddInsertWithOverrides(
     if (type === "number") {
       const parsed = parseNumericValue(value);
       if (parsed !== null) resolved[key] = parsed;
-      return;
-    }
-
-    if (type === "boolean") {
-      resolved[key] = !!value;
       return;
     }
 
@@ -556,6 +532,42 @@ function ProductImageCell({ product }: { product: ProductDisplay }) {
       />
     </a>
   );
+}
+
+async function uploadProductImage(file: File, productKey: string): Promise<{ secureUrl?: string; error?: string }> {
+  const uploadFormData = new FormData();
+  uploadFormData.append("file", file);
+  uploadFormData.append("productKey", productKey);
+
+  const uploadResponse = await fetch("/api/cloudinary/upload", {
+    method: "POST",
+    body: uploadFormData,
+  });
+
+  const uploadResult = (await uploadResponse.json()) as { error?: string; secureUrl?: string };
+  if (!uploadResponse.ok || !uploadResult.secureUrl) {
+    return { error: uploadResult.error || "Error uploading image to Cloudinary." };
+  }
+
+  return { secureUrl: uploadResult.secureUrl };
+}
+
+async function deleteProductImage(imageUrl: string, productKey?: string): Promise<string | null> {
+  const response = await fetch("/api/cloudinary/delete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      imageUrl,
+      productKey,
+    }),
+  });
+
+  if (response.ok) return null;
+
+  const result = (await response.json()) as { error?: string };
+  return result.error || "Error deleting image from Cloudinary.";
 }
 
 function matchesProductSearch(product: ProductDisplay, query: string): boolean {
@@ -778,58 +790,48 @@ export function ProductsTable() {
     }
 
     try {
+      const nextProductKey = String(update.product_key ?? editProduct.product_key ?? "").trim();
+      if (nextProductKey !== editProduct.product_key) {
+        const { count, error: stockCountError } = await supabase
+          .from("stock_units")
+          .select("id", { count: "exact", head: true })
+          .eq("product_key", editProduct.product_key);
+
+        if (stockCountError) {
+          throw stockCountError;
+        }
+
+        if ((count ?? 0) > 0) {
+          alert("You can't change Product Key after stock units exist. Create a new product instead.");
+          return;
+        }
+      }
+
+      const previousImageUrl =
+        typeof editProduct.image_url === "string" && editProduct.image_url.trim()
+          ? editProduct.image_url.trim()
+          : null;
       let nextImageUrl =
         editImageMarkedForRemoval || editImageFile
           ? null
           : typeof formData.image_url === "string" && formData.image_url.trim()
             ? formData.image_url.trim()
             : null;
-
-      if (editImageMarkedForRemoval && editProduct.image_url) {
-        const deleteResponse = await fetch("/api/cloudinary/delete", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            imageUrl: editProduct.image_url,
-            productKey: editProduct.product_key,
-          }),
-        });
-
-        const deleteResult = (await deleteResponse.json()) as { error?: string };
-        if (!deleteResponse.ok) {
-          alert(deleteResult.error || "Error deleting image from Cloudinary.");
-          return;
-        }
-      }
+      let uploadedImageUrl: string | null = null;
 
       if (editImageFile) {
-        const productKey = String(update.product_key ?? editProduct.product_key ?? "").trim();
-        if (!productKey) {
+        if (!nextProductKey) {
           alert("Product Key is required to upload a replacement image.");
           return;
         }
 
-        const uploadFormData = new FormData();
-        uploadFormData.append("file", editImageFile);
-        uploadFormData.append("productKey", productKey);
-
-        const uploadResponse = await fetch("/api/cloudinary/upload", {
-          method: "POST",
-          body: uploadFormData,
-        });
-
-        const uploadResult = (await uploadResponse.json()) as {
-          error?: string;
-          secureUrl?: string;
-        };
-
-        if (!uploadResponse.ok || !uploadResult.secureUrl) {
+        const uploadResult = await uploadProductImage(editImageFile, nextProductKey);
+        if (!uploadResult.secureUrl) {
           alert(uploadResult.error || "Error uploading image to Cloudinary.");
           return;
         }
 
+        uploadedImageUrl = uploadResult.secureUrl;
         nextImageUrl = uploadResult.secureUrl;
       }
 
@@ -841,8 +843,21 @@ export function ProductsTable() {
         .eq("id", editProduct.id);
 
       if (error) {
+        if (uploadedImageUrl && uploadedImageUrl !== previousImageUrl) {
+          const cleanupError = await deleteProductImage(uploadedImageUrl, nextProductKey);
+          if (cleanupError) {
+            console.error("Failed to clean up uploaded product image after DB error:", cleanupError);
+          }
+        }
         alert(getProductErrorMessage(error, "updating"));
         return;
+      }
+
+      if ((editImageMarkedForRemoval || editImageFile) && previousImageUrl && previousImageUrl !== nextImageUrl) {
+        const deleteError = await deleteProductImage(previousImageUrl, editProduct.product_key);
+        if (deleteError) {
+          console.error("Failed to delete replaced product image:", deleteError);
+        }
       }
 
       setEditProduct(null);
@@ -876,18 +891,8 @@ export function ProductsTable() {
       let imageUrl: string | null = null;
 
       if (selectedImageFile) {
-        const uploadFormData = new FormData();
-        uploadFormData.append("file", selectedImageFile);
-        uploadFormData.append("productKey", insertPayload.product_key);
-
-        const uploadResponse = await fetch("/api/cloudinary/upload", {
-          method: "POST",
-          body: uploadFormData,
-        });
-
-        const uploadResult = (await uploadResponse.json()) as { error?: string; secureUrl?: string };
-
-        if (!uploadResponse.ok || !uploadResult.secureUrl) {
+        const uploadResult = await uploadProductImage(selectedImageFile, insertPayload.product_key);
+        if (!uploadResult.secureUrl) {
           alert(uploadResult.error || "Error uploading image to Cloudinary.");
           return;
         }
@@ -900,6 +905,12 @@ export function ProductsTable() {
         .insert({ ...insertPayload, image_url: imageUrl });
 
       if (error) {
+        if (imageUrl) {
+          const cleanupError = await deleteProductImage(imageUrl, insertPayload.product_key);
+          if (cleanupError) {
+            console.error("Failed to clean up uploaded product image after insert error:", cleanupError);
+          }
+        }
         alert(getProductErrorMessage(error, "adding"));
         return;
       }
@@ -1331,17 +1342,6 @@ export function ProductsTable() {
                         </div>
                       </div>
                     </div>
-                  ) : type === "boolean" ? (
-                    <div className="flex items-center gap-2 pt-2">
-                      <Checkbox
-                        id={key}
-                        checked={!!formData[key]}
-                        onCheckedChange={(c) => updateForm(key, !!c)}
-                      />
-                      <label htmlFor={key} className="text-sm">
-                        {formData[key] ? "Yes" : "No"}
-                      </label>
-                    </div>
                   ) : type === "text" && key === "delivery_type" ? (
                     <Select
                       value={String(formData[key] ?? "")}
@@ -1506,8 +1506,8 @@ export function ProductsTable() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="default">
-                      In stock: {resolvedQuickAddInsert?.in_stock ? "Yes" : "No"}
+                    <Badge variant="outline">
+                      Stock syncs from units
                     </Badge>
                     <Button
                       type="button"
@@ -1537,7 +1537,8 @@ export function ProductsTable() {
                         <p className="text-sm font-medium">Editable defaults</p>
                         <p className="text-xs text-muted-foreground">
                           Review the generated product data and change it here if this upload is not a
-                          brand-new item. Color and battery health now belong to Stock units.
+                          brand-new item. Pricing and in-stock values are synced from Stock, so only
+                          product-level inputs stay editable here.
                         </p>
                       </div>
                       <Button
@@ -1562,18 +1563,7 @@ export function ProductsTable() {
                         return (
                           <div key={key} className="space-y-2">
                             <Label htmlFor={`quick-add-${key}`}>{label}</Label>
-                            {type === "boolean" ? (
-                              <div className="flex items-center gap-2 pt-2">
-                                <Checkbox
-                                  id={`quick-add-${key}`}
-                                  checked={!!currentValue}
-                                  onCheckedChange={(checked) => updateForm(key, checked === true)}
-                                />
-                                <label htmlFor={`quick-add-${key}`} className="text-sm">
-                                  {currentValue ? "Yes" : "No"}
-                                </label>
-                              </div>
-                            ) : type === "text" && key === "delivery_type" ? (
+                            {type === "text" && key === "delivery_type" ? (
                               <Select
                                 value={String(currentValue ?? "immediate")}
                                 onValueChange={(value) => updateForm(key, value)}

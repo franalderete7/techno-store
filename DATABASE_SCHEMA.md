@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2026-03-08
+**Last updated:** 2026-03-09
 
 ## Overview
 
@@ -17,32 +17,36 @@ The live Supabase project is the schema source of truth.
 
 Recommended migration order for the lean CRM/inventory refactor:
 
-1. [source_of_truth_crm.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/source_of_truth_crm.sql)
-2. [expand_payment_method_vocab.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/expand_payment_method_vocab.sql)
-3. [normalize_inventory_schema.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/normalize_inventory_schema.sql)
-4. [customer_phone_area_hints.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/customer_phone_area_hints.sql)
+1. [stickers_and_customer_tags.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/stickers_and_customer_tags.sql)
+2. [seed_stickers_examples.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/seed_stickers_examples.sql)
+3. [v16_whatsapp_identity.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/v16_whatsapp_identity.sql)
+4. [crm_funnel_taxonomy.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/crm_funnel_taxonomy.sql)
 5. `npm run db:types:pull`
 6. deploy updated app + n8n workflow
-7. [retire_legacy_public_tables.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/retire_legacy_public_tables.sql)
-8. [drop_unused_stock_unit_legacy_columns.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/drop_unused_stock_unit_legacy_columns.sql)
 
-Step 6 now archives any leftover product-level `color` / `battery_health` into `archive.product_unit_metadata_legacy` before dropping those legacy columns, so the migration does not lose data when a product has no stock units yet.
+The repo no longer includes the older one-off migration files that were used during the earlier cleanup. The files above are the current checked-in Supabase SQL that matter for the WhatsApp-first CRM flow.
 
 ## Public Objects
 
 Current public tables:
 
 - `conversations`
+- `crm_funnel_stages`
+- `crm_tag_definitions`
 - `customers`
 - `products`
 - `purchases`
 - `stock_errors_log`
 - `stock_units`
+- `stickers`
 - `store_settings`
 
 Current public views:
 
+- `v_conversation_signal_daily`
 - `v_customer_context`
+- `v_customer_stage_reached`
+- `v_funnel_daily`
 - `v_product_catalog`
 - `v_recent_conversations`
 - `v_recent_purchases`
@@ -52,10 +56,13 @@ Current public views:
 ## Lean Model
 
 - `conversations`
+- `crm_funnel_stages`
+- `crm_tag_definitions`
 - `customers`
 - `products`
 - `purchases`
 - `stock_units`
+- `stickers`
 - `store_settings`
 
 ## Data Split
@@ -157,7 +164,7 @@ Product catalog with pricing, logistics, and delivery info. This is the **price 
 
 Physical inventory — 1 row = 1 phone unit identified by IMEI1. The Stock page AI scan can auto-fill the unit color when it is clearly visible in the uploaded images.
 
-Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sale_items` tables are retired, but some nullable reservation/sale tracking columns still remain on `stock_units`.
+Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sale_items` tables are retired and the old reservation/sale link columns were removed from `stock_units`.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -172,11 +179,6 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 | cost_currency | text | YES | 'USD' | ARS or USD |
 | date_received | date | YES | - | Date received into stock |
 | status | stock_status | NO | 'in_stock' | Current unit status |
-| reserved_for_phone | text | YES | - | Phone of person who reserved |
-| reserved_for_customer_id | integer | YES | - | Linked customer id when a unit is temporarily reserved |
-| reserved_until | timestamptz | YES | - | Reservation expiry |
-| reservation_id | integer | YES | - | Legacy reservation tracking id kept on the unit row |
-| sale_id | integer | YES | - | Legacy sale tracking id kept on the unit row |
 | date_sold | date | YES | - | Date sold |
 | price_sold | numeric(12, 2) | YES | - | Sale price in ARS |
 | notes | text | YES | - | Notes |
@@ -197,9 +199,7 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 - `idx_stock_units_product_key` on `product_key`
 - `idx_stock_units_status` on `status`
 - `idx_stock_units_purchase_id` on `purchase_id`
-- `idx_stock_units_sale_id` on `sale_id`
 - `idx_stock_units_date_sold` on `date_sold DESC`
-- `idx_stock_units_reserved_customer` on `reserved_for_customer_id`
 
 **Triggers:**
 - `trg_stock_units_updated` – updates `updated_at` on row update
@@ -240,6 +240,29 @@ Purchase orders from suppliers.
 
 **Triggers:**
 - `trg_purchases_updated` – updates `updated_at` on row update
+
+---
+
+### stickers
+
+WhatsApp sticker catalog used by v16. Sticker selection is driven by Supabase instead of ManyChat.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | serial | NO | - | Primary key |
+| sticker_key | text | NO | - | Unique stable key for workflow selection |
+| label | text | NO | - | Human label |
+| description | text | YES | - | What the sticker conveys |
+| media_id | text | YES | - | WhatsApp/Meta media id |
+| sticker_url | text | YES | - | Public sticker URL fallback |
+| enabled | boolean | NO | true | Whether the sticker can be used |
+| intents | text[] | NO | '{}' | Matching conversation intents |
+| funnel_stages | text[] | NO | '{}' | Allowed funnel stages |
+| required_tags | text[] | NO | '{}' | Tags that must already exist |
+| excluded_tags | text[] | NO | '{}' | Tags that block the sticker |
+| priority | integer | NO | 100 | Lower values win |
+| created_at | timestamptz | NO | now() | Created timestamp |
+| updated_at | timestamptz | NO | now() | Updated timestamp |
 
 ---
 

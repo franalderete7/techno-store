@@ -121,6 +121,33 @@ function sanitizeForFilename(s: string): string {
 
 const BUCKET = "stock-proof-images";
 
+function getStoragePathFromPublicUrl(url: string, bucket: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const marker = `/storage/v1/object/public/${bucket}/`;
+    const markerIndex = parsed.pathname.indexOf(marker);
+
+    if (markerIndex === -1) return null;
+
+    return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+  } catch {
+    return null;
+  }
+}
+
+async function removeStoredProofImages(urls: string[]) {
+  const paths = urls
+    .map((url) => getStoragePathFromPublicUrl(url, BUCKET))
+    .filter((path): path is string => Boolean(path));
+
+  if (paths.length === 0) return;
+
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  if (error) {
+    console.error("Failed to remove stock proof images:", error);
+  }
+}
+
 /* ─── main component ───────────────────────────────────────────────── */
 
 export function StockTable() {
@@ -364,10 +391,8 @@ export function StockTable() {
 
     setSaving(true);
     const status = formData.status || "in_stock";
-    const dateSold =
-      status === "sold"
-        ? formData.date_sold || editingUnit?.date_sold || todayIsoDate()
-        : formData.date_sold || null;
+    const isSold = status === "sold";
+    const dateSold = isSold ? formData.date_sold || editingUnit?.date_sold || todayIsoDate() : null;
     const purchaseId = parseOptionalText(formData.purchase_id);
     const record: StockUnitInsert = {
       imei1,
@@ -379,16 +404,21 @@ export function StockTable() {
       supplier_name: purchaseId ? null : parseOptionalText(formData.supplier_name),
       cost_unit: parseOptionalNumber(formData.cost_unit),
       cost_currency: parseOptionalText(formData.cost_currency) ?? "USD",
-      price_sold: parseOptionalNumber(formData.price_sold),
+      price_sold: isSold ? parseOptionalNumber(formData.price_sold) : null,
       date_received: parseOptionalText(formData.date_received),
       status: status as StockStatus,
       date_sold: parseOptionalText(dateSold),
       notes: parseOptionalText(formData.notes),
     };
 
+    let uploadedProofUrls: string[] = [];
+    const previousProofUrls = Array.isArray(editingUnit?.proof_image_urls)
+      ? [...editingUnit.proof_image_urls]
+      : [];
+
     try {
       // Upload proof images if user added any
-      let proofUrls: string[] = (editingUnit?.proof_image_urls as string[] | null) ?? [];
+      let proofUrls: string[] = previousProofUrls;
       if (scanImages.length > 0) {
         const productSlug = sanitizeForFilename(productKey);
         const urls: string[] = [];
@@ -401,6 +431,7 @@ export function StockTable() {
           const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
           urls.push(data.publicUrl);
         }
+        uploadedProofUrls = urls;
         proofUrls = urls;
       }
       record.proof_image_urls = proofUrls;
@@ -415,8 +446,15 @@ export function StockTable() {
       setDialogOpen(false);
       setEditingUnit(null);
       resetScan();
+      if (editingUnit && uploadedProofUrls.length > 0 && previousProofUrls.length > 0) {
+        const urlsToDelete = previousProofUrls.filter((url) => !uploadedProofUrls.includes(url));
+        await removeStoredProofImages(urlsToDelete);
+      }
       fetchAll();
     } catch (err: unknown) {
+      if (uploadedProofUrls.length > 0) {
+        await removeStoredProofImages(uploadedProofUrls);
+      }
       const msg = getErrorMessage(err, "Unexpected error saving stock item.");
       if (
         (msg.includes("Could not find the 'color' column") || msg.includes("schema cache")) &&
