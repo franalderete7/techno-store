@@ -1,5 +1,7 @@
 # ManyChat Fields And Tags
 
+Legacy reference only. The canonical CRM tag source of truth is now `public.customers.tags` in Supabase.
+
 This is the CRM taxonomy expected by `TechnoStore_v15_orchestrator.json`.
 
 ## Custom Fields
@@ -52,7 +54,6 @@ Use these values consistently in Supabase, n8n metadata, and ManyChat fields/tag
 
 The workflow now writes these operational tags:
 
-- `contacted`
 - `stage_new`
 - `stage_browsing`
 - `stage_interested`
@@ -71,9 +72,7 @@ The workflow now writes these operational tags:
 - `intent_shipping_inquiry`
 - `intent_complaint`
 - `intent_followup`
-- `intent_ambiguous`
 - `loc_salta_capital`
-- `loc_interior`
 - `phone_area_known`
 - `prov_salta`
 - `prov_jujuy`
@@ -116,12 +115,11 @@ The workflow now writes these operational tags:
 - `pay_cuotas`
 - `pay_tarjeta`
 - `behavior_audio_user`
-- `product_tracked`
-- `condition_seminuevo_interest`
+- `behavior_image_user`
 - `needs_human`
 
 ## Rule
 
-Supabase is the CRM source of truth. ManyChat fields and tags are a segmentation mirror, not the primary database.
+Supabase is the CRM source of truth. ManyChat custom fields are legacy mirror data only, and ManyChat tag sync is deprecated.
 
 The workflow emits `prov_*` tags from `phone_area_province` when that hint is available, so those tags should exist in ManyChat before production traffic uses the new phone-area enrichment.

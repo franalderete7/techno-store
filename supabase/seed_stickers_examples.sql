@@ -38,7 +38,7 @@ INSERT INTO public.stickers (
     false,
     ARRAY['stock_check', 'price_inquiry', 'followup'],
     ARRAY['browsing', 'interested'],
-    ARRAY['product_tracked'],
+    ARRAY['topic_imagenes'],
     ARRAY['intent_complaint', 'stage_human_handoff'],
     10
   ),

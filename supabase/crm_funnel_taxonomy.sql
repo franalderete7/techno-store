@@ -217,7 +217,6 @@ VALUES
   ('topic_comparacion', 'topic', 'Comparacion', 'Compara opciones.', '#f59e0b', 590),
   ('topic_trade_in', 'topic', 'Toma usado', 'Pregunta por entregar otro equipo o permuta.', '#6d28d9', 600),
   ('loc_salta_capital', 'location', 'Salta Capital', 'Ubicacion confirmada en Salta Capital.', '#ef4444', 700),
-  ('loc_interior', 'location', 'Interior', 'Ubicacion fuera de Salta Capital.', '#f97316', 710),
   ('phone_area_known', 'location', 'Indicativo Conocido', 'Se pudo inferir provincia o zona por telefono.', '#38bdf8', 720),
   ('prov_salta', 'location', 'Provincia Salta', 'Telefono asociado a la provincia de Salta.', '#dc2626', 730),
   ('prov_jujuy', 'location', 'Provincia Jujuy', 'Telefono asociado a Jujuy.', '#f59e0b', 731),
@@ -245,7 +244,6 @@ VALUES
   ('prov_tierra_del_fuego', 'location', 'Provincia Tierra del Fuego', 'Telefono asociado a Tierra del Fuego.', '#0f766e', 753),
   ('behavior_audio_user', 'behavior', 'Usuario Audio', 'El usuario envio una nota de voz.', '#a855f7', 800),
   ('behavior_image_user', 'behavior', 'Usuario Imagen', 'El usuario envio una imagen.', '#f472b6', 810),
-  ('product_tracked', 'behavior', 'Producto Trackeado', 'Hay al menos un producto concreto asociado a la charla.', '#f59e0b', 820),
   ('needs_human', 'lifecycle', 'Necesita Asesor', 'La charla requiere seguimiento humano.', '#ef4444', 900)
 ON CONFLICT (tag_key) DO UPDATE
 SET
@@ -256,6 +254,9 @@ SET
   sort_order = EXCLUDED.sort_order,
   active = true,
   updated_at = now();
+
+DELETE FROM public.crm_tag_definitions
+WHERE tag_key IN ('loc_interior', 'product_tracked', 'contacted', 'condition_seminuevo_interest');
 
 INSERT INTO public.store_settings (key, value, description)
 VALUES
