@@ -867,6 +867,7 @@ export type StoreSettingUpdate = Database["public"]["Tables"]["store_settings"][
 export type VConversationSignalDaily = Database["public"]["Views"]["v_conversation_signal_daily"]["Row"];
 export type VCustomerContext = Database["public"]["Views"]["v_customer_context"]["Row"];
 export type VCustomerStageReached = Database["public"]["Views"]["v_customer_stage_reached"]["Row"];
+export type VCustomerTimelineEvent = Database["public"]["Views"]["v_customer_timeline_events"]["Row"];
 export type VCustomerTimelineEvents = Database["public"]["Views"]["v_customer_timeline_events"]["Row"];
 export type VFunnelDaily = Database["public"]["Views"]["v_funnel_daily"]["Row"];
 export type VProductCatalog = Database["public"]["Views"]["v_product_catalog"]["Row"];
