@@ -144,6 +144,109 @@ type ConversationCard = {
   events: ConversationEvent[];
 };
 
+const formatSignalList = (items: string[], limit = 3) =>
+  uniqueStrings(items.map((item) => normalizeSignal(item)).filter(Boolean))
+    .slice(0, limit)
+    .join(", ");
+
+const quotePreview = (value: string | null | undefined, limit = 120) => {
+  const compact = compactPreview(value, limit);
+  if (!compact) return "";
+  return compact.length >= limit ? `${compact.slice(0, limit - 1).trim()}...` : compact;
+};
+
+const getResponseStats = (events: ConversationEvent[]) => {
+  const ordered = [...events].sort((a, b) => a.at.localeCompare(b.at));
+  let userTurns = 0;
+  let answeredTurns = 0;
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const event = ordered[index];
+    if (event.role !== "user") continue;
+    userTurns += 1;
+
+    let replied = false;
+    for (let cursor = index + 1; cursor < ordered.length; cursor += 1) {
+      const nextEvent = ordered[cursor];
+      if (nextEvent.role === "user") break;
+      if (nextEvent.role === "bot") {
+        replied = true;
+        break;
+      }
+    }
+
+    if (replied) answeredTurns += 1;
+  }
+
+  return {
+    userTurns,
+    answeredTurns,
+    pendingTurns: Math.max(userTurns - answeredTurns, 0),
+    lastRole: ordered[ordered.length - 1]?.role || "",
+  };
+};
+
+const describeResponseQuality = (events: ConversationEvent[]) => {
+  const { userTurns, answeredTurns, pendingTurns, lastRole } = getResponseStats(events);
+  if (userTurns === 0) return "Sin turnos claros del cliente";
+
+  const coverage = answeredTurns / userTurns;
+  if (pendingTurns === 0 && lastRole === "bot" && coverage >= 0.8) {
+    return `El bot respondió bien (${answeredTurns}/${userTurns} turnos)`;
+  }
+  if (coverage >= 0.6) {
+    return `La respuesta fue bastante completa (${answeredTurns}/${userTurns})`;
+  }
+  if (lastRole === "user") {
+    return `Quedaron mensajes sin responder (${pendingTurns})`;
+  }
+  return `La respuesta fue parcial (${answeredTurns}/${userTurns})`;
+};
+
+const buildDailySummary = (card: ConversationCard) => {
+  const orderedEvents = [...card.events].sort((a, b) => a.at.localeCompare(b.at));
+  const userEvents = orderedEvents.filter((event) => event.role === "user");
+  const botEvents = orderedEvents.filter((event) => event.role === "bot");
+  const firstUserMessage = quotePreview(userEvents[0]?.preview || userEvents[0]?.summary, 110);
+  const lastBotMessage = quotePreview(
+    botEvents[botEvents.length - 1]?.summary || botEvents[botEvents.length - 1]?.preview,
+    120
+  );
+  const products = formatSignalList(card.productsToday, 3);
+  const payments = formatSignalList(card.paymentsToday, 3);
+  const topics = formatSignalList(card.topicsToday, 4);
+  const brands = formatSignalList(card.brandsToday, 3);
+
+  const parts = [];
+  if (firstUserMessage) {
+    parts.push(`Arrancó con "${firstUserMessage}"`);
+  } else if (products) {
+    parts.push(`Consultó por ${products}`);
+  } else if (brands) {
+    parts.push(`Consultó por ${brands}`);
+  } else {
+    parts.push("Tuvo una charla corta sin pedido claro");
+  }
+
+  const signalParts = [];
+  if (products) signalParts.push(`productos ${products}`);
+  if (payments) signalParts.push(`pago ${payments}`);
+  if (topics) signalParts.push(`temas ${topics}`);
+  if (!products && brands) signalParts.push(`marcas ${brands}`);
+  if (signalParts.length > 0) {
+    parts.push(`En el día aparecieron ${signalParts.join(" · ")}`);
+  }
+
+  parts.push(describeResponseQuality(orderedEvents));
+  parts.push(`Terminó en ${card.finalStageLabel.toLowerCase()} con score ${card.leadScore}`);
+
+  if (lastBotMessage) {
+    parts.push(`Última respuesta: "${lastBotMessage}"`);
+  }
+
+  return parts.join(". ").slice(0, 420);
+};
+
 function EventBubble({ event }: { event: ConversationEvent }) {
   const isUser = event.role === "user";
   const signalCount =
@@ -422,16 +525,11 @@ export function CrmDashboard() {
     return Array.from(grouped.values())
       .map((card) => {
         const orderedEvents = [...card.events].sort((a, b) => a.at.localeCompare(b.at));
-        const dailySummary = uniqueStrings(
-          orderedEvents.map((event) => event.summary).filter(Boolean)
-        )
-          .slice(-2)
-          .join(" · ");
 
         return {
           ...card,
           events: orderedEvents,
-          dailySummary,
+          dailySummary: buildDailySummary({ ...card, events: orderedEvents }),
           insightHighlights: uniqueStrings(
             orderedEvents.flatMap((event) => event.insights)
           ).slice(0, 8),
