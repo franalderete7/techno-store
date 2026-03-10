@@ -684,6 +684,26 @@ export interface Database {
         };
         Relationships: [];
       };
+      "v_customer_timeline_events": {
+        Row: {
+          "customer_id": number | null;
+          "customer_label": string | null;
+          "customer_phone": string | null;
+          "activity_date": string | null;
+          "event_at": string | null;
+          "event_type": string | null;
+          "stage_key": string | null;
+          "stage_label": string | null;
+          "stage_sort_order": number | null;
+          "tag_key": string | null;
+          "tag_group": string | null;
+          "tag_label": string | null;
+          "conversation_id": number | null;
+          "conversation_role": string | null;
+          "message_preview": string | null;
+        };
+        Relationships: [];
+      };
       "v_funnel_daily": {
         Row: {
           "activity_date": string | null;
@@ -847,6 +867,7 @@ export type StoreSettingUpdate = Database["public"]["Tables"]["store_settings"][
 export type VConversationSignalDaily = Database["public"]["Views"]["v_conversation_signal_daily"]["Row"];
 export type VCustomerContext = Database["public"]["Views"]["v_customer_context"]["Row"];
 export type VCustomerStageReached = Database["public"]["Views"]["v_customer_stage_reached"]["Row"];
+export type VCustomerTimelineEvents = Database["public"]["Views"]["v_customer_timeline_events"]["Row"];
 export type VFunnelDaily = Database["public"]["Views"]["v_funnel_daily"]["Row"];
 export type VProductCatalog = Database["public"]["Views"]["v_product_catalog"]["Row"];
 export type VRecentConversations = Database["public"]["Views"]["v_recent_conversations"]["Row"];

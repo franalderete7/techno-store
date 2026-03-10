@@ -375,59 +375,129 @@ JOIN public.crm_funnel_stages s
   ON s.stage_key = v.funnel_stage
 GROUP BY 1, 2, 3, 4, 5;
 
+CREATE OR REPLACE VIEW public.v_customer_timeline_events AS
+SELECT
+  c.id AS customer_id,
+  COALESCE(
+    NULLIF(trim(concat_ws(' ', c.first_name, c.last_name)), ''),
+    NULLIF(trim(c.whatsapp_phone), ''),
+    NULLIF(trim(c.phone), ''),
+    NULLIF(trim(c.manychat_id), ''),
+    'Cliente #' || c.id::text
+  ) AS customer_label,
+  COALESCE(
+    NULLIF(trim(c.whatsapp_phone), ''),
+    NULLIF(trim(c.phone), ''),
+    NULLIF(trim(c.manychat_id), '')
+  ) AS customer_phone,
+  date(v.reached_at) AS activity_date,
+  v.reached_at AS event_at,
+  'stage'::text AS event_type,
+  v.funnel_stage AS stage_key,
+  s.label AS stage_label,
+  s.sort_order AS stage_sort_order,
+  NULL::text AS tag_key,
+  NULL::text AS tag_group,
+  NULL::text AS tag_label,
+  NULL::integer AS conversation_id,
+  NULL::text AS conversation_role,
+  NULL::text AS message_preview
+FROM public.customers c
+JOIN public.v_customer_stage_reached v
+  ON v.customer_id = c.id
+LEFT JOIN public.crm_funnel_stages s
+  ON s.stage_key = v.funnel_stage
+WHERE v.reached_at IS NOT NULL
+UNION ALL
+SELECT
+  c.id AS customer_id,
+  COALESCE(
+    NULLIF(trim(concat_ws(' ', c.first_name, c.last_name)), ''),
+    NULLIF(trim(c.whatsapp_phone), ''),
+    NULLIF(trim(c.phone), ''),
+    NULLIF(trim(c.manychat_id), ''),
+    'Cliente #' || c.id::text
+  ) AS customer_label,
+  COALESCE(
+    NULLIF(trim(c.whatsapp_phone), ''),
+    NULLIF(trim(c.phone), ''),
+    NULLIF(trim(c.manychat_id), '')
+  ) AS customer_phone,
+  date(conv.created_at) AS activity_date,
+  conv.created_at AS event_at,
+  'tag'::text AS event_type,
+  COALESCE(conv.funnel_stage_after, c.funnel_stage) AS stage_key,
+  stage_def.label AS stage_label,
+  stage_def.sort_order AS stage_sort_order,
+  applied_tag.tag_key,
+  tag_def.tag_group,
+  COALESCE(tag_def.label, applied_tag.tag_key) AS tag_label,
+  conv.id AS conversation_id,
+  conv.role AS conversation_role,
+  left(regexp_replace(COALESCE(conv.message, ''), '\s+', ' ', 'g'), 160) AS message_preview
+FROM public.conversations conv
+JOIN public.customers c
+  ON c.id = conv.customer_id
+CROSS JOIN LATERAL unnest(COALESCE(conv.applied_tags, '{}'::text[])) AS applied_tag(tag_key)
+LEFT JOIN public.crm_tag_definitions tag_def
+  ON tag_def.tag_key = applied_tag.tag_key
+LEFT JOIN public.crm_funnel_stages stage_def
+  ON stage_def.stage_key = COALESCE(conv.funnel_stage_after, c.funnel_stage)
+WHERE conv.created_at IS NOT NULL;
+
 CREATE OR REPLACE VIEW public.v_conversation_signal_daily AS
 SELECT
   date(c.created_at) AS activity_date,
   'tag'::text AS signal_type,
-  tag_key AS signal_key,
+  applied_tag.tag_key AS signal_key,
   count(*) AS mentions,
   count(DISTINCT COALESCE(c.customer_id, -c.id)) AS unique_customers
 FROM public.conversations c
-CROSS JOIN LATERAL unnest(COALESCE(c.applied_tags, '{}'::text[])) tag_key
+CROSS JOIN LATERAL unnest(COALESCE(c.applied_tags, '{}'::text[])) AS applied_tag(tag_key)
 WHERE c.created_at IS NOT NULL
 GROUP BY 1, 2, 3
 UNION ALL
 SELECT
   date(c.created_at) AS activity_date,
   'payment'::text AS signal_type,
-  payment_key AS signal_key,
+  payment_tag.payment_key AS signal_key,
   count(*) AS mentions,
   count(DISTINCT COALESCE(c.customer_id, -c.id)) AS unique_customers
 FROM public.conversations c
-CROSS JOIN LATERAL unnest(COALESCE(c.payment_methods_detected, '{}'::text[])) payment_key
+CROSS JOIN LATERAL unnest(COALESCE(c.payment_methods_detected, '{}'::text[])) AS payment_tag(payment_key)
 WHERE c.created_at IS NOT NULL
 GROUP BY 1, 2, 3
 UNION ALL
 SELECT
   date(c.created_at) AS activity_date,
   'brand'::text AS signal_type,
-  brand_key AS signal_key,
+  brand_tag.brand_key AS signal_key,
   count(*) AS mentions,
   count(DISTINCT COALESCE(c.customer_id, -c.id)) AS unique_customers
 FROM public.conversations c
-CROSS JOIN LATERAL unnest(COALESCE(c.brands_detected, '{}'::text[])) brand_key
+CROSS JOIN LATERAL unnest(COALESCE(c.brands_detected, '{}'::text[])) AS brand_tag(brand_key)
 WHERE c.created_at IS NOT NULL
 GROUP BY 1, 2, 3
 UNION ALL
 SELECT
   date(c.created_at) AS activity_date,
   'topic'::text AS signal_type,
-  topic_key AS signal_key,
+  topic_tag.topic_key AS signal_key,
   count(*) AS mentions,
   count(DISTINCT COALESCE(c.customer_id, -c.id)) AS unique_customers
 FROM public.conversations c
-CROSS JOIN LATERAL unnest(COALESCE(c.topics_detected, '{}'::text[])) topic_key
+CROSS JOIN LATERAL unnest(COALESCE(c.topics_detected, '{}'::text[])) AS topic_tag(topic_key)
 WHERE c.created_at IS NOT NULL
 GROUP BY 1, 2, 3
 UNION ALL
 SELECT
   date(c.created_at) AS activity_date,
   'product'::text AS signal_type,
-  product_key AS signal_key,
+  product_tag.product_key AS signal_key,
   count(*) AS mentions,
   count(DISTINCT COALESCE(c.customer_id, -c.id)) AS unique_customers
 FROM public.conversations c
-CROSS JOIN LATERAL unnest(COALESCE(c.products_mentioned, '{}'::text[])) product_key
+CROSS JOIN LATERAL unnest(COALESCE(c.products_mentioned, '{}'::text[])) AS product_tag(product_key)
 WHERE c.created_at IS NOT NULL
 GROUP BY 1, 2, 3;
 

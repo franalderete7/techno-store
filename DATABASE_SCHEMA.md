@@ -45,6 +45,7 @@ Current public views:
 
 - `v_conversation_signal_daily`
 - `v_customer_context`
+- `v_customer_timeline_events`
 - `v_customer_stage_reached`
 - `v_funnel_daily`
 - `v_product_catalog`
