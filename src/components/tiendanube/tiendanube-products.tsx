@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -401,16 +402,18 @@ export function TiendaNubeProducts() {
       )}
 
       <Dialog open={Boolean(selectedProduct)} onOpenChange={(open) => !open && setSelectedProduct(null)}>
-        <DialogContent className="max-h-[90vh] max-w-[min(96vw,1200px)] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedProduct?.name || "Tienda Nube product"}
-            </DialogTitle>
+        <DialogContent className="grid h-[92vh] max-h-[92vh] max-w-[min(96vw,1320px)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b bg-background px-6 py-5 text-left">
+            <DialogTitle>{selectedProduct?.name || "Tienda Nube product"}</DialogTitle>
+            <DialogDescription>
+              Full product inspector with raw Tienda Nube payload. Null values stay visible here.
+            </DialogDescription>
           </DialogHeader>
 
           {selectedProduct ? (
-            <div className="grid gap-4 overflow-y-auto pr-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-              <div className="space-y-4">
+            <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                <div className="space-y-4">
                 <section className="rounded-2xl border bg-background/70 p-4">
                   <p className="text-sm font-medium text-foreground">Summary</p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -441,12 +444,13 @@ export function TiendaNubeProducts() {
 
                 <JsonBlock title="Variants" value={selectedProduct.raw.variants ?? null} />
                 <JsonBlock title="Images" value={selectedProduct.raw.images ?? null} />
-              </div>
+                </div>
 
-              <div className="space-y-4">
-                <JsonBlock title="Attributes" value={selectedProduct.raw.attributes ?? null} />
-                <JsonBlock title="Categories" value={selectedProduct.raw.categories ?? null} />
-                <JsonBlock title="Raw API payload" value={selectedProduct.raw} />
+                <div className="space-y-4">
+                  <JsonBlock title="Attributes" value={selectedProduct.raw.attributes ?? null} />
+                  <JsonBlock title="Categories" value={selectedProduct.raw.categories ?? null} />
+                  <JsonBlock title="Raw API payload" value={selectedProduct.raw} />
+                </div>
               </div>
             </div>
           ) : null}
