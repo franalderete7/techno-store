@@ -40,6 +40,9 @@ export interface Database {
           "brands_detected": string[];
           "topics_detected": string[];
           "funnel_stage_after": string | null;
+          "conversation_summary": string | null;
+          "conversation_insights": string[];
+          "lead_score_after": number | null;
         };
         Insert: {
           "id"?: number | null;
@@ -62,6 +65,9 @@ export interface Database {
           "brands_detected": string[];
           "topics_detected": string[];
           "funnel_stage_after"?: string | null;
+          "conversation_summary"?: string | null;
+          "conversation_insights"?: string[] | null;
+          "lead_score_after"?: number | null;
         };
         Update: {
           "id"?: number | null;
@@ -84,6 +90,9 @@ export interface Database {
           "brands_detected"?: string[] | null;
           "topics_detected"?: string[] | null;
           "funnel_stage_after"?: string | null;
+          "conversation_summary"?: string | null;
+          "conversation_insights"?: string[] | null;
+          "lead_score_after"?: number | null;
         };
         Relationships: [];
       };

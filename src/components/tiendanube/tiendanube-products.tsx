@@ -128,9 +128,11 @@ function MetricCard({
 
 function DetailRow({ label, value }: { label: string; value: unknown }) {
   return (
-    <div className="rounded-xl border bg-background/70 p-3">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm text-foreground break-words whitespace-pre-wrap">
+    <div className="rounded-xl border bg-background/80 p-3 shadow-sm">
+      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-2 break-words whitespace-pre-wrap text-sm text-foreground">
         {stringifyValue(value)}
       </p>
     </div>
@@ -139,11 +141,18 @@ function DetailRow({ label, value }: { label: string; value: unknown }) {
 
 function JsonBlock({ title, value }: { title: string; value: unknown }) {
   return (
-    <section className="rounded-2xl border bg-background/70 p-4">
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      <pre className="mt-3 overflow-x-auto rounded-xl bg-muted/50 p-3 text-xs leading-5 text-foreground">
-        {stringifyValue(value)}
-      </pre>
+    <section className="overflow-hidden rounded-2xl border bg-background/80 shadow-sm">
+      <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <span className="rounded-full border bg-background/90 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          JSON
+        </span>
+      </div>
+      <div className="max-h-[440px] overflow-auto bg-slate-950/95 px-4 py-4">
+        <pre className="min-w-full text-xs leading-6 text-slate-100">
+          {stringifyValue(value)}
+        </pre>
+      </div>
     </section>
   );
 }
@@ -473,7 +482,7 @@ export function TiendaNubeProducts() {
       )}
 
       <Dialog open={Boolean(selectedProduct)} onOpenChange={(open) => !open && setSelectedProduct(null)}>
-        <DialogContent className="grid h-[92vh] max-h-[92vh] max-w-[min(96vw,1320px)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+        <DialogContent className="grid h-[94vh] max-h-[94vh] max-w-[min(98vw,1680px)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
           <DialogHeader className="border-b bg-background px-6 py-5 text-left">
             <DialogTitle>{selectedProduct?.name || "Tienda Nube product"}</DialogTitle>
             <DialogDescription>
@@ -482,39 +491,55 @@ export function TiendaNubeProducts() {
           </DialogHeader>
 
           {selectedProduct ? (
-            <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-6">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <div className="min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.08),transparent_24%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.08),transparent_22%)] px-4 py-4 sm:px-6">
+              <div className="mb-4 flex flex-wrap gap-2">
+                <Badge variant={selectedProduct.published ? "default" : "secondary"}>
+                  {selectedProduct.published ? "Published" : "Draft"}
+                </Badge>
+                {selectedProduct.brand ? <Badge variant="outline">{selectedProduct.brand}</Badge> : null}
+                <Badge variant="outline">ID {selectedProduct.id}</Badge>
+                <Badge variant="outline">{selectedProduct.variant_count} variants</Badge>
+                <Badge variant="outline">{selectedProduct.image_count} images</Badge>
+                {selectedProduct.has_untracked_stock ? (
+                  <Badge variant="secondary">Untracked stock</Badge>
+                ) : null}
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(460px,0.82fr)_minmax(0,1.18fr)]">
                 <div className="space-y-4">
-                <section className="rounded-2xl border bg-background/70 p-4">
-                  <p className="text-sm font-medium text-foreground">Summary</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <DetailRow label="ID" value={selectedProduct.id} />
-                    <DetailRow label="Handle" value={selectedProduct.handle || null} />
-                    <DetailRow label="Brand" value={selectedProduct.brand} />
-                    <DetailRow label="Published" value={selectedProduct.published} />
-                    <DetailRow label="Free shipping" value={selectedProduct.free_shipping} />
-                    <DetailRow label="Requires shipping" value={selectedProduct.requires_shipping} />
-                    <DetailRow label="Has stock" value={selectedProduct.has_stock} />
-                    <DetailRow label="Tracked stock total" value={selectedProduct.stock_total} />
-                    <DetailRow label="Description" value={selectedProduct.description_text || null} />
-                    <DetailRow label="Tags" value={selectedProduct.tags} />
-                    <DetailRow label="Canonical URL" value={selectedProduct.canonical_url} />
-                    <DetailRow label="Video URL" value={selectedProduct.video_url} />
-                    <DetailRow label="Created at" value={selectedProduct.created_at} />
-                    <DetailRow label="Updated at" value={selectedProduct.updated_at} />
-                  </div>
-                </section>
+                  <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
+                    <p className="text-sm font-medium text-foreground">Summary</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <DetailRow label="ID" value={selectedProduct.id} />
+                      <DetailRow label="Handle" value={selectedProduct.handle || null} />
+                      <DetailRow label="Brand" value={selectedProduct.brand} />
+                      <DetailRow label="Published" value={selectedProduct.published} />
+                      <DetailRow label="Free shipping" value={selectedProduct.free_shipping} />
+                      <DetailRow label="Requires shipping" value={selectedProduct.requires_shipping} />
+                      <DetailRow label="Has stock" value={selectedProduct.has_stock} />
+                      <DetailRow label="Tracked stock total" value={selectedProduct.stock_total} />
+                      <DetailRow label="Description" value={selectedProduct.description_text || null} />
+                      <DetailRow label="Tags" value={selectedProduct.tags} />
+                      <DetailRow label="Canonical URL" value={selectedProduct.canonical_url} />
+                      <DetailRow label="Video URL" value={selectedProduct.video_url} />
+                      <DetailRow label="Created at" value={selectedProduct.created_at} />
+                      <DetailRow label="Updated at" value={selectedProduct.updated_at} />
+                    </div>
+                  </section>
 
-                <JsonBlock title="Localized / SEO fields" value={{
-                  name: selectedProduct.raw.name ?? null,
-                  description: selectedProduct.raw.description ?? null,
-                  handle: selectedProduct.raw.handle ?? null,
-                  seo_title: selectedProduct.raw.seo_title ?? null,
-                  seo_description: selectedProduct.raw.seo_description ?? null,
-                }} />
+                  <JsonBlock
+                    title="Localized / SEO fields"
+                    value={{
+                      name: selectedProduct.raw.name ?? null,
+                      description: selectedProduct.raw.description ?? null,
+                      handle: selectedProduct.raw.handle ?? null,
+                      seo_title: selectedProduct.raw.seo_title ?? null,
+                      seo_description: selectedProduct.raw.seo_description ?? null,
+                    }}
+                  />
 
-                <JsonBlock title="Variants" value={selectedProduct.raw.variants ?? null} />
-                <JsonBlock title="Images" value={selectedProduct.raw.images ?? null} />
+                  <JsonBlock title="Variants" value={selectedProduct.raw.variants ?? null} />
+                  <JsonBlock title="Images" value={selectedProduct.raw.images ?? null} />
                 </div>
 
                 <div className="space-y-4">

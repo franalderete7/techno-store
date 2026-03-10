@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2026-03-09
+**Last updated:** 2026-03-10
 
 ## Overview
 
@@ -21,8 +21,9 @@ Recommended migration order for the lean CRM/inventory refactor:
 2. [seed_stickers_examples.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/seed_stickers_examples.sql)
 3. [v16_whatsapp_identity.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/v16_whatsapp_identity.sql)
 4. [crm_funnel_taxonomy.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/crm_funnel_taxonomy.sql)
-5. `npm run db:types:pull`
-6. deploy updated app + n8n workflow
+5. [conversation_timeline_insights.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/conversation_timeline_insights.sql)
+6. `npm run db:types:pull`
+7. deploy updated app + n8n workflow
 
 The repo no longer includes the older one-off migration files that were used during the earlier cleanup. The files above are the current checked-in Supabase SQL that matter for the WhatsApp-first CRM flow.
 
@@ -97,6 +98,20 @@ Keep per-physical-unit facts in `stock_units`:
 - `price_sold`
 - `proof_image_urls`
 - `notes`
+
+Keep per-turn CRM analytics in `conversations`:
+
+- raw `message` / `audio_transcription`
+- `intent_detected`
+- `products_mentioned`
+- `applied_tags`
+- `payment_methods_detected`
+- `brands_detected`
+- `topics_detected`
+- `funnel_stage_after`
+- `conversation_summary`
+- `conversation_insights`
+- `lead_score_after`
 
 ## Enums
 
