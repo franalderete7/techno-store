@@ -1,8 +1,11 @@
+import { createHash } from "crypto";
+import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import type { Database, Product } from "@/types/database";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -11,6 +14,9 @@ type TiendaNubeLocalized = Record<string, string | null | undefined> | string | 
 type TiendaNubeImage = {
   id?: number | string | null;
   src?: string | null;
+  position?: number | null;
+  width?: number | string | null;
+  height?: number | string | null;
   alt?: JsonValue;
 } & Record<string, JsonValue>;
 
@@ -89,6 +95,17 @@ type TiendaNubeProductRow = {
   tags: string | null;
   created_at: string | null;
   updated_at: string | null;
+  primary_image_dimensions: string | null;
+  mixed_image_sizes: boolean;
+  image_audit: Array<{
+    id: string | null;
+    src: string | null;
+    position: number | null;
+    width: number | null;
+    height: number | null;
+    aspect_ratio: number | null;
+    dimensions_label: string | null;
+  }>;
   raw: TiendaNubeProductApi;
 };
 
@@ -146,8 +163,9 @@ type LocalProductPushRow = Pick<
 >;
 
 type PostRequestBody = {
-  action?: "pull_remote_into_local" | "push_local_to_remote";
+  action?: "pull_remote_into_local" | "push_local_to_remote" | "normalize_remote_images";
   product_ids?: number[];
+  remote_product_ids?: Array<string | number>;
 };
 
 class TiendaNubeRequestError extends Error {
@@ -164,6 +182,11 @@ const API_BASE_URL = process.env.TIENDANUBE_API_BASE_URL || "https://api.tiendan
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
 const DEFAULT_USER_AGENT = "TechnoStore Admin (admin@technostore.local)";
+const DEFAULT_IMAGE_TARGET = {
+  width: 1600,
+  height: 1600,
+  background: "#ffffff",
+};
 
 const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   logisticsUsd: 10,
@@ -200,6 +223,12 @@ function parseStock(value: string | number | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseDimension(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function roundUsdAmount(value: number): number {
   return Number(value.toFixed(2));
 }
@@ -221,6 +250,15 @@ function slugifyValue(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .replace(/-+/g, "-");
+}
+
+function buildSignature(params: Record<string, string>, apiSecret: string): string {
+  const paramsToSign = Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+
+  return createHash("sha1").update(`${paramsToSign}${apiSecret}`).digest("hex");
 }
 
 function canonicalizeProductKey(value: string): string {
@@ -271,7 +309,7 @@ async function requestTiendaNubeJson<T>(
     accessToken,
     userAgent,
   }: {
-    method?: "GET" | "POST" | "PUT";
+    method?: "GET" | "POST" | "PUT" | "DELETE";
     body?: JsonValue;
     storeId: string;
     accessToken: string;
@@ -294,7 +332,12 @@ async function requestTiendaNubeJson<T>(
     );
   }
 
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  const text = await response.text();
+  return (text ? (JSON.parse(text) as T) : ({} as T));
 }
 
 function inferCategoryFromName(name: string): string {
@@ -334,6 +377,28 @@ function normalizeProduct(product: TiendaNubeProductApi): TiendaNubeProductRow {
   const skuList = variants
     .map((variant) => String(variant.sku || "").trim())
     .filter(Boolean);
+  const imageAudit = images.map((image) => {
+    const width = parseDimension(image?.width);
+    const height = parseDimension(image?.height);
+    const aspectRatio =
+      width && height ? Number((width / height).toFixed(3)) : null;
+
+    return {
+      id: image?.id ? String(image.id) : null,
+      src: typeof image?.src === "string" ? image.src : null,
+      position:
+        typeof image?.position === "number"
+          ? image.position
+          : parseDimension(image?.position),
+      width,
+      height,
+      aspect_ratio: aspectRatio,
+      dimensions_label: width && height ? `${width}x${height}` : null,
+    };
+  });
+  const distinctDimensions = new Set(
+    imageAudit.map((image) => image.dimensions_label).filter(Boolean)
+  );
 
   return {
     id: String(product.id ?? ""),
@@ -362,6 +427,9 @@ function normalizeProduct(product: TiendaNubeProductApi): TiendaNubeProductRow {
     tags: product.tags || null,
     created_at: product.created_at || null,
     updated_at: product.updated_at || null,
+    primary_image_dimensions: imageAudit[0]?.dimensions_label || null,
+    mixed_image_sizes: distinctDimensions.size > 1,
+    image_audit: imageAudit,
     raw: product,
   };
 }
@@ -440,6 +508,21 @@ function getRequiredEnv() {
   return { storeId, accessToken, userAgent } as const;
 }
 
+function getCloudinaryEnv() {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  const assetFolder = process.env.CLOUDINARY_ASSET_FOLDER || "assets";
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    throw new Error(
+      "Missing Cloudinary environment variables. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET before normalizing Tienda Nube images."
+    );
+  }
+
+  return { cloudName, apiKey, apiSecret, assetFolder };
+}
+
 function buildAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -514,6 +597,43 @@ async function loadPricingSettings(
       DEFAULT_PRICING_SETTINGS.macroInterest
     ),
     tiendanubePriceCurrency: currencyRaw === "ARS" ? "ARS" : "USD",
+  };
+}
+
+async function loadImageNormalizationSettings(
+  admin: ReturnType<typeof buildAdminClient>
+): Promise<{ width: number; height: number; background: string }> {
+  const { data, error } = await admin
+    .from("store_settings")
+    .select("key,value")
+    .in("key", [
+      "tiendanube_image_target_width",
+      "tiendanube_image_target_height",
+      "tiendanube_image_background",
+    ]);
+
+  if (error) throw error;
+
+  const map = new Map<string, string>();
+  for (const row of data || []) {
+    map.set(row.key, row.value);
+  }
+
+  const parseSettingNumber = (key: string, fallback: number) => {
+    const raw = map.get(key);
+    if (!raw) return fallback;
+    const parsed = Number(String(raw).replace(",", "."));
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
+  };
+
+  const background = String(
+    map.get("tiendanube_image_background") || DEFAULT_IMAGE_TARGET.background
+  ).trim();
+
+  return {
+    width: parseSettingNumber("tiendanube_image_target_width", DEFAULT_IMAGE_TARGET.width),
+    height: parseSettingNumber("tiendanube_image_target_height", DEFAULT_IMAGE_TARGET.height),
+    background: background || DEFAULT_IMAGE_TARGET.background,
   };
 }
 
@@ -622,6 +742,117 @@ function buildTiendaNubeColumns(product: TiendaNubeProductRow, linkedProductKey?
     tiendanube_synced_at: new Date().toISOString(),
     tiendanube_sync_status: "linked",
     tiendanube_sync_error: null,
+  };
+}
+
+async function refreshLocalMetadataFromRemoteProduct(
+  admin: ReturnType<typeof buildAdminClient>,
+  product: TiendaNubeProductRow
+) {
+  await admin
+    .from("products")
+    .update({
+      ...buildTiendaNubeColumns(product),
+      tiendanube_sync_status: "linked",
+      tiendanube_sync_error: null,
+    })
+    .eq("tiendanube_product_id", product.id);
+}
+
+async function uploadBufferToCloudinary(
+  buffer: Buffer,
+  publicId: string,
+  folder: string
+): Promise<{ secureUrl: string; publicId: string }> {
+  const { cloudName, apiKey, apiSecret } = getCloudinaryEnv();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = buildSignature(
+    {
+      folder,
+      overwrite: "true",
+      public_id: publicId,
+      timestamp,
+    },
+    apiSecret
+  );
+
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob([new Uint8Array(buffer)], { type: "image/jpeg" }),
+    `${publicId}.jpg`
+  );
+  formData.append("api_key", apiKey);
+  formData.append("timestamp", timestamp);
+  formData.append("signature", signature);
+  formData.append("folder", folder);
+  formData.append("public_id", publicId);
+  formData.append("overwrite", "true");
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const result = (await response.json()) as {
+    error?: { message?: string };
+    public_id?: string;
+    secure_url?: string;
+  };
+
+  if (!response.ok || !result.secure_url || !result.public_id) {
+    throw new Error(result.error?.message || "Cloudinary rejected the normalized image upload.");
+  }
+
+  return { secureUrl: result.secure_url, publicId: result.public_id };
+}
+
+async function buildNormalizedImageUrl(
+  imageUrl: string,
+  {
+    productId,
+    imagePosition,
+    imageWidth,
+    imageHeight,
+    targetWidth,
+    targetHeight,
+    background,
+  }: {
+    productId: string;
+    imagePosition: number;
+    imageWidth: number | null;
+    imageHeight: number | null;
+    targetWidth: number;
+    targetHeight: number;
+    background: string;
+  }
+) {
+  const response = await fetch(imageUrl, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Could not download source image (${response.status}).`);
+  }
+
+  const inputBuffer = Buffer.from(await response.arrayBuffer());
+  const normalizedBuffer = await sharp(inputBuffer)
+    .rotate()
+    .trim()
+    .resize(targetWidth, targetHeight, {
+      fit: "contain",
+      background,
+      withoutEnlargement: false,
+    })
+    .flatten({ background })
+    .jpeg({ quality: 92, mozjpeg: true })
+    .toBuffer();
+
+  const cloudinaryFolder = `${getCloudinaryEnv().assetFolder}/tiendanube-normalized`;
+  const publicId = `tn-${productId}-${String(imagePosition).padStart(2, "0")}-${targetWidth}x${targetHeight}`;
+  const uploaded = await uploadBufferToCloudinary(normalizedBuffer, publicId, cloudinaryFolder);
+
+  return {
+    secureUrl: uploaded.secureUrl,
+    publicId: uploaded.publicId,
+    sourceWidth: imageWidth,
+    sourceHeight: imageHeight,
   };
 }
 
@@ -1022,6 +1253,111 @@ async function pushLocalProductsToTiendaNube(
   };
 }
 
+async function normalizeRemoteImages(
+  remoteProductIds: Array<string | number> | undefined,
+  {
+    storeId,
+    accessToken,
+    userAgent,
+  }: {
+    storeId: string;
+    accessToken: string;
+    userAgent: string;
+  }
+) {
+  const admin = buildAdminClient();
+  const imageSettings = await loadImageNormalizationSettings(admin);
+  const allProducts = await fetchAllProducts(storeId, accessToken, userAgent);
+  const requestedIds = new Set(
+    (remoteProductIds || []).map((value) => String(value || "").trim()).filter(Boolean)
+  );
+  const products =
+    requestedIds.size > 0
+      ? allProducts.filter((product) => requestedIds.has(product.id))
+      : allProducts;
+
+  let normalizedProducts = 0;
+  let normalizedImages = 0;
+  let skipped = 0;
+  const errors: Array<{ product: string; message: string }> = [];
+
+  for (const product of products) {
+    try {
+      const images = Array.isArray(product.raw.images) ? product.raw.images : [];
+
+      if (!images.length) {
+        skipped += 1;
+        continue;
+      }
+
+      const originalImageIds = images
+        .map((image) => (image?.id ? String(image.id).trim() : ""))
+        .filter(Boolean);
+
+      for (let index = 0; index < images.length; index += 1) {
+        const image = images[index];
+        const src = typeof image?.src === "string" ? image.src.trim() : "";
+        if (!src) continue;
+
+        const normalized = await buildNormalizedImageUrl(src, {
+          productId: product.id,
+          imagePosition: Number(image?.position || index + 1),
+          imageWidth: parseDimension(image?.width),
+          imageHeight: parseDimension(image?.height),
+          targetWidth: imageSettings.width,
+          targetHeight: imageSettings.height,
+          background: imageSettings.background,
+        });
+
+        await requestTiendaNubeJson<TiendaNubeImage>(`/products/${product.id}/images`, {
+          method: "POST",
+          body: {
+            src: normalized.secureUrl,
+            position: Number(image?.position || index + 1),
+          },
+          storeId,
+          accessToken,
+          userAgent,
+        });
+
+        normalizedImages += 1;
+      }
+
+      for (const imageId of originalImageIds) {
+        await requestTiendaNubeJson<{}>(`/products/${product.id}/images/${imageId}`, {
+          method: "DELETE",
+          storeId,
+          accessToken,
+          userAgent,
+        });
+      }
+
+      const refreshed = normalizeProduct(
+        await fetchProductById(storeId, accessToken, userAgent, product.id)
+      );
+      await refreshLocalMetadataFromRemoteProduct(admin, refreshed);
+      normalizedProducts += 1;
+    } catch (error) {
+      errors.push({
+        product: product.name,
+        message: error instanceof Error ? error.message : "Unknown normalization error",
+      });
+    }
+  }
+
+  return {
+    processed: products.length,
+    normalized_products: normalizedProducts,
+    normalized_images: normalizedImages,
+    skipped,
+    failed: errors.length,
+    target_width: imageSettings.width,
+    target_height: imageSettings.height,
+    target_background: imageSettings.background,
+    errors,
+  };
+}
+
 export async function GET() {
   const env = getRequiredEnv();
   if ("error" in env) {
@@ -1077,6 +1413,17 @@ export async function POST(request: Request) {
         fetched_at: new Date().toISOString(),
         store_id: env.storeId,
         action: "push_local_to_remote",
+        ...result,
+      });
+    }
+
+    if (body.action === "normalize_remote_images") {
+      const result = await normalizeRemoteImages(body.remote_product_ids, env);
+
+      return NextResponse.json({
+        fetched_at: new Date().toISOString(),
+        store_id: env.storeId,
+        action: "normalize_remote_images",
         ...result,
       });
     }

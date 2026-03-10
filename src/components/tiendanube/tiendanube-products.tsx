@@ -48,6 +48,17 @@ type TiendaNubeProduct = {
   tags: string | null;
   created_at: string | null;
   updated_at: string | null;
+  primary_image_dimensions: string | null;
+  mixed_image_sizes: boolean;
+  image_audit: Array<{
+    id: string | null;
+    src: string | null;
+    position: number | null;
+    width: number | null;
+    height: number | null;
+    aspect_ratio: number | null;
+    dimensions_label: string | null;
+  }>;
   raw: Record<string, unknown>;
 };
 
@@ -73,6 +84,21 @@ type SyncResponse = {
   updated: number;
   skipped: number;
   failed: number;
+  errors: Array<{ product: string; message: string }>;
+  error?: string;
+};
+
+type NormalizeResponse = {
+  fetched_at: string;
+  store_id: string;
+  processed: number;
+  normalized_products: number;
+  normalized_images: number;
+  skipped: number;
+  failed: number;
+  target_width: number;
+  target_height: number;
+  target_background: string;
   errors: Array<{ product: string; message: string }>;
   error?: string;
 };
@@ -161,11 +187,13 @@ export function TiendaNubeProducts() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [normalizing, setNormalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [data, setData] = useState<TiendaNubeResponse | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<TiendaNubeProduct | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResponse | null>(null);
+  const [normalizeResult, setNormalizeResult] = useState<NormalizeResponse | null>(null);
 
   async function load(forceRefresh = false) {
     if (forceRefresh) setRefreshing(true);
@@ -220,6 +248,38 @@ export function TiendaNubeProducts() {
     }
   }
 
+  async function normalizeStorefrontImages(remoteProductIds?: string[]) {
+    setNormalizing(true);
+
+    try {
+      const response = await fetch("/api/tiendanube/products", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "normalize_remote_images",
+          remote_product_ids: remoteProductIds,
+        }),
+      });
+      const body = (await response.json()) as NormalizeResponse;
+
+      if (!response.ok) {
+        throw new Error(body.error || "Failed to normalize Tienda Nube storefront images");
+      }
+
+      setNormalizeResult(body);
+      await load(true);
+    } catch (normalizeError) {
+      setNormalizeResult(null);
+      setError(
+        normalizeError instanceof Error ? normalizeError.message : "Unknown normalization error"
+      );
+    } finally {
+      setNormalizing(false);
+    }
+  }
+
   const filteredProducts = useMemo(() => {
     const products = data?.products || [];
     const needle = query.trim().toLowerCase();
@@ -261,7 +321,7 @@ export function TiendaNubeProducts() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="min-w-[250px]">
               <Input
                 value={query}
@@ -280,6 +340,19 @@ export function TiendaNubeProducts() {
             <Button type="button" variant="outline" onClick={syncProducts} disabled={syncing || loading}>
               {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Store className="mr-2 h-4 w-4" />}
               Sync into products
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => normalizeStorefrontImages(filteredProducts.map((product) => product.id))}
+              disabled={normalizing || loading || filteredProducts.length === 0}
+            >
+              {normalizing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Globe className="mr-2 h-4 w-4" />
+              )}
+              Normalize storefront images
             </Button>
           </div>
         </div>
@@ -312,8 +385,9 @@ export function TiendaNubeProducts() {
           />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Current behavior: this is a one-way sync from Tienda Nube into local <code>products</code>.
-          Local product edits do not push back to Tienda Nube yet.
+          Sync keeps Tienda Nube metadata in local <code>products</code>. The normalization action
+          replaces Tienda Nube storefront images with same-size processed copies, without touching
+          your local canonical product image.
         </p>
       </div>
 
@@ -356,27 +430,54 @@ export function TiendaNubeProducts() {
             </div>
           ) : null}
 
+          {normalizeResult ? (
+            <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 text-sm">
+              <div className="flex flex-wrap items-center gap-3 text-sky-900 dark:text-sky-100">
+                <span className="font-medium">Storefront normalization completed.</span>
+                <span>{normalizeResult.processed} processed</span>
+                <span>{normalizeResult.normalized_products} products updated</span>
+                <span>{normalizeResult.normalized_images} images normalized</span>
+                <span>
+                  target {normalizeResult.target_width}x{normalizeResult.target_height}
+                </span>
+              </div>
+              {normalizeResult.errors.length > 0 ? (
+                <div className="mt-3 space-y-1 text-xs text-sky-950/90 dark:text-sky-50/90">
+                  {normalizeResult.errors.slice(0, 5).map((entry) => (
+                    <div key={`${entry.product}-${entry.message}`}>
+                      {entry.product}: {entry.message}
+                    </div>
+                  ))}
+                  {normalizeResult.errors.length > 5 ? (
+                    <div>+{normalizeResult.errors.length - 5} more normalization errors</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="rounded-2xl border bg-card shadow-sm">
             <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-muted-foreground">
               <span>{filteredProducts.length} products shown</span>
-              <span>Read-only API view with raw payload</span>
+              <span>Audit dimensions, canonical URLs and raw payload</span>
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[72px]">Image</TableHead>
                   <TableHead>Product</TableHead>
+                  <TableHead>Dimensions</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Stock</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Updated</TableHead>
-                  <TableHead className="w-[100px] text-right">Details</TableHead>
+                  <TableHead className="w-[180px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                       <div className="flex flex-col items-center gap-2">
                         <PackageSearch className="h-5 w-5" />
                         <span>No Tienda Nube products matched this search.</span>
@@ -430,6 +531,19 @@ export function TiendaNubeProducts() {
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1 text-sm">
+                          <div>{product.primary_image_dimensions || "—"}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {product.image_count} imgs
+                          </div>
+                          {product.mixed_image_sizes ? (
+                            <Badge variant="secondary">Mixed sizes</Badge>
+                          ) : (
+                            <Badge variant="outline">Consistent</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1 text-sm">
                           <div>{formatMoney(product.price_min)}</div>
                           {product.price_max !== null && product.price_max !== product.price_min ? (
                             <div className="text-xs text-muted-foreground">
@@ -468,9 +582,20 @@ export function TiendaNubeProducts() {
                       </TableCell>
                       <TableCell>{formatDate(product.updated_at)}</TableCell>
                       <TableCell className="text-right">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setSelectedProduct(product)}>
-                          View
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => normalizeStorefrontImages([product.id])}
+                            disabled={normalizing}
+                          >
+                            Normalize
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => setSelectedProduct(product)}>
+                            View
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -522,9 +647,79 @@ export function TiendaNubeProducts() {
                       <DetailRow label="Tags" value={selectedProduct.tags} />
                       <DetailRow label="Canonical URL" value={selectedProduct.canonical_url} />
                       <DetailRow label="Video URL" value={selectedProduct.video_url} />
+                      <DetailRow
+                        label="Primary dimensions"
+                        value={selectedProduct.primary_image_dimensions}
+                      />
+                      <DetailRow label="Mixed image sizes" value={selectedProduct.mixed_image_sizes} />
                       <DetailRow label="Created at" value={selectedProduct.created_at} />
                       <DetailRow label="Updated at" value={selectedProduct.updated_at} />
                     </div>
+                  </section>
+
+                  <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Image audit</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Width, height and aspect ratio from the Tienda Nube API payload.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => normalizeStorefrontImages([selectedProduct.id])}
+                        disabled={normalizing}
+                      >
+                        {normalizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Normalize this product
+                      </Button>
+                    </div>
+
+                    {selectedProduct.image_audit.length === 0 ? (
+                      <p className="mt-3 text-sm text-muted-foreground">No image metadata returned.</p>
+                    ) : (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {selectedProduct.image_audit.map((image, index) => (
+                          <div key={`${selectedProduct.id}-image-${image.id || index}`} className="rounded-xl border bg-muted/20 p-3">
+                            <div className="flex items-start gap-3">
+                              <div className="h-20 w-20 overflow-hidden rounded-xl border bg-background">
+                                {image.src ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={image.src}
+                                    alt={`${selectedProduct.name} ${index + 1}`}
+                                    className="h-full w-full object-contain"
+                                  />
+                                ) : null}
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1 text-sm">
+                                <p className="font-medium text-foreground">
+                                  Image {image.position || index + 1}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  {image.dimensions_label || "Unknown size"}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  ratio {image.aspect_ratio ?? "—"}
+                                </p>
+                                {image.src ? (
+                                  <a
+                                    href={image.src}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex text-xs text-primary hover:underline"
+                                  >
+                                    Open source image
+                                  </a>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </section>
 
                   <JsonBlock

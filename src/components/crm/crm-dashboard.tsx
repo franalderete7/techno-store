@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Search, Sparkles } from "lucide-react";
+import {
+  Bot,
+  CalendarDays,
+  Search,
+  Sparkles,
+  Tag,
+  UserRound,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { Conversation, VCustomerContext } from "@/types/database";
 
@@ -12,21 +19,6 @@ const STAGE_LABELS: Record<string, string> = {
   closing: "Cierre",
   human_handoff: "Asesor",
 };
-
-const LINE_COLORS = [
-  "#0ea5e9",
-  "#f97316",
-  "#22c55e",
-  "#eab308",
-  "#ef4444",
-  "#8b5cf6",
-  "#14b8a6",
-  "#ec4899",
-  "#3b82f6",
-  "#84cc16",
-  "#f43f5e",
-  "#06b6d4",
-];
 
 const normalizeSignal = (value: string | null | undefined) =>
   String(value || "")
@@ -47,7 +39,7 @@ const uniqueStrings = (items: string[]) => [...new Set(items.filter(Boolean))];
 const cleanStringArray = (items: string[] | null | undefined) =>
   uniqueStrings((items || []).map((item) => String(item || "").trim()).filter(Boolean));
 
-const compactPreview = (value: string | null | undefined, limit = 180) =>
+const compactPreview = (value: string | null | undefined, limit = 240) =>
   String(value || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -108,34 +100,30 @@ const formatTime = (value: string | null | undefined) => {
   });
 };
 
-const formatAxisTime = (hour: number) => `${String(hour).padStart(2, "0")}:00`;
-
-const colorForCustomer = (customerId: number) =>
-  LINE_COLORS[Math.abs(customerId) % LINE_COLORS.length];
-
-type JourneyTag = {
+type EventChip = {
   key: string;
   label: string;
   group: string;
 };
 
-type JourneyEvent = {
+type ConversationEvent = {
   id: number;
   at: string;
   role: string;
-  stageLabel: string;
-  leadScore: number;
+  timeLabel: string;
   preview: string;
   summary: string;
   insights: string[];
-  tags: JourneyTag[];
+  stageLabel: string;
+  leadScore: number;
+  tags: EventChip[];
   payments: string[];
   products: string[];
   brands: string[];
   topics: string[];
 };
 
-type JourneyRow = {
+type ConversationCard = {
   customerId: number;
   label: string;
   phone: string;
@@ -143,42 +131,21 @@ type JourneyRow = {
   preferredBrand: string;
   currentProduct: string;
   paymentLast: string;
+  finalStageLabel: string;
   leadScore: number;
   firstEventAt: string;
   lastEventAt: string;
   dailySummary: string;
   insightHighlights: string[];
-  points: JourneyEvent[];
-  color: string;
+  productsToday: string[];
+  paymentsToday: string[];
+  topicsToday: string[];
+  brandsToday: string[];
+  events: ConversationEvent[];
 };
 
-type ChartPoint = {
-  key: string;
-  customerId: number;
-  customerLabel: string;
-  customerPhone: string;
-  customerCity: string;
-  preferredBrand: string;
-  currentProduct: string;
-  paymentLast: string;
-  customerDaySummary: string;
-  lineColor: string;
-  event: JourneyEvent;
-  x: number;
-  y: number;
-};
-
-type JourneyChartRow = {
-  customerId: number;
-  label: string;
-  color: string;
-  path: string;
-  points: ChartPoint[];
-  latestPoint: ChartPoint | null;
-};
-
-function InteractionPoint({ point }: { point: ChartPoint }) {
-  const { event } = point;
+function EventBubble({ event }: { event: ConversationEvent }) {
+  const isUser = event.role === "user";
   const signalCount =
     event.tags.length +
     event.payments.length +
@@ -186,138 +153,98 @@ function InteractionPoint({ point }: { point: ChartPoint }) {
     event.brands.length +
     event.topics.length;
 
-  const isInteresting = Boolean(signalCount || event.summary || event.insights.length);
-
   return (
-    <div
-      className="group absolute z-20"
-      style={{
-        left: `${point.x}px`,
-        top: `${point.y}px`,
-        transform: "translate(-50%, -50%)",
-      }}
-    >
-      <button
-        type="button"
-        className={`rounded-full border border-background transition hover:scale-110 ${
-          isInteresting
-            ? "h-[14px] w-[14px] bg-primary shadow-[0_0_24px_rgba(14,165,233,0.45)]"
-            : "h-[10px] w-[10px] bg-slate-400/80"
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`relative max-w-[min(100%,740px)] rounded-2xl border px-4 py-3 shadow-sm ${
+          isUser
+            ? "border-primary/20 bg-primary/[0.08]"
+            : "border-border bg-background/80"
         }`}
-        aria-label={`${point.customerLabel} ${formatTime(event.at)}`}
-      />
-      <div className="pointer-events-none absolute left-1/2 top-full z-30 hidden w-[420px] -translate-x-1/2 pt-3 group-hover:block">
-        <div className="rounded-2xl border bg-background/95 p-4 shadow-2xl backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-foreground">{point.customerLabel}</p>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {formatTime(event.at)} · {event.role === "user" ? "Cliente" : "Bot"} · score{" "}
-                {event.leadScore}
-              </p>
-            </div>
-            <span
-              className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
-              style={{
-                borderColor: `${point.lineColor}55`,
-                color: point.lineColor,
-                backgroundColor: `${point.lineColor}12`,
-              }}
-            >
-              {event.stageLabel}
-            </span>
-          </div>
-
-          <div className="mt-3 rounded-xl border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            <div className="flex flex-wrap gap-2">
-              {point.customerPhone ? <span>{point.customerPhone}</span> : null}
-              {point.customerCity ? <span>{point.customerCity}</span> : null}
-              {point.preferredBrand ? <span>{normalizeSignal(point.preferredBrand)}</span> : null}
-              {point.paymentLast ? <span>{normalizeSignal(point.paymentLast)}</span> : null}
-              {point.currentProduct ? <span>{point.currentProduct}</span> : null}
-            </div>
-            {point.customerDaySummary ? (
-              <p className="mt-2 text-foreground">{point.customerDaySummary}</p>
-            ) : null}
-          </div>
-
-          {event.summary ? (
-            <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground">
-              {event.summary}
-            </div>
-          ) : null}
-
-          {event.preview ? (
-            <div className="mt-3 rounded-xl border bg-muted/30 px-3 py-2 text-sm text-foreground">
-              {event.preview}
-            </div>
-          ) : null}
-
-          {event.insights.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {event.insights.map((insight) => (
-                <span
-                  key={`${event.id}-insight-${insight}`}
-                  className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
-                >
-                  {insight}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {event.tags.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {event.tags.map((tag) => (
-                <span
-                  key={`${event.id}-tag-${tag.key}`}
-                  className={`rounded-full border px-2 py-1 text-[11px] font-medium ${getTagTone(tag.group)}`}
-                >
-                  {tag.label}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {event.products.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {event.products.map((product) => (
-                <span
-                  key={`${event.id}-product-${product}`}
-                  className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-700 dark:text-orange-300"
-                >
-                  {product}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {event.payments.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {event.payments.map((payment) => (
-                <span
-                  key={`${event.id}-payment-${payment}`}
-                  className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300"
-                >
-                  {normalizeSignal(payment)}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {event.topics.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {event.topics.map((topic) => (
-                <span
-                  key={`${event.id}-topic-${topic}`}
-                  className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-700 dark:text-fuchsia-300"
-                >
-                  {normalizeSignal(topic)}
-                </span>
-              ))}
-            </div>
-          ) : null}
+      >
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-medium text-foreground">
+            {isUser ? <UserRound className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+            {isUser ? "Cliente" : "Bot"}
+          </span>
+          <span>{event.timeLabel}</span>
+          <span>{event.stageLabel}</span>
+          <span>score {event.leadScore}</span>
+          {signalCount > 0 ? <span>{signalCount} señales</span> : null}
         </div>
+
+        {event.preview ? <p className="text-sm leading-6 text-foreground">{event.preview}</p> : null}
+
+        {event.summary && event.summary !== event.preview ? (
+          <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            {event.summary}
+          </div>
+        ) : null}
+
+        {event.insights.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {event.insights.map((insight) => (
+              <span
+                key={`${event.id}-insight-${insight}`}
+                className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
+              >
+                {insight}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {event.tags.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {event.tags.map((tag) => (
+              <span
+                key={`${event.id}-${tag.key}`}
+                className={`rounded-full border px-2 py-1 text-[11px] font-medium ${getTagTone(tag.group)}`}
+              >
+                {tag.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {event.products.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {event.products.map((product) => (
+              <span
+                key={`${event.id}-product-${product}`}
+                className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-700 dark:text-orange-300"
+              >
+                {product}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {event.payments.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {event.payments.map((payment) => (
+              <span
+                key={`${event.id}-payment-${payment}`}
+                className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300"
+              >
+                {normalizeSignal(payment)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {event.topics.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {event.topics.map((topic) => (
+              <span
+                key={`${event.id}-topic-${topic}`}
+                className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-700 dark:text-fuchsia-300"
+              >
+                {normalizeSignal(topic)}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -326,8 +253,8 @@ function InteractionPoint({ point }: { point: ChartPoint }) {
 export function CrmDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedJourneyDate, setSelectedJourneyDate] = useState("");
-  const [journeySearch, setJourneySearch] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [search, setSearch] = useState("");
   const [customerRows, setCustomerRows] = useState<VCustomerContext[]>([]);
   const [conversationRows, setConversationRows] = useState<Conversation[]>([]);
 
@@ -358,7 +285,6 @@ export function CrmDashboard() {
       if (cancelled) return;
 
       const firstError = customerRes.error || conversationRes.error;
-
       if (firstError) {
         setError(firstError.message);
         setCustomerRows([]);
@@ -372,7 +298,6 @@ export function CrmDashboard() {
     }
 
     load();
-
     return () => {
       cancelled = true;
     };
@@ -391,33 +316,31 @@ export function CrmDashboard() {
     [conversationRows]
   );
 
-  const journeyDates = useMemo(
+  const availableDates = useMemo(
     () =>
       uniqueStrings(
-        orderedConversations
-          .map((row) => String(row.created_at || "").slice(0, 10))
-          .filter(Boolean)
+        orderedConversations.map((row) => String(row.created_at || "").slice(0, 10)).filter(Boolean)
       ).sort((a, b) => b.localeCompare(a)),
     [orderedConversations]
   );
 
   useEffect(() => {
-    if (!journeyDates.length) return;
-    if (!selectedJourneyDate || !journeyDates.includes(selectedJourneyDate)) {
-      setSelectedJourneyDate(journeyDates[0]);
+    if (!availableDates.length) return;
+    if (!selectedDate || !availableDates.includes(selectedDate)) {
+      setSelectedDate(availableDates[0]);
     }
-  }, [journeyDates, selectedJourneyDate]);
+  }, [availableDates, selectedDate]);
 
-  const journeyRows = useMemo(() => {
-    if (!selectedJourneyDate) return [] as JourneyRow[];
+  const cards = useMemo(() => {
+    if (!selectedDate) return [] as ConversationCard[];
 
-    const search = journeySearch.trim().toLowerCase();
-    const grouped = new Map<number, JourneyRow>();
+    const searchNeedle = search.trim().toLowerCase();
+    const grouped = new Map<number, ConversationCard>();
 
     for (const row of orderedConversations) {
       const customerId = Number(row.customer_id);
       if (!Number.isFinite(customerId) || !row.created_at) continue;
-      if (String(row.created_at).slice(0, 10) !== selectedJourneyDate) continue;
+      if (String(row.created_at).slice(0, 10) !== selectedDate) continue;
 
       const customer = customerById.get(customerId);
       const label = String(
@@ -428,6 +351,8 @@ export function CrmDashboard() {
           `Cliente #${customerId}`
       ).trim();
       const phone = String(customer?.whatsapp_phone || customer?.phone || customer?.manychat_id || "").trim();
+      const stageKey = String(row.funnel_stage_after || customer?.funnel_stage || "new").trim() || "new";
+      const stageLabel = STAGE_LABELS[stageKey] || stageKey;
 
       const existing =
         grouped.get(customerId) ||
@@ -439,196 +364,131 @@ export function CrmDashboard() {
           preferredBrand: String(customer?.preferred_brand || "").trim(),
           currentProduct: String(customer?.interested_product || "").trim(),
           paymentLast: String(customer?.payment_method_last || "").trim(),
+          finalStageLabel: stageLabel,
           leadScore: clamp(Number(customer?.lead_score || 0) || 0, 0, 100),
           firstEventAt: String(row.created_at),
           lastEventAt: String(row.created_at),
           dailySummary: "",
           insightHighlights: [],
-          points: [],
-          color: colorForCustomer(customerId),
-        } satisfies JourneyRow);
+          productsToday: [],
+          paymentsToday: [],
+          topicsToday: [],
+          brandsToday: [],
+          events: [],
+        } satisfies ConversationCard);
 
-      const currentTags = cleanStringArray(row.applied_tags).map((key) => ({
+      const preview = compactPreview(row.was_audio ? row.audio_transcription || row.message : row.message, 240);
+      const summary = compactPreview(row.conversation_summary || preview, 220);
+      const insights = cleanStringArray(row.conversation_insights).slice(0, 5);
+      const tags = cleanStringArray(row.applied_tags).map((key) => ({
         key,
         label: normalizeSignal(key),
         group: inferTagGroup(key),
       }));
-      const currentPayments = cleanStringArray(row.payment_methods_detected);
-      const currentBrands = cleanStringArray(row.brands_detected);
-      const currentTopics = cleanStringArray(row.topics_detected);
-      const currentProducts = cleanStringArray(row.products_mentioned);
+      const payments = cleanStringArray(row.payment_methods_detected);
+      const products = cleanStringArray(row.products_mentioned);
+      const brands = cleanStringArray(row.brands_detected);
+      const topics = cleanStringArray(row.topics_detected);
+      const leadScore = clamp(Number(row.lead_score_after ?? customer?.lead_score ?? 0) || 0, 0, 100);
 
-      const preview = compactPreview(row.was_audio ? row.audio_transcription || row.message : row.message, 220);
-      const summary = compactPreview(row.conversation_summary || preview, 220);
-      const insights = cleanStringArray(row.conversation_insights).slice(0, 6);
-      const stageKey = String(row.funnel_stage_after || customer?.funnel_stage || "new").trim() || "new";
-      const stageLabel = STAGE_LABELS[stageKey] || stageKey;
-      const leadScore = clamp(
-        Number(row.lead_score_after ?? customer?.lead_score ?? 0) || 0,
-        0,
-        100
-      );
-
-      existing.points.push({
+      existing.events.push({
         id: row.id,
         at: String(row.created_at),
         role: String(row.role || "user"),
-        stageLabel,
-        leadScore,
+        timeLabel: formatTime(row.created_at),
         preview,
         summary,
         insights,
-        tags: currentTags,
-        payments: currentPayments,
-        products: currentProducts,
-        brands: currentBrands,
-        topics: currentTopics,
+        stageLabel,
+        leadScore,
+        tags,
+        payments,
+        products,
+        brands,
+        topics,
       });
+
       existing.lastEventAt = String(row.created_at);
+      existing.finalStageLabel = stageLabel;
+      existing.leadScore = leadScore;
+      existing.productsToday = uniqueStrings([...existing.productsToday, ...products]);
+      existing.paymentsToday = uniqueStrings([...existing.paymentsToday, ...payments]);
+      existing.topicsToday = uniqueStrings([...existing.topicsToday, ...topics]);
+      existing.brandsToday = uniqueStrings([...existing.brandsToday, ...brands]);
 
       grouped.set(customerId, existing);
     }
 
     return Array.from(grouped.values())
-      .map((row) => {
-        const orderedPoints = [...row.points].sort((a, b) => a.at.localeCompare(b.at));
+      .map((card) => {
+        const orderedEvents = [...card.events].sort((a, b) => a.at.localeCompare(b.at));
         const dailySummary = uniqueStrings(
-          orderedPoints.map((point) => point.summary).filter(Boolean)
+          orderedEvents.map((event) => event.summary).filter(Boolean)
         )
           .slice(-2)
           .join(" · ");
 
         return {
-          ...row,
-          points: orderedPoints,
-          leadScore: orderedPoints[orderedPoints.length - 1]?.leadScore ?? row.leadScore,
+          ...card,
+          events: orderedEvents,
           dailySummary,
           insightHighlights: uniqueStrings(
-            orderedPoints.flatMap((point) => point.insights)
+            orderedEvents.flatMap((event) => event.insights)
           ).slice(0, 8),
         };
       })
-      .filter((row) => {
-        if (!search) return true;
+      .filter((card) => {
+        if (!searchNeedle) return true;
         const haystack = [
-          row.label,
-          row.phone,
-          row.city,
-          row.preferredBrand,
-          row.currentProduct,
-          row.paymentLast,
-          row.dailySummary,
-          ...row.insightHighlights,
-          ...row.points.flatMap((point) => [
-            point.preview,
-            point.summary,
-            ...point.insights,
-            ...point.tags.map((tag) => `${tag.key} ${tag.label}`),
-            ...point.payments,
-            ...point.products,
-            ...point.brands,
-            ...point.topics,
+          card.label,
+          card.phone,
+          card.city,
+          card.preferredBrand,
+          card.currentProduct,
+          card.paymentLast,
+          card.finalStageLabel,
+          card.dailySummary,
+          ...card.productsToday,
+          ...card.paymentsToday,
+          ...card.topicsToday,
+          ...card.brandsToday,
+          ...card.insightHighlights,
+          ...card.events.flatMap((event) => [
+            event.preview,
+            event.summary,
+            ...event.insights,
+            ...event.tags.map((tag) => `${tag.key} ${tag.label}`),
+            ...event.products,
+            ...event.payments,
+            ...event.brands,
+            ...event.topics,
           ]),
         ]
           .join(" ")
           .toLowerCase();
-        return haystack.includes(search);
-      })
-      .sort((a, b) => {
-        const byScore = b.leadScore - a.leadScore;
-        if (byScore !== 0) return byScore;
-        return String(b.lastEventAt).localeCompare(String(a.lastEventAt));
-      });
-  }, [customerById, journeySearch, orderedConversations, selectedJourneyDate]);
 
-  const journeyStats = useMemo(() => {
-    const interactionCount = journeyRows.reduce((sum, row) => sum + row.points.length, 0);
-    const tagCount = journeyRows.reduce(
-      (sum, row) => sum + row.points.reduce((inner, point) => inner + point.tags.length, 0),
+        return haystack.includes(searchNeedle);
+      })
+      .sort((a, b) => String(b.lastEventAt).localeCompare(String(a.lastEventAt)));
+  }, [customerById, orderedConversations, search, selectedDate]);
+
+  const stats = useMemo(() => {
+    const interactions = cards.reduce((sum, card) => sum + card.events.length, 0);
+    const tags = cards.reduce(
+      (sum, card) => sum + card.events.reduce((inner, event) => inner + event.tags.length, 0),
       0
     );
-    const avgScore = journeyRows.length
-      ? Math.round(journeyRows.reduce((sum, row) => sum + row.leadScore, 0) / journeyRows.length)
-      : 0;
 
     return {
-      people: journeyRows.length,
-      interactions: interactionCount,
-      tags: tagCount,
-      avgScore,
+      people: cards.length,
+      interactions,
+      tags,
     };
-  }, [journeyRows]);
-
-  const journeyChart = useMemo(() => {
-    const chartWidth = 1440;
-    const chartHeight = 760;
-    const paddingLeft = 72;
-    const paddingRight = 32;
-    const paddingTop = 30;
-    const paddingBottom = 52;
-    const innerWidth = chartWidth - paddingLeft - paddingRight;
-    const innerHeight = chartHeight - paddingTop - paddingBottom;
-    const scoreTicks = [0, 25, 50, 75, 100];
-    const timeTicks = Array.from({ length: 13 }, (_, index) => index * 2);
-    const dayStart = new Date(`${selectedJourneyDate}T00:00:00`).getTime();
-    const dayEnd = new Date(`${selectedJourneyDate}T23:59:59.999`).getTime();
-    const span = Math.max(dayEnd - dayStart, 1);
-
-    const rows: JourneyChartRow[] = journeyRows.map((row) => {
-      const points: ChartPoint[] = row.points.map((event) => {
-        const eventTime = new Date(event.at).getTime();
-        const ratio = clamp((eventTime - dayStart) / span, 0, 1);
-        const x = paddingLeft + ratio * innerWidth;
-        const y =
-          paddingTop + innerHeight - (clamp(event.leadScore, 0, 100) / 100) * innerHeight;
-
-        return {
-          key: `${row.customerId}-${event.id}`,
-          customerId: row.customerId,
-          customerLabel: row.label,
-          customerPhone: row.phone,
-          customerCity: row.city,
-          preferredBrand: row.preferredBrand,
-          currentProduct: row.currentProduct,
-          paymentLast: row.paymentLast,
-          customerDaySummary: row.dailySummary,
-          lineColor: row.color,
-          event,
-          x,
-          y,
-        };
-      });
-
-      return {
-        customerId: row.customerId,
-        label: row.label,
-        color: row.color,
-        path: points.map((point) => `${point.x},${point.y}`).join(" "),
-        points,
-        latestPoint: points[points.length - 1] || null,
-      };
-    });
-
-    return {
-      chartWidth,
-      chartHeight,
-      paddingLeft,
-      paddingRight,
-      paddingTop,
-      paddingBottom,
-      innerWidth,
-      innerHeight,
-      scoreTicks,
-      timeTicks,
-      rows,
-    };
-  }, [journeyRows, selectedJourneyDate]);
-
-  const latestJourneyDates = journeyDates.slice(0, 12);
+  }, [cards]);
 
   return (
     <section className="rounded-2xl border bg-card shadow-sm">
-      <div className="border-b bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_30%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.16),transparent_22%)] p-4 sm:p-5">
+      <div className="border-b bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16),transparent_28%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.12),transparent_24%)] p-4 sm:p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -637,13 +497,11 @@ export function CrmDashboard() {
             </div>
             <div>
               <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                Lead score timeline
+                Daily conversation timeline
               </h2>
               <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                One chart per day. Horizontal axis = exact interaction time. Vertical axis = lead
-                score after that turn. Each point is a real conversation event, and hover exposes
-                summary, insights, products, payments, topics, and the tags saved in Supabase for
-                that moment.
+                One card per customer per day. You see the exact human and bot turns, their time,
+                the tags captured on each interaction, and the compact summary stored in Supabase.
               </p>
             </div>
           </div>
@@ -655,8 +513,8 @@ export function CrmDashboard() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
-                value={journeySearch}
-                onChange={(event) => setJourneySearch(event.target.value)}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder="Ej. Francisco, iPhone, pay_naranja"
                 className="w-full rounded-xl border bg-background pl-10 pr-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
@@ -665,16 +523,16 @@ export function CrmDashboard() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {latestJourneyDates.length === 0 ? (
+          {availableDates.length === 0 ? (
             <span className="text-sm text-muted-foreground">No dates with CRM activity yet.</span>
           ) : (
-            latestJourneyDates.map((date) => (
+            availableDates.slice(0, 12).map((date) => (
               <button
                 key={date}
                 type="button"
-                onClick={() => setSelectedJourneyDate(date)}
+                onClick={() => setSelectedDate(date)}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                  date === selectedJourneyDate
+                  date === selectedDate
                     ? "border-primary bg-primary text-primary-foreground"
                     : "bg-background text-muted-foreground hover:border-primary/30 hover:text-foreground"
                 }`}
@@ -685,19 +543,16 @@ export function CrmDashboard() {
           )}
         </div>
 
-        {!loading && !error && selectedJourneyDate ? (
+        {!loading && !error && selectedDate ? (
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
             <span className="rounded-full border bg-background/80 px-3 py-1 font-medium text-foreground">
-              {journeyStats.people} personas
+              {stats.people} personas
             </span>
             <span className="rounded-full border bg-background/80 px-3 py-1 font-medium text-foreground">
-              {journeyStats.interactions} interacciones
+              {stats.interactions} interacciones
             </span>
             <span className="rounded-full border bg-background/80 px-3 py-1 font-medium text-foreground">
-              {journeyStats.tags} tags visibles
-            </span>
-            <span className="rounded-full border bg-background/80 px-3 py-1 font-medium text-foreground">
-              score medio {journeyStats.avgScore}
+              {stats.tags} tags visibles
             </span>
           </div>
         ) : null}
@@ -705,145 +560,173 @@ export function CrmDashboard() {
 
       <div className="p-4 sm:p-5">
         {loading ? (
-          <div className="flex h-[540px] items-center justify-center rounded-2xl border bg-background/70 text-sm text-muted-foreground">
+          <div className="flex h-[420px] items-center justify-center rounded-2xl border bg-background/70 text-sm text-muted-foreground">
             Loading customer journeys...
           </div>
         ) : error ? (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
             {error}. Run the CRM timeline migrations and refresh the app types.
           </div>
-        ) : journeyRows.length === 0 ? (
-          <div className="flex h-[540px] items-center justify-center rounded-2xl border border-dashed bg-background/70 text-sm text-muted-foreground">
-            No people with CRM movement on {selectedJourneyDate ? formatLongDate(selectedJourneyDate) : "that day"}.
+        ) : cards.length === 0 ? (
+          <div className="flex h-[420px] items-center justify-center rounded-2xl border border-dashed bg-background/70 text-sm text-muted-foreground">
+            No people with CRM movement on {selectedDate ? formatLongDate(selectedDate) : "that day"}.
           </div>
         ) : (
-          <div className="rounded-2xl border bg-background/70 p-4 shadow-sm">
-            <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <CalendarDays className="h-4 w-4 text-primary" />
-                {selectedJourneyDate ? formatLongDate(selectedJourneyDate) : "Timeline"}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Hover any point to inspect the event snapshot saved in Supabase.
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <div
-                className="relative min-w-[1280px] rounded-2xl border bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.12),transparent_24%)]"
-                style={{ height: `${journeyChart.chartHeight}px` }}
+          <div className="space-y-5">
+            {cards.map((card) => (
+              <article
+                key={`card-${card.customerId}`}
+                className="overflow-hidden rounded-3xl border bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.08),transparent_24%)] shadow-sm"
               >
-                <svg
-                  viewBox={`0 0 ${journeyChart.chartWidth} ${journeyChart.chartHeight}`}
-                  className="absolute inset-0 h-full w-full"
-                  role="img"
-                  aria-label="Journey score timeline"
-                >
-                  {journeyChart.scoreTicks.map((tick) => {
-                    const y =
-                      journeyChart.paddingTop +
-                      journeyChart.innerHeight -
-                      (tick / 100) * journeyChart.innerHeight;
-                    return (
-                      <g key={`score-${tick}`}>
-                        <line
-                          x1={journeyChart.paddingLeft}
-                          y1={y}
-                          x2={journeyChart.chartWidth - journeyChart.paddingRight}
-                          y2={y}
-                          stroke="currentColor"
-                          strokeDasharray="4 6"
-                          className="text-border/70"
-                        />
-                        <text
-                          x={journeyChart.paddingLeft - 12}
-                          y={y + 4}
-                          textAnchor="end"
-                          className="fill-muted-foreground text-[11px]"
-                        >
-                          {tick}
-                        </text>
-                      </g>
-                    );
-                  })}
+                <header className="border-b bg-background/85 px-5 py-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="space-y-2">
+                      <div>
+                        <h3 className="text-lg font-semibold text-foreground">{card.label}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {card.phone || `Cliente #${card.customerId}`}
+                          {card.city ? ` · ${card.city}` : ""}
+                          {card.firstEventAt ? ` · desde ${formatTime(card.firstEventAt)}` : ""}
+                          {card.lastEventAt ? ` hasta ${formatTime(card.lastEventAt)}` : ""}
+                        </p>
+                      </div>
 
-                  {journeyChart.timeTicks.map((hour) => {
-                    const x = journeyChart.paddingLeft + (hour / 24) * journeyChart.innerWidth;
-                    return (
-                      <g key={`hour-${hour}`}>
-                        <line
-                          x1={x}
-                          y1={journeyChart.paddingTop}
-                          x2={x}
-                          y2={journeyChart.chartHeight - journeyChart.paddingBottom}
-                          stroke="currentColor"
-                          strokeDasharray="3 8"
-                          className="text-border/60"
-                        />
-                        <text
-                          x={x}
-                          y={journeyChart.chartHeight - 18}
-                          textAnchor="middle"
-                          className="fill-muted-foreground text-[11px]"
-                        >
-                          {formatAxisTime(hour)}
-                        </text>
-                      </g>
-                    );
-                  })}
+                      <div className="flex flex-wrap gap-1.5 text-xs">
+                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-medium text-emerald-700 dark:text-emerald-300">
+                          {card.finalStageLabel}
+                        </span>
+                        <span className="rounded-full border bg-muted/60 px-2 py-1 font-medium text-foreground">
+                          score {card.leadScore}
+                        </span>
+                        {card.preferredBrand ? (
+                          <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 font-medium text-orange-700 dark:text-orange-300">
+                            {normalizeSignal(card.preferredBrand)}
+                          </span>
+                        ) : null}
+                        {card.currentProduct ? (
+                          <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 font-medium text-primary">
+                            {card.currentProduct}
+                          </span>
+                        ) : null}
+                        {card.paymentLast ? (
+                          <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 font-medium text-sky-700 dark:text-sky-300">
+                            {normalizeSignal(card.paymentLast)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
 
-                  <text
-                    x={journeyChart.paddingLeft}
-                    y={16}
-                    className="fill-muted-foreground text-[11px]"
-                  >
-                    Lead score
-                  </text>
-                  <text
-                    x={journeyChart.chartWidth - journeyChart.paddingRight}
-                    y={journeyChart.chartHeight - 18}
-                    textAnchor="end"
-                    className="fill-muted-foreground text-[11px]"
-                  >
-                    Hora real de interaccion
-                  </text>
+                    <div className="rounded-2xl border bg-muted/25 px-4 py-3 text-sm text-muted-foreground xl:max-w-md">
+                      <div className="flex items-center gap-2 font-medium text-foreground">
+                        <CalendarDays className="h-4 w-4 text-primary" />
+                        Summary
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-foreground">
+                        {card.dailySummary || "Sin resumen compacto para este dia todavia."}
+                      </p>
+                    </div>
+                  </div>
+                </header>
 
-                  {journeyChart.rows.map((row) =>
-                    row.points.length >= 2 ? (
-                      <polyline
-                        key={`line-${row.customerId}`}
-                        points={row.path}
-                        fill="none"
-                        stroke={row.color}
-                        strokeWidth={2.25}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity={0.58}
-                      />
-                    ) : null
-                  )}
+                <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+                  <div className="space-y-4">
+                    {card.events.map((event) => (
+                      <EventBubble key={`${card.customerId}-${event.id}`} event={event} />
+                    ))}
+                  </div>
 
-                  {journeyChart.rows.length <= 10
-                    ? journeyChart.rows.map((row) =>
-                        row.latestPoint ? (
-                          <text
-                            key={`label-${row.customerId}`}
-                            x={Math.min(row.latestPoint.x + 10, journeyChart.chartWidth - 56)}
-                            y={Math.max(row.latestPoint.y - 8, 18)}
-                            className="fill-foreground text-[11px] font-medium"
-                          >
-                            {row.label}
-                          </text>
-                        ) : null
-                      )
-                    : null}
-                </svg>
+                  <aside className="space-y-4">
+                    <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
+                      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                        <Tag className="h-4 w-4 text-primary" />
+                        Highlights
+                      </div>
+                      {card.insightHighlights.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {card.insightHighlights.map((insight) => (
+                            <span
+                              key={`${card.customerId}-highlight-${insight}`}
+                              className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
+                            >
+                              {insight}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          No insight highlights stored for this day yet.
+                        </p>
+                      )}
+                    </section>
 
-                {journeyChart.rows.flatMap((row) =>
-                  row.points.map((point) => <InteractionPoint key={point.key} point={point} />)
-                )}
-              </div>
-            </div>
+                    <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
+                      <p className="text-sm font-medium text-foreground">Signals for the day</p>
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Products
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {card.productsToday.length > 0 ? (
+                              card.productsToday.map((product) => (
+                                <span
+                                  key={`${card.customerId}-product-${product}`}
+                                  className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-700 dark:text-orange-300"
+                                >
+                                  {product}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-muted-foreground">No product mention</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Payment
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {card.paymentsToday.length > 0 ? (
+                              card.paymentsToday.map((payment) => (
+                                <span
+                                  key={`${card.customerId}-payment-${payment}`}
+                                  className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300"
+                                >
+                                  {normalizeSignal(payment)}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-muted-foreground">No payment signal</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Topics
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {card.topicsToday.length > 0 ? (
+                              card.topicsToday.map((topic) => (
+                                <span
+                                  key={`${card.customerId}-topic-${topic}`}
+                                  className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-700 dark:text-fuchsia-300"
+                                >
+                                  {normalizeSignal(topic)}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-muted-foreground">No topic signal</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </aside>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </div>
