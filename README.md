@@ -40,6 +40,16 @@ A Next.js admin app for managing products in Supabase. Built with shadcn/ui and 
 
    If Row Level Security is enabled on `products`, grant read/write access for your use case (e.g. for admin dashboard, you may use a service role key or specific RLS policies for authenticated users).
 
+5. **Optional: Tienda Nube tab**
+
+   To use the `/tiendanube` tab, add these server-side environment variables:
+
+   - `TIENDANUBE_STORE_ID`
+   - `TIENDANUBE_ACCESS_TOKEN`
+   - `TIENDANUBE_USER_AGENT`
+
+   The integration uses the official Tienda Nube products API from a Next.js server route, so the token is never exposed to the browser.
+
 ## Development
 
 ```bash
@@ -55,4 +65,7 @@ Open [http://localhost:3000](http://localhost:3000).
 3. Add environment variables in project settings:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `TIENDANUBE_STORE_ID` (optional, for the Tienda Nube tab)
+   - `TIENDANUBE_ACCESS_TOKEN` (optional, for the Tienda Nube tab)
+   - `TIENDANUBE_USER_AGENT` (optional but recommended, for the Tienda Nube tab)
 4. Deploy
