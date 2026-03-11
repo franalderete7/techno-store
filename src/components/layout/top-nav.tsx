@@ -2,33 +2,41 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Funnel, Package, ShoppingCart, Store, Warehouse } from "lucide-react";
+import { Funnel, Package, ShoppingCart, Warehouse } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Products", icon: Package },
+  { href: "", label: "Products", icon: Package },
   { href: "/stock", label: "Stock", icon: Warehouse },
   { href: "/purchases", label: "Purchases", icon: ShoppingCart },
-  { href: "/tiendanube", label: "Tienda Nube", icon: Store },
   { href: "/crm", label: "CRM", icon: Funnel },
 ];
 
-export function TopNav() {
+type TopNavProps = {
+  basePath?: string;
+};
+
+export function TopNav({ basePath = "/admin" }: TopNavProps) {
   const pathname = usePathname();
+  const normalizedBasePath = basePath === "/" ? "" : basePath.replace(/\/$/, "");
 
   return (
     <>
       {/* Desktop top nav */}
       <nav className="hidden border-b bg-card sm:block">
         <div className="flex h-14 items-center gap-1 px-6">
-          <Link href="/" className="mr-6 text-lg font-bold tracking-tight">
+          <Link href={normalizedBasePath || "/"} className="mr-6 text-lg font-bold tracking-tight">
             TechnoStore
           </Link>
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const fullHref = `${normalizedBasePath}${href}` || "/";
+            const isRoot = fullHref === normalizedBasePath || (normalizedBasePath === "" && fullHref === "");
+            const isActive = isRoot
+              ? pathname === normalizedBasePath || pathname === "/admin" || pathname === "/"
+              : pathname.startsWith(fullHref);
             return (
               <Link
-                key={href}
-                href={href}
+                key={fullHref}
+                href={fullHref || "/"}
                 className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-primary/10 text-primary"
@@ -47,11 +55,15 @@ export function TopNav() {
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-md sm:hidden">
         <div className="flex items-stretch" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const fullHref = `${normalizedBasePath}${href}` || "/";
+            const isRoot = fullHref === normalizedBasePath || (normalizedBasePath === "" && fullHref === "");
+            const isActive = isRoot
+              ? pathname === normalizedBasePath || pathname === "/admin" || pathname === "/"
+              : pathname.startsWith(fullHref);
             return (
               <Link
-                key={href}
-                href={href}
+                key={fullHref}
+                href={fullHref || "/"}
                 className={`flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
                   isActive
                     ? "text-primary"

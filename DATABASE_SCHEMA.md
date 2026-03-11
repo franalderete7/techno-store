@@ -21,9 +21,10 @@ Recommended migration order for the lean CRM/inventory refactor:
 2. [seed_stickers_examples.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/seed_stickers_examples.sql)
 3. [v16_whatsapp_identity.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/v16_whatsapp_identity.sql)
 4. [crm_funnel_taxonomy.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/crm_funnel_taxonomy.sql)
-5. [conversation_timeline_insights.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/conversation_timeline_insights.sql)
-6. `npm run db:types:pull`
-7. deploy updated app + n8n workflow
+5. [remove_tiendanube_integration.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/remove_tiendanube_integration.sql) – archives and removes the deprecated Tienda Nube metadata from `products`
+6. [conversation_timeline_insights.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/conversation_timeline_insights.sql)
+7. `npm run db:types:pull`
+8. deploy updated app + n8n workflow
 
 The repo no longer includes the older one-off migration files that were used during the earlier cleanup. The files above are the current checked-in Supabase SQL that matter for the WhatsApp-first CRM flow.
 

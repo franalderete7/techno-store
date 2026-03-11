@@ -1,13 +1,16 @@
 # Techno Store – Products Admin
 
-A Next.js admin app for managing products in Supabase. Built with shadcn/ui and dark theme.
+A Next.js app with a public storefront plus a protected admin panel for managing products in Supabase. Built with shadcn/ui and dark theme.
 
-## Features
+## Routes
 
-- **View** all products in a table
-- **Edit** every column (except image – managed separately)
-- **Delete** products with confirmation
-- **Add** new products with all fields
+- Public storefront: `/`
+- Public product detail: `/productos/[handle]`
+- Admin login: `/admin/login`
+- Admin dashboard: `/admin`
+- Admin stock: `/admin/stock`
+- Admin purchases: `/admin/purchases`
+- Admin CRM: `/admin/crm`
 
 ## Setup
 
@@ -32,6 +35,12 @@ A Next.js admin app for managing products in Supabase. Built with shadcn/ui and 
      - `NEXT_PUBLIC_SUPABASE_URL`
      - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
+   For the protected admin area, also configure Supabase Auth:
+
+   - Go to **Authentication** → **Providers** → **Email**
+   - Enable email/password login
+   - Optionally enable email confirmation if you want new admin accounts to confirm their email first
+
 3. **Apply database schema**
 
    Ensure your Supabase project has the `products` table. See `DATABASE_SCHEMA.md` for the full schema. The SQL you provided should be run in the Supabase SQL editor if the table does not exist yet.
@@ -40,16 +49,13 @@ A Next.js admin app for managing products in Supabase. Built with shadcn/ui and 
 
    If Row Level Security is enabled on `products`, grant read/write access for your use case (e.g. for admin dashboard, you may use a service role key or specific RLS policies for authenticated users).
 
-5. **Optional: Tienda Nube tab**
+5. **Optional but recommended: admin allowlist**
 
-   To use the `/tiendanube` tab, add these server-side environment variables:
+   Add this server-side env if you want only specific emails to access `/admin/*`:
 
-   - `TIENDANUBE_STORE_ID`
-   - `TIENDANUBE_ACCESS_TOKEN`
-   - `TIENDANUBE_USER_AGENT`
-   - `SUPABASE_SERVICE_ROLE_KEY` (required for the "Sync to products" action)
+   - `ADMIN_EMAIL_ALLOWLIST=you@example.com,partner@example.com`
 
-   The integration uses the official Tienda Nube products API from a Next.js server route, so the token is never exposed to the browser.
+   If this variable is omitted, any authenticated Supabase user can enter the admin panel.
 
 ## Development
 
@@ -66,8 +72,5 @@ Open [http://localhost:3000](http://localhost:3000).
 3. Add environment variables in project settings:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `TIENDANUBE_STORE_ID` (optional, for the Tienda Nube tab)
-   - `TIENDANUBE_ACCESS_TOKEN` (optional, for the Tienda Nube tab)
-   - `TIENDANUBE_USER_AGENT` (optional but recommended, for the Tienda Nube tab)
-   - `SUPABASE_SERVICE_ROLE_KEY` (required for Tienda Nube sync into local products)
+   - `ADMIN_EMAIL_ALLOWLIST` (recommended)
 4. Deploy

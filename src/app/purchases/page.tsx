@@ -1,5 +1,5 @@
-import { PurchasesTable } from "@/components/purchases/purchases-table";
+import { redirect } from "next/navigation";
 
 export default function PurchasesPage() {
-  return <PurchasesTable />;
+  redirect("/admin/purchases");
 }

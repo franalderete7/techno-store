@@ -1,5 +1,5 @@
-import { StockTable } from "@/components/stock/stock-table";
+import { redirect } from "next/navigation";
 
 export default function StockPage() {
-  return <StockTable />;
+  redirect("/admin/stock");
 }

@@ -1,10 +1,19 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/database";
 
-// Use placeholders during build; replace with real values in .env.local
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+let browserClient: ReturnType<typeof createBrowserClient<Database>> | null = null;
+
+export function getSupabaseBrowserClient() {
+  if (!browserClient) {
+    browserClient = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
+  }
+
+  return browserClient;
+}
+
+export const supabase = getSupabaseBrowserClient();

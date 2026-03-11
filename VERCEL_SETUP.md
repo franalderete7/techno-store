@@ -31,12 +31,16 @@ Direct link: `https://vercel.com/[your-team]/[project-name]/settings`
 - Add:
   - `NEXT_PUBLIC_SUPABASE_URL` = your Supabase project URL
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your Supabase anon key
-  - `SUPABASE_SERVICE_ROLE_KEY` = your Supabase service role key
-  - `TIENDANUBE_STORE_ID` = your Tienda Nube store id
-  - `TIENDANUBE_ACCESS_TOKEN` = your Tienda Nube app/access token
-  - `TIENDANUBE_USER_AGENT` = e.g. `TechnoStore Admin (you@example.com)`
+  - `ADMIN_EMAIL_ALLOWLIST` = comma-separated admin emails, for example `you@example.com,partner@example.com`
 - Enable for **Production**, **Preview**, and **Development**
 - Save
+
+## 3.1 Configure Supabase Auth
+
+- In Supabase go to **Authentication** → **Providers** → **Email**
+- Enable **Email** provider
+- Turn on **Confirm email** only if you want new admin accounts to verify their email before login
+- Admin users enter through `/admin/login`
 
 ## 4. Deploy
 

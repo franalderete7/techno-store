@@ -1,5 +1,5 @@
-import { ProductsTable } from "@/components/products/products-table";
+import { StorefrontCatalog } from "@/components/storefront/storefront-catalog";
 
 export default function Home() {
-  return <ProductsTable />;
+  return <StorefrontCatalog />;
 }

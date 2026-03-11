@@ -1,5 +1,5 @@
-import { CrmDashboard } from "@/components/crm/crm-dashboard";
+import { redirect } from "next/navigation";
 
 export default function CrmPage() {
-  return <CrmDashboard />;
+  redirect("/admin/crm");
 }
