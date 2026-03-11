@@ -6,6 +6,7 @@ import {
   isValidCheckoutEmail,
   isValidCheckoutName,
 } from "@/lib/storefront-checkout";
+import { getErrorMessage } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -25,19 +26,51 @@ type CheckoutBody = {
 function getSupabaseRouteClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const apiKey = serviceRoleKey || anonKey;
 
-  if (!supabaseUrl || !apiKey) {
-    throw new Error("Supabase environment variables are missing.");
+  if (!supabaseUrl) {
+    throw new Error("Falta NEXT_PUBLIC_SUPABASE_URL en el deployment.");
   }
 
-  return createClient<Database>(supabaseUrl, apiKey, {
+  if (!serviceRoleKey) {
+    throw new Error(
+      "Falta SUPABASE_SERVICE_ROLE_KEY en el deployment. Configurala en Vercel para poder guardar pedidos."
+    );
+  }
+
+  return createClient<Database>(supabaseUrl, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
   });
+}
+
+function formatCheckoutRouteError(error: unknown) {
+  const message = getErrorMessage(error, "No se pudo guardar el pedido.").toLowerCase();
+
+  if (
+    message.includes("storefront_orders") &&
+    (message.includes("does not exist") ||
+      message.includes("could not find the table") ||
+      message.includes("relation") ||
+      message.includes("schema cache"))
+  ) {
+    return "Falta la tabla de pedidos. Ejecutá `supabase/storefront_checkout.sql` en Supabase y probá de nuevo.";
+  }
+
+  if (
+    message.includes("row-level security") ||
+    message.includes("permission denied") ||
+    message.includes("not allowed")
+  ) {
+    return "Supabase está rechazando el guardado del pedido. Revisá la service role key o las políticas de la tabla `storefront_orders`.";
+  }
+
+  if (message.includes("service_role") || message.includes("supabase_service_role_key")) {
+    return "Falta `SUPABASE_SERVICE_ROLE_KEY` en Vercel para guardar pedidos.";
+  }
+
+  return getErrorMessage(error, "No se pudo guardar el pedido.");
 }
 
 export async function POST(request: Request) {
@@ -155,7 +188,8 @@ export async function POST(request: Request) {
       aliases: [...TRANSFER_ALIASES],
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "No se pudo guardar el pedido.";
+    console.error("storefront checkout error", error);
+    const message = formatCheckoutRouteError(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

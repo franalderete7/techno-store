@@ -4,7 +4,6 @@ import Link from "next/link";
 import { ArrowLeft, BadgeDollarSign, PackageCheck, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TRANSFER_ALIASES } from "@/lib/storefront-checkout";
 import type { StorefrontProduct } from "@/lib/storefront";
 import { getStorefrontImage } from "@/lib/storefront-presenters";
 import {
@@ -98,10 +97,7 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
                     {formatMoney(product.price_ars)}
                   </p>
                 ) : null}
-                <p className="text-sm text-white/60">
-                  Bancarizada: {formatMoney(product.bancarizada_cuota)} por cuota · Macro:{" "}
-                  {formatMoney(product.macro_cuota)} por cuota
-                </p>
+                <p className="text-sm text-white/60">Precio contado / transferencia bancaria.</p>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -121,7 +117,7 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
                   <div>
                     <p className="font-medium text-white">Pago por transferencia</p>
                     <p className="text-sm leading-6 text-white/65">
-                      Alias disponibles: {TRANSFER_ALIASES.join(" · ")}.
+                      Al finalizar la compra te mostramos los alias para transferir y confirmar el pago.
                     </p>
                   </div>
                 </div>

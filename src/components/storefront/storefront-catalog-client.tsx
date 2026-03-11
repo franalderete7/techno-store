@@ -23,7 +23,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { StorefrontProduct } from "@/lib/storefront";
 import { getStorefrontImage, getStorefrontSlug } from "@/lib/storefront-presenters";
-import { TRANSFER_ALIASES } from "@/lib/storefront-checkout";
 import { StorefrontAddToCartButton, StorefrontShell } from "@/components/storefront/storefront-shell";
 
 type SortKey = "recommended" | "price-asc" | "price-desc" | "name-asc";
@@ -161,7 +160,7 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                   <CreditCard className="mb-3 h-5 w-5 text-sky-200" />
                   <p className="text-sm font-medium text-white">Pago por transferencia</p>
                   <p className="mt-1 text-sm text-white/60">
-                    Alias: {TRANSFER_ALIASES.join(" · ")}.
+                    Precio contado en pesos, igual al valor por transferencia bancaria.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
@@ -178,30 +177,34 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
 
         <section className="mx-auto max-w-7xl px-6 pb-24 sm:px-10">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-sm uppercase tracking-[0.28em] text-white/38">Storefront</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
-                  {filteredProducts.length} productos para comprar
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:items-end">
+              <div className="space-y-2">
+                <p className="text-sm uppercase tracking-[0.24em] text-white/38">Catálogo</p>
+                <h2 className="text-2xl font-semibold tracking-tight text-white">
+                  {filteredProducts.length} equipos para comprar
                 </h2>
+                <p className="text-sm leading-6 text-white/58">
+                  Buscá por modelo, filtrá por disponibilidad y ordená la lista para encontrar
+                  rápido el equipo correcto.
+                </p>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.8fr))]">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,0.95fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
+                <div className="relative sm:col-span-2 xl:col-span-1">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Buscar iPhone, Samsung, 256GB..."
-                    className="h-11 rounded-full border-white/10 bg-black/25 pl-10 text-white placeholder:text-white/30"
+                    className="h-12 rounded-2xl border-white/10 bg-black/30 pl-11 text-white placeholder:text-white/30"
                   />
                 </div>
                 <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger className="h-11 w-full rounded-full border-white/10 bg-black/25 text-white">
+                  <SelectTrigger className="h-12 w-full rounded-2xl border-white/10 bg-black/30 px-4 text-white">
                     <SelectValue placeholder="Categoría" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todas las categorías</SelectItem>
+                    <SelectItem value="all">Categorías</SelectItem>
                     {categories.map((entry) => (
                       <SelectItem key={entry} value={entry}>
                         {entry}
@@ -213,24 +216,24 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                   value={availability}
                   onValueChange={(value) => setAvailability(value as AvailabilityFilter)}
                 >
-                  <SelectTrigger className="h-11 w-full rounded-full border-white/10 bg-black/25 text-white">
+                  <SelectTrigger className="h-12 w-full rounded-2xl border-white/10 bg-black/30 px-4 text-white">
                     <SelectValue placeholder="Disponibilidad" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todo</SelectItem>
+                    <SelectItem value="all">Disponibilidad</SelectItem>
                     <SelectItem value="in-stock">Entrega inmediata</SelectItem>
                     <SelectItem value="on-order">A pedido</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
-                  <SelectTrigger className="h-11 w-full rounded-full border-white/10 bg-black/25 text-white">
+                  <SelectTrigger className="h-12 w-full rounded-2xl border-white/10 bg-black/30 px-4 text-white">
                     <div className="flex items-center gap-2">
                       <SlidersHorizontal className="h-4 w-4 text-white/45" />
                       <SelectValue placeholder="Ordenar" />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="recommended">Recomendado</SelectItem>
+                    <SelectItem value="recommended">Orden recomendado</SelectItem>
                     <SelectItem value="price-asc">Precio menor</SelectItem>
                     <SelectItem value="price-desc">Precio mayor</SelectItem>
                     <SelectItem value="name-asc">Nombre A-Z</SelectItem>
@@ -316,10 +319,7 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                             {formatMoney(product.price_ars)}
                           </p>
                         ) : null}
-                        <p className="text-sm text-white/60">
-                          Bancarizada: {formatMoney(product.bancarizada_cuota)} por cuota · Macro:{" "}
-                          {formatMoney(product.macro_cuota)} por cuota
-                        </p>
+                        <p className="text-sm text-white/60">Precio contado / transferencia bancaria.</p>
                       </div>
 
                       <div className="flex flex-wrap items-center justify-between gap-3">
