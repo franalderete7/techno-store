@@ -177,11 +177,11 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
 
         <section className="mx-auto max-w-7xl px-6 pb-24 sm:px-10">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:items-end">
-              <div className="space-y-2">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
+              <div className="flex flex-col justify-center space-y-2">
                 <p className="text-sm uppercase tracking-[0.24em] text-white/38">Catálogo</p>
                 <h2 className="text-2xl font-semibold tracking-tight text-white">
-                  {filteredProducts.length} equipos para comprar
+                  {filteredProducts.length} equipos disponibles
                 </h2>
                 <p className="text-sm leading-6 text-white/58">
                   Buscá por modelo, filtrá por disponibilidad y ordená la lista para encontrar
@@ -189,56 +189,58 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,0.95fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
-                <div className="relative sm:col-span-2 xl:col-span-1">
+              <div className="flex flex-1 flex-wrap items-center gap-3 lg:max-w-2xl lg:justify-end">
+                <div className="relative min-w-0 flex-1 basis-full sm:basis-[calc(50%-0.375rem)] lg:basis-[min(280px,100%)]">
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Buscar iPhone, Samsung, 256GB..."
-                    className="h-12 rounded-2xl border-white/10 bg-black/30 pl-11 text-white placeholder:text-white/30"
+                    className="h-11 w-full rounded-xl border-white/10 bg-black/30 pl-11 text-white placeholder:text-white/30"
                   />
                 </div>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger className="h-12 w-full rounded-2xl border-white/10 bg-black/30 px-4 text-white">
-                    <SelectValue placeholder="Categoría" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Categorías</SelectItem>
-                    {categories.map((entry) => (
-                      <SelectItem key={entry} value={entry}>
-                        {entry}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={availability}
-                  onValueChange={(value) => setAvailability(value as AvailabilityFilter)}
-                >
-                  <SelectTrigger className="h-12 w-full rounded-2xl border-white/10 bg-black/30 px-4 text-white">
-                    <SelectValue placeholder="Disponibilidad" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Disponibilidad</SelectItem>
-                    <SelectItem value="in-stock">Entrega inmediata</SelectItem>
-                    <SelectItem value="on-order">A pedido</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
-                  <SelectTrigger className="h-12 w-full rounded-2xl border-white/10 bg-black/30 px-4 text-white">
-                    <div className="flex items-center gap-2">
-                      <SlidersHorizontal className="h-4 w-4 text-white/45" />
-                      <SelectValue placeholder="Ordenar" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recommended">Orden recomendado</SelectItem>
-                    <SelectItem value="price-asc">Precio menor</SelectItem>
-                    <SelectItem value="price-desc">Precio mayor</SelectItem>
-                    <SelectItem value="name-asc">Nombre A-Z</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex min-w-0 flex-1 flex-wrap basis-full gap-3 sm:basis-auto sm:flex-initial">
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                      <SelectValue placeholder="Categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Categorías</SelectItem>
+                      {categories.map((entry) => (
+                        <SelectItem key={entry} value={entry}>
+                          {entry}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={availability}
+                    onValueChange={(value) => setAvailability(value as AvailabilityFilter)}
+                  >
+                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                      <SelectValue placeholder="Disponibilidad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Disponibilidad</SelectItem>
+                      <SelectItem value="in-stock">Entrega inmediata</SelectItem>
+                      <SelectItem value="on-order">A pedido</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
+                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                      <div className="flex items-center gap-2">
+                        <SlidersHorizontal className="h-4 w-4 shrink-0 text-white/45" />
+                        <SelectValue placeholder="Ordenar" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recommended">Orden recomendado</SelectItem>
+                      <SelectItem value="price-asc">Precio menor</SelectItem>
+                      <SelectItem value="price-desc">Precio mayor</SelectItem>
+                      <SelectItem value="name-asc">Nombre A-Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </div>

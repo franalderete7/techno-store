@@ -59,6 +59,14 @@ function formatCheckoutRouteError(error: unknown) {
   }
 
   if (
+    message.includes("storefront_orders_email_check") ||
+    message.includes("email") ||
+    message.includes("violates check constraint")
+  ) {
+    return "El email ingresado no es válido. Probá con otro formato (ej: nombre@dominio.com).";
+  }
+
+  if (
     message.includes("row-level security") ||
     message.includes("permission denied") ||
     message.includes("not allowed")

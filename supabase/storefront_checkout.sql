@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.storefront_orders (
   contacted_at timestamptz NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT storefront_orders_email_check
-    CHECK (email ~* '^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$'),
+    CHECK (email ~* '^[^@\s]+@[^@\s]+\.[^@\s]{2,}$'),
   CONSTRAINT storefront_orders_payment_method_check
     CHECK (payment_method = 'transferencia')
 );
