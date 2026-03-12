@@ -113,6 +113,11 @@ const PRICING_BANDS = [
 ] as const;
 
 type ProductDisplay = Product & Pick<VProductCatalog, "color" | "battery_health">;
+type HoverActionState = {
+  product: ProductDisplay;
+  x: number;
+  y: number;
+};
 
 const EXPORT_COLUMNS: Array<{ key: keyof ProductDisplay; label: string }> = [
   { key: "product_key", label: "Product Key" },
@@ -695,6 +700,25 @@ function matchesProductSearch(product: ProductDisplay, query: string): boolean {
   );
 }
 
+function getHoverActionPosition(clientX: number, clientY: number) {
+  const panelWidth = 92;
+  const panelHeight = 42;
+  const viewportGutter = 16;
+  const cursorOffsetX = 18;
+
+  if (typeof window === "undefined") {
+    return { x: clientX + cursorOffsetX, y: clientY };
+  }
+
+  const maxX = window.innerWidth - panelWidth - viewportGutter;
+  const maxY = window.innerHeight - panelHeight - viewportGutter;
+
+  return {
+    x: Math.max(viewportGutter, Math.min(maxX, clientX + cursorOffsetX)),
+    y: Math.max(viewportGutter, Math.min(maxY, clientY - panelHeight / 2)),
+  };
+}
+
 export function ProductsTable() {
   const [products, setProducts] = useState<ProductDisplay[]>([]);
   const [loading, setLoading] = useState(true);
@@ -715,7 +739,9 @@ export function ProductsTable() {
   );
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [hoverActions, setHoverActions] = useState<HoverActionState | null>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
+  const hoverActionsRef = useRef<HTMLDivElement>(null);
   const quickAddImageInputRef = useRef<HTMLInputElement>(null);
   const editImageInputRef = useRef<HTMLInputElement>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
@@ -815,6 +841,15 @@ export function ProductsTable() {
       e.preventDefault();
       el.scrollLeft -= e.deltaY;
     }
+  };
+
+  const updateHoverActions = (product: ProductDisplay, event: React.MouseEvent<HTMLTableRowElement>) => {
+    const { x, y } = getHoverActionPosition(event.clientX, event.clientY);
+    setHoverActions({ product, x, y });
+  };
+
+  const hideHoverActions = () => {
+    setHoverActions(null);
   };
 
   const fetchProducts = async () => {
@@ -1293,6 +1328,7 @@ export function ProductsTable() {
               className="hidden overflow-auto rounded-lg border sm:block"
               style={{ maxHeight: "calc(100vh - 14rem)" }}
               onWheel={handleTableWheel}
+              onScroll={hideHoverActions}
             >
               <Table>
                 <TableHeader>
@@ -1321,36 +1357,28 @@ export function ProductsTable() {
                 </TableHeader>
                 <TableBody>
                   {sortedProducts.map((p) => (
-                    <TableRow key={p.id} className="group/product-row">
+                    <TableRow
+                      key={p.id}
+                      className="cursor-default"
+                      onMouseEnter={(event) => updateHoverActions(p, event)}
+                      onMouseMove={(event) => updateHoverActions(p, event)}
+                      onMouseLeave={(event) => {
+                        if (
+                          event.relatedTarget instanceof Node
+                          && hoverActionsRef.current?.contains(event.relatedTarget)
+                        ) {
+                          return;
+                        }
+                        hideHoverActions();
+                      }}
+                    >
                       {displayColumns.map((col) => (
                         <TableCell
                           key={col.key}
                           className={`px-3 py-2 ${col.key === "image_url" ? "min-w-[84px]" : "min-w-[100px] whitespace-nowrap"}`}
                         >
                           {col.key === "image_url" ? (
-                            <div className="relative h-14 w-14">
-                              <ProductImageCell product={p} />
-                              <div className="invisible absolute inset-0 z-10 flex items-center justify-center gap-1 rounded-md bg-background/85 opacity-0 backdrop-blur-[1px] transition-all duration-150 pointer-events-none group-hover/product-row:visible group-hover/product-row:opacity-100 group-hover/product-row:pointer-events-auto group-focus-within/product-row:visible group-focus-within/product-row:opacity-100 group-focus-within/product-row:pointer-events-auto">
-                                <Button
-                                  variant="secondary"
-                                  size="icon"
-                                  className="h-7 w-7 cursor-pointer shadow-sm"
-                                  onClick={() => openEdit(p)}
-                                  aria-label={`Edit ${p.product_name}`}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  variant="secondary"
-                                  size="icon"
-                                  className="h-7 w-7 cursor-pointer text-destructive shadow-sm hover:text-destructive"
-                                  onClick={() => setDeleteProduct(p)}
-                                  aria-label={`Delete ${p.product_name}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </div>
+                            <ProductImageCell product={p} />
                           ) : col.key === "id" ? (
                             <span className="font-mono text-xs">{p.id}</span>
                           ) : col.key === "in_stock" ? (
@@ -1369,6 +1397,33 @@ export function ProductsTable() {
                 </TableBody>
               </Table>
             </div>
+            {hoverActions ? (
+              <div
+                ref={hoverActionsRef}
+                className="fixed z-50 hidden items-center gap-1 rounded-full border bg-background/95 p-1 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:flex"
+                style={{ left: hoverActions.x, top: hoverActions.y }}
+                onMouseLeave={hideHoverActions}
+              >
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-8 w-8 cursor-pointer rounded-full shadow-sm"
+                  onClick={() => openEdit(hoverActions.product)}
+                  aria-label={`Edit ${hoverActions.product.product_name}`}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-8 w-8 cursor-pointer rounded-full text-destructive shadow-sm hover:text-destructive"
+                  onClick={() => setDeleteProduct(hoverActions.product)}
+                  aria-label={`Delete ${hoverActions.product.product_name}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
           </>
         )}
       </div>
