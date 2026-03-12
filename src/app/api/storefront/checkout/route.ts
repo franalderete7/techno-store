@@ -3,8 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import {
   TRANSFER_ALIASES,
+  buildStorefrontDeliveryNotes,
+  isValidCheckoutAddress,
+  isValidCheckoutCity,
   isValidCheckoutEmail,
   isValidCheckoutName,
+  isValidCheckoutProvince,
+  isValidCheckoutZipCode,
 } from "@/lib/storefront-checkout";
 import { getStorefrontAvailabilityCode } from "@/lib/storefront-presenters";
 import { getErrorMessage } from "@/lib/utils";
@@ -21,6 +26,11 @@ type CheckoutBody = {
   firstName?: string;
   lastName?: string;
   email?: string;
+  address?: string;
+  zipCode?: string;
+  city?: string;
+  province?: string;
+  deliveryInstructions?: string;
   items?: CheckoutItemInput[];
 };
 
@@ -90,6 +100,11 @@ export async function POST(request: Request) {
     const email = String(body.email || "")
       .trim()
       .toLowerCase();
+    const address = String(body.address || "").trim();
+    const zipCode = String(body.zipCode || "").trim();
+    const city = String(body.city || "").trim();
+    const province = String(body.province || "").trim();
+    const deliveryInstructions = String(body.deliveryInstructions || "").trim();
     const items = Array.isArray(body.items) ? body.items : [];
 
     if (!isValidCheckoutName(firstName)) {
@@ -100,6 +115,18 @@ export async function POST(request: Request) {
     }
     if (!isValidCheckoutEmail(email)) {
       return NextResponse.json({ error: "Email inválido." }, { status: 400 });
+    }
+    if (!isValidCheckoutAddress(address)) {
+      return NextResponse.json({ error: "Dirección inválida." }, { status: 400 });
+    }
+    if (!isValidCheckoutZipCode(zipCode)) {
+      return NextResponse.json({ error: "Código postal inválido." }, { status: 400 });
+    }
+    if (!isValidCheckoutCity(city)) {
+      return NextResponse.json({ error: "Ciudad inválida." }, { status: 400 });
+    }
+    if (!isValidCheckoutProvince(province)) {
+      return NextResponse.json({ error: "Provincia inválida." }, { status: 400 });
     }
     if (items.length === 0) {
       return NextResponse.json({ error: "El carrito está vacío." }, { status: 400 });
@@ -166,6 +193,13 @@ export async function POST(request: Request) {
 
     const subtotal = orderItems.reduce((sum, item) => sum + item.line_total, 0);
     const itemCount = orderItems.reduce((sum, item) => sum + item.quantity, 0);
+    const orderNotes = buildStorefrontDeliveryNotes({
+      address,
+      zipCode,
+      city,
+      province,
+      deliveryInstructions,
+    });
 
     const { data: insertedOrder, error: insertError } = await supabase
       .from("storefront_orders")
@@ -179,6 +213,7 @@ export async function POST(request: Request) {
         item_count: itemCount,
         items: orderItems,
         transfer_aliases: [...TRANSFER_ALIASES],
+        notes: orderNotes,
       })
       .select("id")
       .single();

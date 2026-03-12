@@ -28,8 +28,12 @@ import { cn, getErrorMessage } from "@/lib/utils";
 import {
   TRANSFER_ALIASES,
   buildStorefrontProductUrl,
+  isValidCheckoutAddress,
+  isValidCheckoutCity,
   isValidCheckoutEmail,
   isValidCheckoutName,
+  isValidCheckoutProvince,
+  isValidCheckoutZipCode,
 } from "@/lib/storefront-checkout";
 import type { StorefrontProduct } from "@/lib/storefront";
 
@@ -195,6 +199,11 @@ function CartDrawer() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [zipCode, setZipCode] = useState("");
+  const [city, setCity] = useState("");
+  const [province, setProvince] = useState("");
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<CheckoutResponse | null>(null);
@@ -210,6 +219,11 @@ function CartDrawer() {
     const normalizedFirstName = firstName.trim();
     const normalizedLastName = lastName.trim();
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedAddress = address.trim();
+    const normalizedZipCode = zipCode.trim();
+    const normalizedCity = city.trim();
+    const normalizedProvince = province.trim();
+    const normalizedDeliveryInstructions = deliveryInstructions.trim();
 
     if (!isValidCheckoutName(normalizedFirstName)) {
       setError("Escribí un nombre válido.");
@@ -221,6 +235,22 @@ function CartDrawer() {
     }
     if (!isValidCheckoutEmail(normalizedEmail)) {
       setError("Revisá el formato del email.");
+      return;
+    }
+    if (!isValidCheckoutAddress(normalizedAddress)) {
+      setError("Escribí una dirección válida.");
+      return;
+    }
+    if (!isValidCheckoutZipCode(normalizedZipCode)) {
+      setError("Revisá el código postal.");
+      return;
+    }
+    if (!isValidCheckoutCity(normalizedCity)) {
+      setError("Escribí una ciudad válida.");
+      return;
+    }
+    if (!isValidCheckoutProvince(normalizedProvince)) {
+      setError("Escribí una provincia válida.");
       return;
     }
     if (items.length === 0) {
@@ -241,6 +271,11 @@ function CartDrawer() {
           firstName: normalizedFirstName,
           lastName: normalizedLastName,
           email: normalizedEmail,
+          address: normalizedAddress,
+          zipCode: normalizedZipCode,
+          city: normalizedCity,
+          province: normalizedProvince,
+          deliveryInstructions: normalizedDeliveryInstructions,
           items: items.map((item) => ({
             id: item.id,
             product_key: item.product_key,
@@ -263,6 +298,11 @@ function CartDrawer() {
       setFirstName("");
       setLastName("");
       setEmail("");
+      setAddress("");
+      setZipCode("");
+      setCity("");
+      setProvince("");
+      setDeliveryInstructions("");
     } catch (checkoutError) {
       setError(getErrorMessage(checkoutError, "No se pudo guardar tu pedido ahora."));
     } finally {
@@ -433,7 +473,8 @@ function CartDrawer() {
                     Finalizar pedido
                   </p>
                   <p className="mt-2 text-sm leading-6 text-white/65">
-                    Completá tus datos y te mostramos los alias para transferir.
+                    Completá tus datos y la dirección de entrega para mostrarte los alias y
+                    preparar el despacho.
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -456,6 +497,39 @@ function CartDrawer() {
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="Email"
                   className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
+                />
+                <Input
+                  value={address}
+                  onChange={(event) => setAddress(event.target.value)}
+                  placeholder="Dirección"
+                  className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
+                />
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Input
+                    value={zipCode}
+                    onChange={(event) => setZipCode(event.target.value)}
+                    placeholder="Código postal"
+                    className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
+                  />
+                  <Input
+                    value={city}
+                    onChange={(event) => setCity(event.target.value)}
+                    placeholder="Ciudad"
+                    className="border-white/10 bg-black/20 text-white placeholder:text-white/30 sm:col-span-2"
+                  />
+                </div>
+                <Input
+                  value={province}
+                  onChange={(event) => setProvince(event.target.value)}
+                  placeholder="Provincia"
+                  className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
+                />
+                <textarea
+                  value={deliveryInstructions}
+                  onChange={(event) => setDeliveryInstructions(event.target.value)}
+                  placeholder="Indicaciones de entrega (opcional)"
+                  rows={3}
+                  className="min-h-24 w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none transition placeholder:text-white/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 />
                 {error ? (
                   <div className="rounded-2xl border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-50">
