@@ -1,4 +1,4 @@
-import { cache } from "react";
+import { unstable_noStore as noStore } from "next/cache";
 import { createSupabasePublicServerClient } from "@/lib/supabase/server";
 import type { VProductCatalog, VStoreContext } from "@/types/database";
 
@@ -96,7 +96,8 @@ function normalizeStorefrontContext(row: VStoreContext | null): StorefrontContex
   };
 }
 
-export const fetchStorefrontProducts = cache(async () => {
+export async function fetchStorefrontProducts() {
+  noStore();
   const supabase = createSupabasePublicServerClient();
   const { data, error } = await supabase
     .from("v_product_catalog")
@@ -112,9 +113,10 @@ export const fetchStorefrontProducts = cache(async () => {
   return (((data || []) as unknown) as VProductCatalog[])
     .map((row) => normalizeStorefrontProduct(row))
     .filter((row): row is StorefrontProduct => row !== null);
-});
+}
 
-export const fetchStorefrontProductBySlug = cache(async (slug: string) => {
+export async function fetchStorefrontProductBySlug(slug: string) {
+  noStore();
   const normalizedSlug = slug.trim();
   const supabase = createSupabasePublicServerClient();
   const { data, error } = await supabase
@@ -129,9 +131,10 @@ export const fetchStorefrontProductBySlug = cache(async (slug: string) => {
   }
 
   return normalizeStorefrontProduct((((data as unknown) as VProductCatalog | null) || null));
-});
+}
 
-export const fetchStorefrontContext = cache(async () => {
+export async function fetchStorefrontContext() {
+  noStore();
   const supabase = createSupabasePublicServerClient();
   const { data, error } = await supabase
     .from("v_store_context")
@@ -146,4 +149,4 @@ export const fetchStorefrontContext = cache(async () => {
   }
 
   return normalizeStorefrontContext((((data as unknown) as VStoreContext | null) || null));
-});
+}
