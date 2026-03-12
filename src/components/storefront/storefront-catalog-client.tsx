@@ -191,9 +191,9 @@ export function StorefrontCatalogClient({
   return (
     <StorefrontShell>
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_34%),linear-gradient(180deg,#07111d_0%,#020611_40%,#020611_100%)] text-white">
-        <section className="mx-auto max-w-7xl px-6 pb-6 pt-28 sm:px-10 sm:pt-32">
-          <div className="rounded-[2.25rem] border border-white/10 bg-white/[0.05] p-8 shadow-[0_40px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-10">
-            <h1 className="font-serif text-4xl leading-tight tracking-tight text-white sm:text-5xl">
+        <section className="mx-auto max-w-7xl px-6 pb-6 pt-32 sm:px-10 sm:pt-36">
+          <div className="rounded-[2.25rem] border border-white/10 bg-white/[0.05] p-7 pr-24 shadow-[0_40px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-9 sm:pr-10">
+            <h1 className="font-serif text-3xl leading-tight tracking-tight text-white sm:text-4xl">
               TechnoStore Salta
             </h1>
           </div>
