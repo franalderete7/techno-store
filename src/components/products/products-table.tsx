@@ -582,6 +582,10 @@ function ProductImageCell({ product }: { product: ProductDisplay }) {
   const [hasError, setHasError] = useState(false);
   const imageUrl = typeof product.image_url === "string" ? product.image_url.trim() : "";
 
+  useEffect(() => {
+    setHasError(false);
+  }, [imageUrl]);
+
   if (!imageUrl || hasError) {
     return (
       <div className="flex h-14 w-14 items-center justify-center rounded-md border bg-muted text-center text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -637,6 +641,33 @@ async function deleteProductImage(imageUrl: string, productKey?: string): Promis
 
   const result = (await response.json()) as { error?: string };
   return result.error || "Error deleting image from Cloudinary.";
+}
+
+function getCloudinaryAssetIdentity(imageUrl: string): string | null {
+  try {
+    const url = new URL(imageUrl);
+    const uploadMarker = "/image/upload/";
+    const markerIndex = url.pathname.indexOf(uploadMarker);
+
+    if (markerIndex === -1) return null;
+
+    const assetPath = url.pathname.slice(markerIndex + uploadMarker.length);
+    const segments = assetPath.split("/").filter(Boolean);
+
+    if (segments.length === 0) return null;
+
+    const withoutVersion =
+      segments[0] && /^v\d+$/.test(segments[0]) ? segments.slice(1) : segments;
+
+    if (withoutVersion.length === 0) return null;
+
+    const lastSegment = withoutVersion[withoutVersion.length - 1];
+    withoutVersion[withoutVersion.length - 1] = lastSegment.replace(/\.[^.]+$/, "");
+
+    return withoutVersion.join("/");
+  } catch {
+    return null;
+  }
 }
 
 function matchesProductSearch(product: ProductDisplay, query: string): boolean {
@@ -922,7 +953,12 @@ export function ProductsTable() {
         return;
       }
 
-      if ((editImageMarkedForRemoval || editImageFile) && previousImageUrl && previousImageUrl !== nextImageUrl) {
+      const previousAssetIdentity = previousImageUrl ? getCloudinaryAssetIdentity(previousImageUrl) : null;
+      const nextAssetIdentity = nextImageUrl ? getCloudinaryAssetIdentity(nextImageUrl) : null;
+      const replacedWithDifferentAsset =
+        previousImageUrl !== nextImageUrl && previousAssetIdentity !== nextAssetIdentity;
+
+      if ((editImageMarkedForRemoval || editImageFile) && previousImageUrl && replacedWithDifferentAsset) {
         const deleteError = await deleteProductImage(previousImageUrl, editProduct.product_key);
         if (deleteError) {
           console.error("Failed to delete replaced product image:", deleteError);
@@ -1288,7 +1324,7 @@ export function ProductsTable() {
                 </TableHeader>
                 <TableBody>
                   {sortedProducts.map((p) => (
-                    <TableRow key={p.id}>
+                    <TableRow key={p.id} className="group/product-row">
                       {displayColumns.map((col) => (
                         <TableCell
                           key={col.key}
@@ -1310,7 +1346,7 @@ export function ProductsTable() {
                         </TableCell>
                       ))}
                       <TableCell className="min-w-[100px]">
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 opacity-0 transition-opacity duration-150 pointer-events-none group-hover/product-row:opacity-100 group-hover/product-row:pointer-events-auto group-focus-within/product-row:opacity-100 group-focus-within/product-row:pointer-events-auto">
                           <Button variant="ghost" size="icon" onClick={() => openEdit(p)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
