@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { createSupabasePublicServerClient } from "@/lib/supabase/server";
-import type { VProductCatalog } from "@/types/database";
+import type { VProductCatalog, VStoreContext } from "@/types/database";
 
 export type StorefrontProduct = {
   id: number;
@@ -22,6 +22,17 @@ export type StorefrontProduct = {
   image_url: string | null;
   condition: string | null;
 };
+
+export type StorefrontContext = Pick<
+  VStoreContext,
+  | "store_location_name"
+  | "store_address"
+  | "store_hours"
+  | "store_payment_methods"
+  | "store_credit_policy"
+  | "store_shipping_policy"
+  | "store_social_instagram"
+>;
 
 const storefrontSelect = [
   "id",
@@ -71,6 +82,20 @@ function normalizeStorefrontProduct(row: VProductCatalog | null): StorefrontProd
   };
 }
 
+function normalizeStorefrontContext(row: VStoreContext | null): StorefrontContext | null {
+  if (!row) return null;
+
+  return {
+    store_location_name: row.store_location_name,
+    store_address: row.store_address,
+    store_hours: row.store_hours,
+    store_payment_methods: row.store_payment_methods,
+    store_credit_policy: row.store_credit_policy,
+    store_shipping_policy: row.store_shipping_policy,
+    store_social_instagram: row.store_social_instagram,
+  };
+}
+
 export const fetchStorefrontProducts = cache(async () => {
   const supabase = createSupabasePublicServerClient();
   const { data, error } = await supabase
@@ -104,4 +129,21 @@ export const fetchStorefrontProductBySlug = cache(async (slug: string) => {
   }
 
   return normalizeStorefrontProduct((((data as unknown) as VProductCatalog | null) || null));
+});
+
+export const fetchStorefrontContext = cache(async () => {
+  const supabase = createSupabasePublicServerClient();
+  const { data, error } = await supabase
+    .from("v_store_context")
+    .select(
+      "store_location_name,store_address,store_hours,store_payment_methods,store_credit_policy,store_shipping_policy,store_social_instagram"
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeStorefrontContext((((data as unknown) as VStoreContext | null) || null));
 });

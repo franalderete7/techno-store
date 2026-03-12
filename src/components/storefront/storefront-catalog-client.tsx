@@ -4,10 +4,14 @@ import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import {
   ArrowRight,
+  Clock3,
   CreditCard,
+  MapPin,
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Smartphone,
+  Store,
   Truck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { StorefrontProduct } from "@/lib/storefront";
+import type { StorefrontContext, StorefrontProduct } from "@/lib/storefront";
 import {
   getStorefrontAvailabilityCode,
   getStorefrontAvailabilityLabel,
@@ -33,10 +37,15 @@ import {
   getStorefrontImage,
   getStorefrontSlug,
 } from "@/lib/storefront-presenters";
-import { StorefrontAddToCartButton, StorefrontShell } from "@/components/storefront/storefront-shell";
+import {
+  StorefrontAddToCartButton,
+  StorefrontFooter,
+  StorefrontShell,
+} from "@/components/storefront/storefront-shell";
 
 type SortKey = "recommended" | "price-asc" | "price-desc" | "name-asc";
 type AvailabilityFilter = "all" | "in-stock" | "on-order";
+type StorefrontTab = "catalog" | "about";
 
 function formatMoney(value: number | null | undefined) {
   if (typeof value !== "number" || Number.isNaN(value)) return "Consultar";
@@ -59,11 +68,18 @@ function matchesAvailability(product: StorefrontProduct, filter: AvailabilityFil
   return code === "on_order" || code === "scheduled";
 }
 
-export function StorefrontCatalogClient({ products }: { products: StorefrontProduct[] }) {
+export function StorefrontCatalogClient({
+  products,
+  storeContext,
+}: {
+  products: StorefrontProduct[];
+  storeContext: StorefrontContext | null;
+}) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [availability, setAvailability] = useState<AvailabilityFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
+  const [activeTab, setActiveTab] = useState<StorefrontTab>("catalog");
   const deferredQuery = useDeferredValue(query);
 
   const categories = useMemo(
@@ -126,6 +142,17 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
     return filtered;
   }, [availability, category, deferredQuery, products, sortKey]);
 
+  const displayAddress = storeContext?.store_address?.trim() || "Caseros 1365, Salta Capital";
+  const displayLocationName = storeContext?.store_location_name?.trim() || "TechnoStore Salta";
+  const displayHours = storeContext?.store_hours?.trim() || "Lun-Vie 10-13 y 18-21 · Sáb 10-13";
+  const displayPaymentMethods =
+    storeContext?.store_payment_methods?.trim() ||
+    "Transferencia bancaria, efectivo, Mercado Pago y tarjetas seleccionadas.";
+  const displayShippingPolicy =
+    storeContext?.store_shipping_policy?.trim() ||
+    "Coordinamos envíos y seguimiento por privado para despachar la compra rápido.";
+  const featuredCategories = categories.slice(0, 6);
+
   return (
     <StorefrontShell>
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_34%),linear-gradient(180deg,#07111d_0%,#020611_40%,#020611_100%)] text-white">
@@ -177,82 +204,199 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
 
         <section className="mx-auto max-w-7xl px-6 pb-24 sm:px-10">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
-              <div className="flex flex-col justify-center space-y-2">
-                <p className="text-sm uppercase tracking-[0.24em] text-white/38">Catálogo</p>
-                <h2 className="text-2xl font-semibold tracking-tight text-white">
-                  {filteredProducts.length} equipos disponibles
-                </h2>
-                <p className="text-sm leading-6 text-white/58">
-                  Buscá por modelo, filtrá por disponibilidad y ordená la lista para encontrar
-                  rápido el equipo correcto.
-                </p>
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("catalog")}
+                  className={cn(
+                    "rounded-full border px-4 py-2 text-sm font-medium transition",
+                    activeTab === "catalog"
+                      ? "border-sky-300/50 bg-sky-300/15 text-sky-100"
+                      : "border-white/10 bg-black/20 text-white/65 hover:border-white/20 hover:text-white"
+                  )}
+                >
+                  Catálogo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("about")}
+                  className={cn(
+                    "rounded-full border px-4 py-2 text-sm font-medium transition",
+                    activeTab === "about"
+                      ? "border-sky-300/50 bg-sky-300/15 text-sky-100"
+                      : "border-white/10 bg-black/20 text-white/65 hover:border-white/20 hover:text-white"
+                  )}
+                >
+                  Quiénes somos
+                </button>
               </div>
 
-              <div className="flex flex-1 flex-wrap items-center gap-3 lg:max-w-2xl lg:justify-end">
-                <div className="relative min-w-0 flex-1 basis-full sm:basis-[calc(50%-0.375rem)] lg:basis-[min(280px,100%)]">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-                  <Input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Buscar iPhone, Samsung, 256GB..."
-                    className="h-11 w-full rounded-xl border-white/10 bg-black/30 pl-11 text-white placeholder:text-white/30"
-                  />
+              {activeTab === "catalog" ? (
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
+                  <div className="flex flex-col justify-center space-y-2">
+                    <p className="text-sm uppercase tracking-[0.24em] text-white/38">Catálogo</p>
+                    <h2 className="text-2xl font-semibold tracking-tight text-white">
+                      {filteredProducts.length} equipos disponibles
+                    </h2>
+                    <p className="text-sm leading-6 text-white/58">
+                      Buscá por modelo, filtrá por disponibilidad y ordená la lista para encontrar
+                      rápido el equipo correcto.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-1 flex-wrap items-center gap-3 lg:max-w-2xl lg:justify-end">
+                    <div className="relative min-w-0 flex-1 basis-full sm:basis-[calc(50%-0.375rem)] lg:basis-[min(280px,100%)]">
+                      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                      <Input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Buscar iPhone, Samsung, 256GB..."
+                        className="h-11 w-full rounded-xl border-white/10 bg-black/30 pl-11 text-white placeholder:text-white/30"
+                      />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-wrap basis-full gap-3 sm:basis-auto sm:flex-initial">
+                      <Select value={category} onValueChange={setCategory}>
+                        <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                          <SelectValue placeholder="Categoría" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Categorías</SelectItem>
+                          {categories.map((entry) => (
+                            <SelectItem key={entry} value={entry}>
+                              {entry}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={availability}
+                        onValueChange={(value) => setAvailability(value as AvailabilityFilter)}
+                      >
+                        <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                          <SelectValue placeholder="Disponibilidad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Disponibilidad</SelectItem>
+                          <SelectItem value="in-stock">Disponible ahora</SelectItem>
+                          <SelectItem value="on-order">A pedido / programado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
+                        <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                          <div className="flex items-center gap-2">
+                            <SlidersHorizontal className="h-4 w-4 shrink-0 text-white/45" />
+                            <SelectValue placeholder="Ordenar" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="recommended">Orden recomendado</SelectItem>
+                          <SelectItem value="price-asc">Precio menor</SelectItem>
+                          <SelectItem value="price-desc">Precio mayor</SelectItem>
+                          <SelectItem value="name-asc">Nombre A-Z</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex min-w-0 flex-1 flex-wrap basis-full gap-3 sm:basis-auto sm:flex-initial">
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
-                      <SelectValue placeholder="Categoría" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Categorías</SelectItem>
-                      {categories.map((entry) => (
-                        <SelectItem key={entry} value={entry}>
-                          {entry}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={availability}
-                    onValueChange={(value) => setAvailability(value as AvailabilityFilter)}
-                  >
-                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
-                      <SelectValue placeholder="Disponibilidad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Disponibilidad</SelectItem>
-                      <SelectItem value="in-stock">Disponible ahora</SelectItem>
-                      <SelectItem value="on-order">A pedido / programado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
-                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
-                      <div className="flex items-center gap-2">
-                        <SlidersHorizontal className="h-4 w-4 shrink-0 text-white/45" />
-                        <SelectValue placeholder="Ordenar" />
+              ) : (
+                <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="space-y-5 rounded-[1.75rem] border border-white/10 bg-black/20 p-6">
+                    <div className="space-y-2">
+                      <p className="text-sm uppercase tracking-[0.24em] text-white/38">
+                        Quiénes somos
+                      </p>
+                      <h2 className="text-3xl font-semibold tracking-tight text-white">
+                        Tecnología seleccionada en Salta Capital
+                      </h2>
+                      <p className="text-base leading-7 text-white/68">
+                        {displayLocationName} es una tienda de tecnología ubicada en Salta,
+                        Argentina. Trabajamos con atención directa, equipos seleccionados y un
+                        proceso de compra simple para que puedas resolver todo desde la web o por
+                        WhatsApp.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <MapPin className="mb-3 h-5 w-5 text-sky-200" />
+                        <p className="text-sm font-medium text-white">Dónde estamos</p>
+                        <p className="mt-1 text-sm leading-6 text-white/65">{displayAddress}</p>
                       </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="recommended">Orden recomendado</SelectItem>
-                      <SelectItem value="price-asc">Precio menor</SelectItem>
-                      <SelectItem value="price-desc">Precio mayor</SelectItem>
-                      <SelectItem value="name-asc">Nombre A-Z</SelectItem>
-                    </SelectContent>
-                  </Select>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <Clock3 className="mb-3 h-5 w-5 text-sky-200" />
+                        <p className="text-sm font-medium text-white">Horarios</p>
+                        <p className="mt-1 text-sm leading-6 text-white/65">{displayHours}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <CreditCard className="mb-3 h-5 w-5 text-sky-200" />
+                        <p className="text-sm font-medium text-white">Cómo cobramos</p>
+                        <p className="mt-1 text-sm leading-6 text-white/65">
+                          {displayPaymentMethods}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <Truck className="mb-3 h-5 w-5 text-sky-200" />
+                        <p className="text-sm font-medium text-white">Envíos y coordinación</p>
+                        <p className="mt-1 text-sm leading-6 text-white/65">
+                          {displayShippingPolicy}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-5 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6">
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <Store className="mb-3 h-5 w-5 text-sky-200" />
+                      <p className="text-sm font-medium text-white">Qué vendemos</p>
+                      <p className="mt-1 text-sm leading-6 text-white/65">
+                        Equipos nuevos, usados seleccionados y modelos con entrega inmediata o a
+                        pedido, según disponibilidad.
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {featuredCategories.map((entry) => (
+                          <Badge
+                            key={entry}
+                            className="rounded-full border border-white/10 bg-white/[0.05] text-white/85"
+                          >
+                            {entry}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <Smartphone className="mb-3 h-5 w-5 text-sky-200" />
+                      <p className="text-sm font-medium text-white">Atención personalizada</p>
+                      <p className="mt-1 text-sm leading-6 text-white/65">
+                        Te ayudamos a comparar modelos, confirmar stock, revisar medios de pago y
+                        coordinar la entrega desde Salta para todo el país.
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <ShieldCheck className="mb-3 h-5 w-5 text-sky-200" />
+                      <p className="text-sm font-medium text-white">Cómo trabajamos</p>
+                      <p className="mt-1 text-sm leading-6 text-white/65">
+                        Publicamos equipos reales, mostramos condición y tiempos de entrega, y
+                        seguimos cada compra por privado para que tengas todo claro desde el
+                        principio.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
-          {filteredProducts.length === 0 ? (
+          {activeTab === "catalog" && filteredProducts.length === 0 ? (
             <div className="mt-6 rounded-[2rem] border border-dashed border-white/15 bg-white/[0.03] px-6 py-12 text-center text-white/65">
               <p className="text-xl font-medium text-white">No encontré equipos con ese filtro</p>
               <p className="mt-3 text-sm leading-6">
                 Probá con otra marca, liberá la búsqueda o cambiá la disponibilidad.
               </p>
             </div>
-          ) : (
+          ) : activeTab === "catalog" ? (
             <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {filteredProducts.map((product) => {
                 const image = getStorefrontImage(product);
@@ -366,8 +510,9 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                 );
               })}
             </div>
-          )}
+          ) : null}
         </section>
+        <StorefrontFooter />
       </div>
     </StorefrontShell>
   );

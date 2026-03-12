@@ -15,6 +15,7 @@ import {
 } from "@/lib/storefront-presenters";
 import {
   StorefrontAddToCartButton,
+  StorefrontFooter,
   StorefrontProductLink,
   StorefrontShell,
 } from "@/components/storefront/storefront-shell";
@@ -184,6 +185,7 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
             </div>
           </div>
         </div>
+        <StorefrontFooter className="pb-12" />
       </div>
     </StorefrontShell>
   );

@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   CheckCircle2,
+  Heart,
   Loader2,
   MessageCircle,
   Minus,
@@ -566,5 +567,20 @@ export function StorefrontProductLink({
     >
       Ver ficha del producto
     </a>
+  );
+}
+
+export function StorefrontFooter({ className }: { className?: string }) {
+  return (
+    <footer
+      className={cn(
+        "mx-auto max-w-7xl px-6 pb-10 text-center text-sm text-white/45 sm:px-10",
+        className
+      )}
+    >
+      <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
+        Made with <Heart className="h-4 w-4 fill-rose-400 text-rose-400" /> in Salta, Argentina
+      </p>
+    </footer>
   );
 }
