@@ -640,6 +640,11 @@ export interface Database {
           "contacted": boolean;
           "contacted_at": string | null;
           "created_at": string;
+          "address": string | null;
+          "zip_code": string | null;
+          "city": string | null;
+          "province": string | null;
+          "delivery_instructions": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -656,6 +661,11 @@ export interface Database {
           "contacted"?: boolean | null;
           "contacted_at"?: string | null;
           "created_at"?: string | null;
+          "address"?: string | null;
+          "zip_code"?: string | null;
+          "city"?: string | null;
+          "province"?: string | null;
+          "delivery_instructions"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -672,6 +682,11 @@ export interface Database {
           "contacted"?: boolean | null;
           "contacted_at"?: string | null;
           "created_at"?: string | null;
+          "address"?: string | null;
+          "zip_code"?: string | null;
+          "city"?: string | null;
+          "province"?: string | null;
+          "delivery_instructions"?: string | null;
         };
         Relationships: [];
       };

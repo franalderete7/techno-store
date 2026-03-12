@@ -62,11 +62,16 @@ function formatCheckoutRouteError(error: unknown) {
   if (
     message.includes("storefront_orders") &&
     (message.includes("does not exist") ||
+      message.includes("address") ||
+      message.includes("zip_code") ||
+      message.includes("city") ||
+      message.includes("province") ||
+      message.includes("delivery_instructions") ||
       message.includes("could not find the table") ||
       message.includes("relation") ||
       message.includes("schema cache"))
   ) {
-    return "Falta la tabla de pedidos. Ejecutá `supabase/storefront_checkout.sql` en Supabase y probá de nuevo.";
+    return "Falta actualizar la tabla de pedidos. Si `storefront_orders` ya existe, ejecutá `supabase/storefront_checkout_delivery_fields.sql`. Si todavía no existe, ejecutá `supabase/storefront_checkout.sql`.";
   }
 
   if (
@@ -207,6 +212,11 @@ export async function POST(request: Request) {
         first_name: firstName,
         last_name: lastName,
         email,
+        address,
+        zip_code: zipCode,
+        city,
+        province,
+        delivery_instructions: deliveryInstructions || null,
         payment_method: "transferencia",
         currency: "ARS",
         subtotal,
