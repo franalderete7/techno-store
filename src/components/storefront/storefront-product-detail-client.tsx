@@ -6,9 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { StorefrontProduct } from "@/lib/storefront";
 import {
-  getStorefrontAvailabilityLabel,
   getStorefrontAvailabilityTone,
   getStorefrontConditionLabel,
+  getStorefrontConditionTone,
+  getStorefrontDeliveryDaysLabel,
+  getStorefrontDeliveryDaysTone,
+  getStorefrontDeliveryTypeLabel,
   getStorefrontImage,
 } from "@/lib/storefront-presenters";
 import {
@@ -40,6 +43,8 @@ function buildSpecs(product: StorefrontProduct) {
 export function StorefrontProductDetailClient({ product }: { product: StorefrontProduct }) {
   const image = getStorefrontImage(product);
   const specs = buildSpecs(product);
+  const deliveryLabel = getStorefrontDeliveryTypeLabel(product);
+  const daysLabel = getStorefrontDeliveryDaysLabel(product);
 
   return (
     <StorefrontShell>
@@ -74,8 +79,13 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   <Badge className="bg-sky-300/15 text-sky-200">{product.category}</Badge>
-                  <Badge className="border border-white/10 bg-white/5 text-white">
-                    Condición: {getStorefrontConditionLabel(product.condition)}
+                  <Badge
+                    className={[
+                      "rounded-full border px-3 py-1 font-medium backdrop-blur",
+                      getStorefrontConditionTone(product.condition),
+                    ].join(" ")}
+                  >
+                    {getStorefrontConditionLabel(product.condition)}
                   </Badge>
                   <Badge
                     className={[
@@ -83,8 +93,18 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
                       getStorefrontAvailabilityTone(product),
                     ].join(" ")}
                   >
-                    {getStorefrontAvailabilityLabel(product)}
+                    {deliveryLabel}
                   </Badge>
+                  {daysLabel ? (
+                    <Badge
+                      className={[
+                        "rounded-full border px-3 py-1 font-medium backdrop-blur",
+                        getStorefrontDeliveryDaysTone(product),
+                      ].join(" ")}
+                    >
+                      {daysLabel}
+                    </Badge>
+                  ) : null}
                 </div>
                 <h1 className="text-4xl font-semibold tracking-tight text-white">
                   {product.product_name}

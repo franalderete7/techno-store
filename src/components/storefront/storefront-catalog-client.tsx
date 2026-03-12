@@ -9,7 +9,6 @@ import {
   CreditCard,
   MapPin,
   Search,
-  ShieldCheck,
   SlidersHorizontal,
   Store,
   Truck,
@@ -28,10 +27,13 @@ import { cn } from "@/lib/utils";
 import type { StorefrontContext, StorefrontProduct } from "@/lib/storefront";
 import {
   getStorefrontAvailabilityCode,
-  getStorefrontAvailabilityLabel,
   getStorefrontAvailabilitySortWeight,
   getStorefrontAvailabilityTone,
   getStorefrontConditionLabel,
+  getStorefrontConditionTone,
+  getStorefrontDeliveryDaysLabel,
+  getStorefrontDeliveryDaysTone,
+  getStorefrontDeliveryTypeLabel,
   getStorefrontImage,
   getStorefrontSlug,
 } from "@/lib/storefront-presenters";
@@ -189,96 +191,26 @@ export function StorefrontCatalogClient({
   return (
     <StorefrontShell>
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_34%),linear-gradient(180deg,#07111d_0%,#020611_40%,#020611_100%)] text-white">
-        <section className="mx-auto max-w-7xl px-6 pb-8 pt-28 sm:px-10 sm:pt-32">
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-[2.25rem] border border-white/10 bg-white/[0.05] p-8 shadow-[0_40px_120px_rgba(2,6,23,0.65)] backdrop-blur">
-              <Badge className="rounded-full border border-sky-300/40 bg-sky-300/15 px-3 py-1 text-sky-100">
-                Tienda oficial
-              </Badge>
-              <div className="mt-5 space-y-4">
-                <h1 className="max-w-3xl font-serif text-4xl leading-tight tracking-tight sm:text-5xl">
-                  TechnoStore Salta
-                </h1>
-                <p className="max-w-2xl text-base leading-7 text-white/72 sm:text-lg">
-                  Celulares y tecnología seleccionada en Salta Capital, con compra online simple,
-                  precios claros y seguimiento directo para cada pedido.
-                </p>
-              </div>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <a
-                  href="#catalogo"
-                  className="rounded-full border border-sky-300/40 bg-sky-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-200"
-                >
-                  Ver catálogo
-                </a>
-                <a
-                  href="#faqs"
-                  className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:bg-white/10"
-                >
-                  Ver FAQs
-                </a>
-              </div>
-            </div>
-
-            <div className="rounded-[2.25rem] border border-white/10 bg-black/20 p-6 shadow-[0_30px_90px_rgba(2,6,23,0.4)]">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <MapPin className="mb-3 h-5 w-5 text-sky-200" />
-                  <p className="text-sm font-medium text-white">Salta Capital</p>
-                  <p className="mt-1 text-sm leading-6 text-white/65">{displayAddress}</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <Clock3 className="mb-3 h-5 w-5 text-sky-200" />
-                  <p className="text-sm font-medium text-white">Horarios</p>
-                  <p className="mt-1 text-sm leading-6 text-white/65">{displayHours}</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <Store className="mb-3 h-5 w-5 text-sky-200" />
-                  <p className="text-sm font-medium text-white">Qué vendemos</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {featuredCategories.map((entry) => (
-                      <Badge
-                        key={entry}
-                        className="rounded-full border border-white/10 bg-white/[0.05] text-white/85"
-                      >
-                        {entry}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <ShieldCheck className="mb-3 h-5 w-5 text-sky-200" />
-                  <p className="text-sm font-medium text-white">Atención directa</p>
-                  <p className="mt-1 text-sm leading-6 text-white/65">
-                    Seguimiento por WhatsApp e Instagram: {displayInstagram}
-                  </p>
-                </div>
-              </div>
-            </div>
+        <section className="mx-auto max-w-7xl px-6 pb-6 pt-28 sm:px-10 sm:pt-32">
+          <div className="rounded-[2.25rem] border border-white/10 bg-white/[0.05] p-8 shadow-[0_40px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-10">
+            <h1 className="font-serif text-4xl leading-tight tracking-tight text-white sm:text-5xl">
+              TechnoStore Salta
+            </h1>
           </div>
         </section>
 
         <section id="faqs" className="mx-auto max-w-7xl px-6 pb-8 sm:px-10">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-            <div className="space-y-2">
-              <p className="text-sm uppercase tracking-[0.24em] text-white/38">FAQs</p>
-              <h2 className="text-2xl font-semibold tracking-tight text-white">
-                Información clave de la tienda
-              </h2>
-              <p className="text-sm leading-6 text-white/58">
-                Todo lo importante sobre TechnoStore, ubicación, pagos y envíos, organizado en un
-                solo lugar.
-              </p>
-            </div>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">FAQs</h2>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="mt-6 space-y-4">
               <FaqItem title="Quiénes somos" icon={<Store className="h-4 w-4" />} defaultOpen>
                 <p>
                   {displayLocationName} es una tienda de tecnología ubicada en Salta, Argentina.
                   Trabajamos con atención directa, equipos seleccionados y publicación clara de
                   condición, precio y tiempos de entrega.
                 </p>
+                <p className="mt-2">Atención por WhatsApp e Instagram: {displayInstagram}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {featuredCategories.map((entry) => (
                     <Badge
@@ -311,14 +243,10 @@ export function StorefrontCatalogClient({
         <section id="catalogo" className="mx-auto max-w-7xl px-6 pb-24 sm:px-10">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
-              <div className="flex flex-col justify-center space-y-2">
+              <div className="flex flex-col justify-center">
                 <h2 className="text-2xl font-semibold tracking-tight text-white">
-                  {filteredProducts.length} equipos disponibles
+                  {filteredProducts.length} productos
                 </h2>
-                <p className="text-sm leading-6 text-white/58">
-                  Buscá por modelo, filtrá por disponibilidad y ordená la lista para encontrar
-                  rápido el equipo correcto.
-                </p>
               </div>
 
               <div className="flex flex-1 flex-wrap items-center gap-3 lg:max-w-2xl lg:justify-end">
@@ -390,6 +318,8 @@ export function StorefrontCatalogClient({
                 const image = getStorefrontImage(product);
                 const slug = getStorefrontSlug(product);
                 const displayPrice = getDisplayPrice(product);
+                const deliveryLabel = getStorefrontDeliveryTypeLabel(product);
+                const daysLabel = getStorefrontDeliveryDaysLabel(product);
 
                 return (
                   <article
@@ -414,8 +344,13 @@ export function StorefrontCatalogClient({
                           <Badge className="rounded-full border border-black/20 bg-black/70 text-white backdrop-blur">
                             {product.category}
                           </Badge>
-                          <Badge className="rounded-full border border-black/20 bg-black/70 text-white backdrop-blur">
-                            Condición: {getStorefrontConditionLabel(product.condition)}
+                          <Badge
+                            className={cn(
+                              "rounded-full border px-3 py-1 font-medium backdrop-blur",
+                              getStorefrontConditionTone(product.condition)
+                            )}
+                          >
+                            {getStorefrontConditionLabel(product.condition)}
                           </Badge>
                           <Badge
                             className={cn(
@@ -423,8 +358,18 @@ export function StorefrontCatalogClient({
                               getStorefrontAvailabilityTone(product)
                             )}
                           >
-                            {getStorefrontAvailabilityLabel(product)}
+                            {deliveryLabel}
                           </Badge>
+                          {daysLabel ? (
+                            <Badge
+                              className={cn(
+                                "rounded-full border px-3 py-1 font-medium backdrop-blur",
+                                getStorefrontDeliveryDaysTone(product)
+                              )}
+                            >
+                              {daysLabel}
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
                     </Link>

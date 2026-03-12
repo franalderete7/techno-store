@@ -42,6 +42,25 @@ export function getStorefrontConditionLabel(condition: string | null | undefined
   return condition ? String(condition).trim() : "Sin especificar";
 }
 
+export function getStorefrontConditionTone(condition: string | null | undefined) {
+  const normalized = normalizeValue(condition);
+
+  if (normalized === "new") {
+    return "border-sky-300/30 bg-sky-300/12 text-sky-100";
+  }
+  if (normalized === "like_new") {
+    return "border-violet-300/30 bg-violet-300/12 text-violet-100";
+  }
+  if (normalized === "used") {
+    return "border-zinc-300/25 bg-zinc-300/10 text-zinc-100";
+  }
+  if (normalized === "refurbished") {
+    return "border-cyan-300/30 bg-cyan-300/12 text-cyan-100";
+  }
+
+  return "border-white/15 bg-white/5 text-white/85";
+}
+
 export function getStorefrontAvailabilityCode(
   product: Pick<
     StorefrontProductPresentation,
@@ -82,11 +101,8 @@ export function getStorefrontDeliveryDaysLabel(
   >
 ) {
   const days = Number(product.delivery_days);
-  const code = getStorefrontAvailabilityCode(product);
 
-  if (!Number.isFinite(days) || days <= 0) {
-    return code === "immediate" ? "Disponible ahora" : "A coordinar";
-  }
+  if (!Number.isFinite(days) || days <= 0) return null;
 
   return days === 1 ? "1 día" : `${days} días`;
 }
@@ -97,16 +113,10 @@ export function getStorefrontAvailabilityLabel(
     "delivery_days" | "in_stock" | "delivery_type"
   >
 ) {
-  const code = getStorefrontAvailabilityCode(product);
   const deliveryTypeLabel = getStorefrontDeliveryTypeLabel(product);
   const daysLabel = getStorefrontDeliveryDaysLabel(product);
 
-  if (code === "pickup") return `Entrega: ${deliveryTypeLabel}`;
-  if (code === "immediate") return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
-  if (code === "on_order") return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
-  if (code === "scheduled") return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
-
-  return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
+  return daysLabel ? `${deliveryTypeLabel} · ${daysLabel}` : deliveryTypeLabel;
 }
 
 export function getStorefrontAvailabilityTone(
@@ -117,15 +127,42 @@ export function getStorefrontAvailabilityTone(
 ) {
   const code = getStorefrontAvailabilityCode(product);
 
-  if (code === "immediate" || code === "pickup") {
-    return "border-emerald-300/80 bg-emerald-300 text-emerald-950 shadow-[0_10px_30px_rgba(110,231,183,0.35)]";
+  if (code === "immediate") {
+    return "relative overflow-hidden border-emerald-300/80 bg-emerald-300 text-emerald-950 shadow-[0_10px_30px_rgba(110,231,183,0.35)] before:pointer-events-none before:absolute before:inset-0 before:rounded-full before:border before:border-emerald-50/70 before:content-[''] before:animate-[pulse_2.2s_ease-in-out_infinite]";
+  }
+
+  if (code === "pickup") {
+    return "border-cyan-300/60 bg-cyan-300/12 text-cyan-100";
   }
 
   if (code === "on_order" || code === "scheduled") {
-    return "border-amber-300/60 bg-amber-300 text-amber-950 shadow-[0_10px_28px_rgba(252,211,77,0.25)]";
+    return "border-amber-300/45 bg-amber-300/12 text-amber-100";
   }
 
   return "border-white/20 bg-slate-200 text-slate-950";
+}
+
+export function getStorefrontDeliveryDaysTone(
+  product: Pick<
+    StorefrontProductPresentation,
+    "delivery_days" | "in_stock" | "delivery_type"
+  >
+) {
+  const code = getStorefrontAvailabilityCode(product);
+
+  if (code === "on_order" || code === "scheduled") {
+    return "border-fuchsia-300/30 bg-fuchsia-300/12 text-fuchsia-100";
+  }
+
+  if (code === "pickup") {
+    return "border-cyan-300/30 bg-cyan-300/10 text-cyan-100";
+  }
+
+  if (code === "immediate") {
+    return "border-emerald-300/25 bg-emerald-300/10 text-emerald-100";
+  }
+
+  return "border-white/15 bg-white/5 text-white/85";
 }
 
 export function getStorefrontAvailabilitySortWeight(
