@@ -6,6 +6,7 @@ import {
   isValidCheckoutEmail,
   isValidCheckoutName,
 } from "@/lib/storefront-checkout";
+import { getStorefrontAvailabilityCode } from "@/lib/storefront-presenters";
 import { getErrorMessage } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -151,11 +152,7 @@ export async function POST(request: Request) {
           unit_price: unitPrice,
           quantity: item.quantity,
           line_total: unitPrice * item.quantity,
-          availability: product.in_stock
-            ? "in_stock"
-            : product.delivery_type === "on_order"
-              ? "on_order"
-              : "consult",
+          availability: getStorefrontAvailabilityCode(product),
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);

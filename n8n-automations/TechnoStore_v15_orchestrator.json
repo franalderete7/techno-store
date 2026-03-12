@@ -474,7 +474,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/products?select=product_key,category,product_name,price_usd,price_ars,promo_price_ars,bancarizada_cuota,macro_cuota,in_stock,delivery_type,delivery_days,ram_gb,storage_gb,network,image_url,condition,color,battery_health&order=category.asc,price_ars.desc",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/v_product_catalog?select=product_key,category,product_name,price_usd,price_ars,promo_price_ars,bancarizada_cuota,macro_cuota,in_stock,delivery_type,delivery_days,ram_gb,storage_gb,network,image_url,condition,color,battery_health&order=category.asc,price_ars.desc",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

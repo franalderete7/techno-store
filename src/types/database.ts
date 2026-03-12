@@ -66,7 +66,7 @@ export interface Database {
           "topics_detected": string[];
           "funnel_stage_after"?: string | null;
           "conversation_summary"?: string | null;
-          "conversation_insights"?: string[] | null;
+          "conversation_insights": string[];
           "lead_score_after"?: number | null;
         };
         Update: {
@@ -501,57 +501,6 @@ export interface Database {
         };
         Relationships: [];
       };
-      "storefront_orders": {
-        Row: {
-          "id": number;
-          "first_name": string;
-          "last_name": string;
-          "email": string;
-          "payment_method": string;
-          "currency": string;
-          "subtotal": number;
-          "item_count": number;
-          "items": Json;
-          "transfer_aliases": string[];
-          "notes": string | null;
-          "contacted": boolean;
-          "contacted_at": string | null;
-          "created_at": string;
-        };
-        Insert: {
-          "id"?: number | null;
-          "first_name": string;
-          "last_name": string;
-          "email": string;
-          "payment_method"?: string | null;
-          "currency"?: string | null;
-          "subtotal": number;
-          "item_count": number;
-          "items"?: Json | null;
-          "transfer_aliases"?: string[] | null;
-          "notes"?: string | null;
-          "contacted"?: boolean | null;
-          "contacted_at"?: string | null;
-          "created_at"?: string | null;
-        };
-        Update: {
-          "id"?: number | null;
-          "first_name"?: string | null;
-          "last_name"?: string | null;
-          "email"?: string | null;
-          "payment_method"?: string | null;
-          "currency"?: string | null;
-          "subtotal"?: number | null;
-          "item_count"?: number | null;
-          "items"?: Json | null;
-          "transfer_aliases"?: string[] | null;
-          "notes"?: string | null;
-          "contacted"?: boolean | null;
-          "contacted_at"?: string | null;
-          "created_at"?: string | null;
-        };
-        Relationships: [];
-      };
       "stock_errors_log": {
         Row: {
           "id": number;
@@ -672,6 +621,57 @@ export interface Database {
           "value"?: string | null;
           "description"?: string | null;
           "updated_at"?: string | null;
+        };
+        Relationships: [];
+      };
+      "storefront_orders": {
+        Row: {
+          "id": number;
+          "first_name": string;
+          "last_name": string;
+          "email": string;
+          "payment_method": string;
+          "currency": string;
+          "subtotal": number;
+          "item_count": number;
+          "items": Json;
+          "transfer_aliases": string[];
+          "notes": string | null;
+          "contacted": boolean;
+          "contacted_at": string | null;
+          "created_at": string;
+        };
+        Insert: {
+          "id"?: number | null;
+          "first_name": string;
+          "last_name": string;
+          "email": string;
+          "payment_method"?: string | null;
+          "currency"?: string | null;
+          "subtotal": number;
+          "item_count"?: number | null;
+          "items": Json;
+          "transfer_aliases": string[];
+          "notes"?: string | null;
+          "contacted"?: boolean | null;
+          "contacted_at"?: string | null;
+          "created_at"?: string | null;
+        };
+        Update: {
+          "id"?: number | null;
+          "first_name"?: string | null;
+          "last_name"?: string | null;
+          "email"?: string | null;
+          "payment_method"?: string | null;
+          "currency"?: string | null;
+          "subtotal"?: number | null;
+          "item_count"?: number | null;
+          "items"?: Json | null;
+          "transfer_aliases"?: string[] | null;
+          "notes"?: string | null;
+          "contacted"?: boolean | null;
+          "contacted_at"?: string | null;
+          "created_at"?: string | null;
         };
         Relationships: [];
       };
@@ -912,10 +912,6 @@ export type Sticker = Database["public"]["Tables"]["stickers"]["Row"];
 export type StickerInsert = Database["public"]["Tables"]["stickers"]["Insert"];
 export type StickerUpdate = Database["public"]["Tables"]["stickers"]["Update"];
 
-export type StorefrontOrder = Database["public"]["Tables"]["storefront_orders"]["Row"];
-export type StorefrontOrderInsert = Database["public"]["Tables"]["storefront_orders"]["Insert"];
-export type StorefrontOrderUpdate = Database["public"]["Tables"]["storefront_orders"]["Update"];
-
 export type StockErrorsLog = Database["public"]["Tables"]["stock_errors_log"]["Row"];
 export type StockErrorsLogInsert = Database["public"]["Tables"]["stock_errors_log"]["Insert"];
 export type StockErrorsLogUpdate = Database["public"]["Tables"]["stock_errors_log"]["Update"];
@@ -928,10 +924,13 @@ export type StoreSetting = Database["public"]["Tables"]["store_settings"]["Row"]
 export type StoreSettingInsert = Database["public"]["Tables"]["store_settings"]["Insert"];
 export type StoreSettingUpdate = Database["public"]["Tables"]["store_settings"]["Update"];
 
+export type StorefrontOrder = Database["public"]["Tables"]["storefront_orders"]["Row"];
+export type StorefrontOrderInsert = Database["public"]["Tables"]["storefront_orders"]["Insert"];
+export type StorefrontOrderUpdate = Database["public"]["Tables"]["storefront_orders"]["Update"];
+
 export type VConversationSignalDaily = Database["public"]["Views"]["v_conversation_signal_daily"]["Row"];
 export type VCustomerContext = Database["public"]["Views"]["v_customer_context"]["Row"];
 export type VCustomerStageReached = Database["public"]["Views"]["v_customer_stage_reached"]["Row"];
-export type VCustomerTimelineEvent = Database["public"]["Views"]["v_customer_timeline_events"]["Row"];
 export type VCustomerTimelineEvents = Database["public"]["Views"]["v_customer_timeline_events"]["Row"];
 export type VFunnelDaily = Database["public"]["Views"]["v_funnel_daily"]["Row"];
 export type VProductCatalog = Database["public"]["Views"]["v_product_catalog"]["Row"];

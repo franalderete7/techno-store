@@ -11,7 +11,6 @@ const legacyAdminRedirects = new Map<string, string>([
   ["/stock", "/admin/stock"],
   ["/purchases", "/admin/purchases"],
   ["/crm", "/admin/crm"],
-  ["/tiendanube", "/admin/tiendanube"],
   ["/reservations", "/admin"],
 ]);
 
@@ -72,5 +71,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/stock", "/purchases", "/crm", "/tiendanube", "/reservations"],
+  matcher: ["/admin/:path*", "/stock", "/purchases", "/crm", "/reservations"],
 };

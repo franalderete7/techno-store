@@ -22,7 +22,17 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { StorefrontProduct } from "@/lib/storefront";
-import { getStorefrontImage, getStorefrontSlug } from "@/lib/storefront-presenters";
+import {
+  getStorefrontAvailabilityCode,
+  getStorefrontAvailabilityLabel,
+  getStorefrontAvailabilitySortWeight,
+  getStorefrontAvailabilityTone,
+  getStorefrontConditionLabel,
+  getStorefrontDeliveryDaysLabel,
+  getStorefrontDeliveryTypeLabel,
+  getStorefrontImage,
+  getStorefrontSlug,
+} from "@/lib/storefront-presenters";
 import { StorefrontAddToCartButton, StorefrontShell } from "@/components/storefront/storefront-shell";
 
 type SortKey = "recommended" | "price-asc" | "price-desc" | "name-asc";
@@ -37,30 +47,16 @@ function formatMoney(value: number | null | undefined) {
   }).format(value);
 }
 
-function getAvailabilityLabel(product: StorefrontProduct) {
-  if (product.in_stock) return "Entrega inmediata";
-  if (product.delivery_type === "on_order") return `A pedido ${product.delivery_days || 0} días`;
-  return "Consultar disponibilidad";
-}
-
-function getAvailabilityTone(product: StorefrontProduct) {
-  if (product.in_stock) {
-    return "border-emerald-300/80 bg-emerald-300 text-emerald-950 shadow-[0_10px_30px_rgba(110,231,183,0.35)]";
-  }
-  if (product.delivery_type === "on_order") {
-    return "border-amber-300/60 bg-amber-300 text-amber-950 shadow-[0_10px_28px_rgba(252,211,77,0.25)]";
-  }
-  return "border-white/20 bg-slate-200 text-slate-950";
-}
-
 function getDisplayPrice(product: StorefrontProduct) {
   return product.promo_price_ars ?? product.price_ars;
 }
 
 function matchesAvailability(product: StorefrontProduct, filter: AvailabilityFilter) {
+  const code = getStorefrontAvailabilityCode(product);
+
   if (filter === "all") return true;
-  if (filter === "in-stock") return product.in_stock === true;
-  return product.delivery_type === "on_order";
+  if (filter === "in-stock") return code === "immediate" || code === "pickup";
+  return code === "on_order" || code === "scheduled";
 }
 
 export function StorefrontCatalogClient({ products }: { products: StorefrontProduct[] }) {
@@ -89,6 +85,8 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
         product.color,
         product.network,
         product.condition,
+        getStorefrontConditionLabel(product.condition),
+        getStorefrontDeliveryTypeLabel(product),
         product.ram_gb ? `${product.ram_gb}gb ram` : "",
         product.storage_gb ? `${product.storage_gb}gb` : "",
       ]
@@ -114,8 +112,10 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
         return String(left.product_name || "").localeCompare(String(right.product_name || ""));
       }
 
-      if (left.in_stock !== right.in_stock) {
-        return left.in_stock ? -1 : 1;
+      const availabilityDelta =
+        getStorefrontAvailabilitySortWeight(right) - getStorefrontAvailabilitySortWeight(left);
+      if (availabilityDelta !== 0) {
+        return availabilityDelta;
       }
 
       const leftPrice = Number(getDisplayPrice(left) || 0);
@@ -134,16 +134,16 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl space-y-4">
                 <Badge className="rounded-full border border-sky-300/40 bg-sky-300/15 px-3 py-1 text-sky-100">
-                  Shop oficial
+                  Tienda oficial
                 </Badge>
                 <div className="space-y-3">
                   <h1 className="max-w-3xl font-serif text-4xl leading-tight tracking-tight sm:text-5xl">
                     TechnoStore Salta
                   </h1>
                   <p className="max-w-2xl text-base leading-7 text-white/72 sm:text-lg">
-                    Elegí tu equipo, agregalo al carrito y dejá tus datos. La compra del
-                    storefront se confirma por transferencia, y después te contactamos por email
-                    para seguir el pago y el despacho.
+                    Elegí tu equipo, agregalo al carrito y dejá tus datos. La compra de la
+                    tienda online se confirma por transferencia, y después te contactamos por
+                    email para seguir el pago y el despacho.
                   </p>
                 </div>
               </div>
@@ -222,8 +222,8 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Disponibilidad</SelectItem>
-                      <SelectItem value="in-stock">Entrega inmediata</SelectItem>
-                      <SelectItem value="on-order">A pedido</SelectItem>
+                      <SelectItem value="in-stock">Disponible ahora</SelectItem>
+                      <SelectItem value="on-order">A pedido / programado</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
@@ -285,10 +285,10 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                           <Badge
                             className={cn(
                               "rounded-full border px-3 py-1 font-medium backdrop-blur",
-                              getAvailabilityTone(product)
+                              getStorefrontAvailabilityTone(product)
                             )}
                           >
-                            {getAvailabilityLabel(product)}
+                            {getStorefrontAvailabilityLabel(product)}
                           </Badge>
                         </div>
                       </div>
@@ -305,7 +305,6 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                             product.storage_gb ? `${product.storage_gb}GB` : null,
                             product.color || null,
                             product.network ? product.network.toUpperCase() : null,
-                            product.condition,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -322,6 +321,25 @@ export function StorefrontCatalogClient({ products }: { products: StorefrontProd
                           </p>
                         ) : null}
                         <p className="text-sm text-white/60">Precio contado / transferencia bancaria.</p>
+                      </div>
+
+                      <div className="grid gap-2 text-sm text-white/72">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                          <span className="text-white/45">Condición:</span>{" "}
+                          <span className="font-medium text-white">
+                            {getStorefrontConditionLabel(product.condition)}
+                          </span>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                          <span className="text-white/45">Entrega:</span>{" "}
+                          <span className="font-medium text-white">
+                            {getStorefrontDeliveryTypeLabel(product)}
+                          </span>
+                          <span className="text-white/45"> · Demora:</span>{" "}
+                          <span className="font-medium text-white">
+                            {getStorefrontDeliveryDaysLabel(product)}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-center justify-between gap-3">

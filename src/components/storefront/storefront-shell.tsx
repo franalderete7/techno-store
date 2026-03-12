@@ -11,6 +11,7 @@ import {
 import {
   CheckCircle2,
   Loader2,
+  MessageCircle,
   Minus,
   Plus,
   ShoppingCart,
@@ -30,6 +31,8 @@ import {
 import type { StorefrontProduct } from "@/lib/storefront";
 
 const CART_STORAGE_KEY = "techno-store-public-cart-v1";
+const STOREFRONT_WHATSAPP_URL =
+  "https://wa.me/543875319940?text=Hola%20TechnoStore%2C%20vengo%20de%20la%20tienda%20online.";
 
 type CartLine = {
   id: number;
@@ -521,12 +524,28 @@ function CartFloatingButton() {
   );
 }
 
+function WhatsAppFloatingButton() {
+  return (
+    <a
+      href={STOREFRONT_WHATSAPP_URL}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Escribir por WhatsApp"
+      className="fixed bottom-4 right-4 z-30 inline-flex items-center gap-3 rounded-full bg-[#25D366] px-4 py-3 text-sm font-semibold text-[#08110c] shadow-[0_20px_55px_rgba(37,211,102,0.35)] transition hover:scale-[1.02] hover:bg-[#3be27c] sm:bottom-6 sm:right-6"
+    >
+      <MessageCircle className="h-5 w-5" />
+      <span className="hidden sm:inline">WhatsApp</span>
+    </a>
+  );
+}
+
 export function StorefrontShell({ children }: { children: ReactNode }) {
   const cart = useProvideStorefrontCart();
 
   return (
     <CartContext.Provider value={cart}>
       {children}
+      <WhatsAppFloatingButton />
       <CartFloatingButton />
       <CartDrawer />
     </CartContext.Provider>

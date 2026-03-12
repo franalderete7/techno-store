@@ -5,7 +5,14 @@ import { ArrowLeft, BadgeDollarSign, PackageCheck, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { StorefrontProduct } from "@/lib/storefront";
-import { getStorefrontImage } from "@/lib/storefront-presenters";
+import {
+  getStorefrontAvailabilityLabel,
+  getStorefrontAvailabilityTone,
+  getStorefrontConditionLabel,
+  getStorefrontDeliveryDaysLabel,
+  getStorefrontDeliveryTypeLabel,
+  getStorefrontImage,
+} from "@/lib/storefront-presenters";
 import {
   StorefrontAddToCartButton,
   StorefrontProductLink,
@@ -21,12 +28,6 @@ function formatMoney(value: number | null | undefined) {
   }).format(value);
 }
 
-function getAvailabilityLabel(product: StorefrontProduct) {
-  if (product.in_stock) return "Entrega inmediata";
-  if (product.delivery_type === "on_order") return `A pedido ${product.delivery_days || 0} días`;
-  return "Consultar disponibilidad";
-}
-
 function buildSpecs(product: StorefrontProduct) {
   return [
     product.ram_gb ? `${product.ram_gb}GB RAM` : null,
@@ -34,7 +35,6 @@ function buildSpecs(product: StorefrontProduct) {
     product.color ? `Color ${product.color}` : null,
     product.network ? product.network.toUpperCase() : null,
     product.battery_health ? `Batería ${product.battery_health}%` : null,
-    product.condition ? `Condición ${product.condition}` : null,
   ].filter(Boolean);
 }
 
@@ -75,8 +75,13 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   <Badge className="bg-sky-300/15 text-sky-200">{product.category}</Badge>
-                  <Badge className="border border-emerald-300/80 bg-emerald-300 text-emerald-950">
-                    {getAvailabilityLabel(product)}
+                  <Badge
+                    className={[
+                      "rounded-full border px-3 py-1 font-medium backdrop-blur",
+                      getStorefrontAvailabilityTone(product),
+                    ].join(" ")}
+                  >
+                    {getStorefrontAvailabilityLabel(product)}
                   </Badge>
                 </div>
                 <h1 className="text-4xl font-semibold tracking-tight text-white">
@@ -101,6 +106,24 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+                  <p className="text-xs uppercase tracking-[0.22em] text-white/42">Condición</p>
+                  <p className="mt-2 text-base font-medium text-white">
+                    {getStorefrontConditionLabel(product.condition)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+                  <p className="text-xs uppercase tracking-[0.22em] text-white/42">Tipo de entrega</p>
+                  <p className="mt-2 text-base font-medium text-white">
+                    {getStorefrontDeliveryTypeLabel(product)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+                  <p className="text-xs uppercase tracking-[0.22em] text-white/42">Demora estimada</p>
+                  <p className="mt-2 text-base font-medium text-white">
+                    {getStorefrontDeliveryDaysLabel(product)}
+                  </p>
+                </div>
                 {specs.map((spec) => (
                   <div
                     key={spec}
