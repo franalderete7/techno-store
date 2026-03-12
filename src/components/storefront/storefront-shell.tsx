@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   createContext,
   useContext,
@@ -510,7 +512,7 @@ function CartFloatingButton() {
     <button
       type="button"
       onClick={openCart}
-      className="fixed right-4 top-4 z-30 inline-flex items-center gap-3 rounded-full border border-white/10 bg-[#07131f]/90 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_50px_rgba(2,6,23,0.6)] backdrop-blur transition hover:border-sky-300/40 hover:bg-[#0b1b2c] sm:right-6 sm:top-6"
+      className="fixed right-4 top-20 z-30 inline-flex items-center gap-3 rounded-full border border-white/10 bg-[#07131f]/90 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_50px_rgba(2,6,23,0.6)] backdrop-blur transition hover:border-sky-300/40 hover:bg-[#0b1b2c] sm:right-6 sm:top-24"
     >
       <div className="relative">
         <ShoppingCart className="h-5 w-5 text-sky-200" />
@@ -540,11 +542,73 @@ function WhatsAppFloatingButton() {
   );
 }
 
+function StorefrontNav() {
+  const pathname = usePathname();
+  const [visible, setVisible] = useState(pathname !== "/");
+
+  useEffect(() => {
+    const alwaysVisible = pathname !== "/";
+
+    const handleScroll = () => {
+      if (alwaysVisible) {
+        setVisible(true);
+        return;
+      }
+
+      setVisible(window.scrollY > 48);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [pathname]);
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-4 z-40 px-4 sm:px-6">
+      <div
+        className={cn(
+          "mx-auto max-w-7xl transition-all duration-300",
+          visible ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0"
+        )}
+      >
+        <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-full border border-white/10 bg-[#061320]/88 px-4 py-3 shadow-[0_22px_60px_rgba(2,6,23,0.5)] backdrop-blur">
+          <Link href="/" className="min-w-0">
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[10px] uppercase tracking-[0.28em] text-sky-300/80">
+                Tienda oficial
+              </span>
+              <span className="truncate text-sm font-semibold text-white sm:text-base">
+                TechnoStore Salta
+              </span>
+            </div>
+          </Link>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href="/#catalogo"
+              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/72 transition hover:border-white/20 hover:text-white"
+            >
+              Catálogo
+            </Link>
+            <Link
+              href="/#faqs"
+              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/72 transition hover:border-white/20 hover:text-white"
+            >
+              FAQs
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function StorefrontShell({ children }: { children: ReactNode }) {
   const cart = useProvideStorefrontCart();
 
   return (
     <CartContext.Provider value={cart}>
+      <StorefrontNav />
       {children}
       <WhatsAppFloatingButton />
       <CartFloatingButton />

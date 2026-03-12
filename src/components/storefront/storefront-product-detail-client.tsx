@@ -9,8 +9,6 @@ import {
   getStorefrontAvailabilityLabel,
   getStorefrontAvailabilityTone,
   getStorefrontConditionLabel,
-  getStorefrontDeliveryDaysLabel,
-  getStorefrontDeliveryTypeLabel,
   getStorefrontImage,
 } from "@/lib/storefront-presenters";
 import {
@@ -76,6 +74,9 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   <Badge className="bg-sky-300/15 text-sky-200">{product.category}</Badge>
+                  <Badge className="border border-white/10 bg-white/5 text-white">
+                    Condición: {getStorefrontConditionLabel(product.condition)}
+                  </Badge>
                   <Badge
                     className={[
                       "rounded-full border px-3 py-1 font-medium backdrop-blur",
@@ -107,24 +108,6 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/42">Condición</p>
-                  <p className="mt-2 text-base font-medium text-white">
-                    {getStorefrontConditionLabel(product.condition)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/42">Tipo de entrega</p>
-                  <p className="mt-2 text-base font-medium text-white">
-                    {getStorefrontDeliveryTypeLabel(product)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/42">Demora estimada</p>
-                  <p className="mt-2 text-base font-medium text-white">
-                    {getStorefrontDeliveryDaysLabel(product)}
-                  </p>
-                </div>
                 {specs.map((spec) => (
                   <div
                     key={spec}

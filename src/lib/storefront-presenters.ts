@@ -98,14 +98,15 @@ export function getStorefrontAvailabilityLabel(
   >
 ) {
   const code = getStorefrontAvailabilityCode(product);
+  const deliveryTypeLabel = getStorefrontDeliveryTypeLabel(product);
   const daysLabel = getStorefrontDeliveryDaysLabel(product);
 
-  if (code === "on_order") return `A pedido · ${daysLabel}`;
-  if (code === "scheduled") return `Entrega programada · ${daysLabel}`;
-  if (code === "pickup") return "Retiro en tienda";
-  if (code === "immediate") return "Entrega inmediata";
+  if (code === "pickup") return `Entrega: ${deliveryTypeLabel}`;
+  if (code === "immediate") return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
+  if (code === "on_order") return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
+  if (code === "scheduled") return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
 
-  return "Consultar disponibilidad";
+  return `Entrega: ${deliveryTypeLabel} · Demora: ${daysLabel}`;
 }
 
 export function getStorefrontAvailabilityTone(
