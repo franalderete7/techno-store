@@ -1317,9 +1317,6 @@ export function ProductsTable() {
                         </div>
                       </TableHead>
                     ))}
-                    <TableHead className="sticky top-0 z-20 min-w-[100px] bg-background">
-                      Actions
-                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1331,7 +1328,29 @@ export function ProductsTable() {
                           className={`px-3 py-2 ${col.key === "image_url" ? "min-w-[84px]" : "min-w-[100px] whitespace-nowrap"}`}
                         >
                           {col.key === "image_url" ? (
-                            <ProductImageCell product={p} />
+                            <div className="relative h-14 w-14">
+                              <ProductImageCell product={p} />
+                              <div className="invisible absolute inset-0 z-10 flex items-center justify-center gap-1 rounded-md bg-background/85 opacity-0 backdrop-blur-[1px] transition-all duration-150 pointer-events-none group-hover/product-row:visible group-hover/product-row:opacity-100 group-hover/product-row:pointer-events-auto group-focus-within/product-row:visible group-focus-within/product-row:opacity-100 group-focus-within/product-row:pointer-events-auto">
+                                <Button
+                                  variant="secondary"
+                                  size="icon"
+                                  className="h-7 w-7 cursor-pointer shadow-sm"
+                                  onClick={() => openEdit(p)}
+                                  aria-label={`Edit ${p.product_name}`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  size="icon"
+                                  className="h-7 w-7 cursor-pointer text-destructive shadow-sm hover:text-destructive"
+                                  onClick={() => setDeleteProduct(p)}
+                                  aria-label={`Delete ${p.product_name}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
                           ) : col.key === "id" ? (
                             <span className="font-mono text-xs">{p.id}</span>
                           ) : col.key === "in_stock" ? (
@@ -1345,21 +1364,6 @@ export function ProductsTable() {
                           )}
                         </TableCell>
                       ))}
-                      <TableCell className="min-w-[100px]">
-                        <div className="flex gap-1 opacity-0 transition-opacity duration-150 pointer-events-none group-hover/product-row:opacity-100 group-hover/product-row:pointer-events-auto group-focus-within/product-row:opacity-100 group-focus-within/product-row:pointer-events-auto">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(p)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setDeleteProduct(p)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
