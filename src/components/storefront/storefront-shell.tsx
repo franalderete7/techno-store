@@ -274,7 +274,7 @@ function CartDrawer() {
     <>
       <div
         className={cn(
-          "fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm transition",
+          "fixed inset-0 z-40 cursor-pointer bg-slate-950/60 backdrop-blur-sm transition",
           isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         )}
         onClick={closeCart}
@@ -295,7 +295,7 @@ function CartDrawer() {
           <button
             type="button"
             onClick={closeCart}
-            className="rounded-full border border-white/10 bg-white/5 p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
+            className="cursor-pointer rounded-full border border-white/10 bg-white/5 p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>
@@ -387,7 +387,7 @@ function CartDrawer() {
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.product_key, item.quantity - 1)}
-                          className="rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+                          className="cursor-pointer rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
                         >
                           <Minus className="h-3.5 w-3.5" />
                         </button>
@@ -397,7 +397,7 @@ function CartDrawer() {
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.product_key, item.quantity + 1)}
-                          className="rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+                          className="cursor-pointer rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
                         >
                           <Plus className="h-3.5 w-3.5" />
                         </button>
@@ -406,7 +406,7 @@ function CartDrawer() {
                       <button
                         type="button"
                         onClick={() => removeItem(item.product_key)}
-                        className="inline-flex items-center gap-1 text-sm text-white/55 transition hover:text-rose-200"
+                        className="cursor-pointer inline-flex items-center gap-1 text-sm text-white/55 transition hover:text-rose-200"
                       >
                         <Trash2 className="h-4 w-4" />
                         Quitar
@@ -466,7 +466,7 @@ function CartDrawer() {
                   type="button"
                   disabled={loading}
                   onClick={handleCheckout}
-                  className="h-12 w-full rounded-full bg-sky-300 font-semibold text-slate-950 hover:bg-sky-200"
+                  className="h-12 w-full cursor-pointer rounded-full bg-sky-300 font-semibold text-slate-950 hover:bg-sky-200 disabled:cursor-not-allowed"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Guardar pedido y ver alias
@@ -496,7 +496,7 @@ export function StorefrontAddToCartButton({
   return (
     <Button
       type="button"
-      className={className}
+      className={cn("cursor-pointer", className)}
       onClick={() => addItem(product, { openCart })}
     >
       <ShoppingCart className="h-4 w-4" />
@@ -512,7 +512,7 @@ function CartFloatingButton() {
     <button
       type="button"
       onClick={openCart}
-      className="fixed right-4 top-20 z-30 inline-flex items-center gap-3 rounded-full border border-white/10 bg-[#07131f]/90 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_50px_rgba(2,6,23,0.6)] backdrop-blur transition hover:border-sky-300/40 hover:bg-[#0b1b2c] sm:right-6 sm:top-24"
+      className="fixed right-4 top-20 z-30 inline-flex cursor-pointer items-center gap-3 rounded-full border border-white/10 bg-[#07131f]/90 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_50px_rgba(2,6,23,0.6)] backdrop-blur transition hover:border-sky-300/40 hover:bg-[#0b1b2c] sm:right-6 sm:top-24"
     >
       <div className="relative">
         <ShoppingCart className="h-5 w-5 text-sky-200" />
@@ -534,7 +534,7 @@ function WhatsAppFloatingButton() {
       target="_blank"
       rel="noreferrer"
       aria-label="Escribir por WhatsApp"
-      className="fixed bottom-4 right-4 z-30 inline-flex items-center gap-3 rounded-full bg-[#25D366] px-4 py-3 text-sm font-semibold text-[#08110c] shadow-[0_20px_55px_rgba(37,211,102,0.35)] transition hover:scale-[1.02] hover:bg-[#3be27c] sm:bottom-6 sm:right-6"
+      className="fixed bottom-4 right-4 z-30 inline-flex cursor-pointer items-center gap-3 rounded-full bg-[#25D366] px-4 py-3 text-sm font-semibold text-[#08110c] shadow-[0_20px_55px_rgba(37,211,102,0.35)] transition hover:scale-[1.02] hover:bg-[#3be27c] sm:bottom-6 sm:right-6"
     >
       <MessageCircle className="h-5 w-5" />
       <span className="hidden sm:inline">WhatsApp</span>
@@ -586,13 +586,13 @@ function StorefrontNav() {
           <div className="flex items-center gap-2">
             <Link
               href="/#catalogo"
-              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/72 transition hover:border-white/20 hover:text-white"
+              className="cursor-pointer rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/72 transition hover:border-white/20 hover:text-white"
             >
               Catálogo
             </Link>
             <Link
               href="/#faqs"
-              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/72 transition hover:border-white/20 hover:text-white"
+              className="cursor-pointer rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/72 transition hover:border-white/20 hover:text-white"
             >
               FAQs
             </Link>
@@ -627,7 +627,7 @@ export function StorefrontProductLink({
   return (
     <a
       href={buildStorefrontProductUrl(productKey)}
-      className={cn("text-sm text-sky-200 underline-offset-4 hover:underline", className)}
+      className={cn("cursor-pointer text-sm text-sky-200 underline-offset-4 hover:underline", className)}
     >
       Ver ficha del producto
     </a>

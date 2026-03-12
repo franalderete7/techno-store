@@ -242,26 +242,20 @@ export function StorefrontCatalogClient({
 
         <section id="catalogo" className="mx-auto max-w-7xl px-6 pb-24 sm:px-10">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
-              <div className="flex flex-col justify-center">
-                <h2 className="text-2xl font-semibold tracking-tight text-white">
-                  {filteredProducts.length} productos
-                </h2>
+            <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-3">
+              <div className="relative min-w-0 w-full max-w-xl">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Buscar iPhone, Samsung, 256GB..."
+                  className="h-11 w-full rounded-xl border-white/10 bg-black/30 pl-11 text-white placeholder:text-white/30"
+                />
               </div>
-
-              <div className="flex flex-1 flex-wrap items-center gap-3 lg:max-w-2xl lg:justify-end">
-                <div className="relative min-w-0 flex-1 basis-full sm:basis-[calc(50%-0.375rem)] lg:basis-[min(280px,100%)]">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-                  <Input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Buscar iPhone, Samsung, 256GB..."
-                    className="h-11 w-full rounded-xl border-white/10 bg-black/30 pl-11 text-white placeholder:text-white/30"
-                  />
-                </div>
-                <div className="flex min-w-0 flex-1 flex-wrap basis-full gap-3 sm:basis-auto sm:flex-initial">
+              <div className="flex min-w-0 w-full flex-wrap justify-center gap-3">
+                <div className="min-w-[160px] flex-1 sm:max-w-[220px]">
                   <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                    <SelectTrigger className="h-11 w-full cursor-pointer rounded-xl border-white/10 bg-black/30 px-4 text-white">
                       <SelectValue placeholder="Categorías" />
                     </SelectTrigger>
                     <SelectContent>
@@ -273,11 +267,13 @@ export function StorefrontCatalogClient({
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="min-w-[160px] flex-1 sm:max-w-[220px]">
                   <Select
                     value={availability}
                     onValueChange={(value) => setAvailability(value as AvailabilityFilter)}
                   >
-                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                    <SelectTrigger className="h-11 w-full cursor-pointer rounded-xl border-white/10 bg-black/30 px-4 text-white">
                       <SelectValue placeholder="Disponibilidad" />
                     </SelectTrigger>
                     <SelectContent>
@@ -286,8 +282,10 @@ export function StorefrontCatalogClient({
                       <SelectItem value="on-order">A pedido / programado</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="min-w-[160px] flex-1 sm:max-w-[220px]">
                   <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
-                    <SelectTrigger className="h-11 min-w-[120px] flex-1 rounded-xl border-white/10 bg-black/30 px-4 text-white sm:min-w-[140px] sm:flex-initial">
+                    <SelectTrigger className="h-11 w-full cursor-pointer rounded-xl border-white/10 bg-black/30 px-4 text-white">
                       <div className="flex items-center gap-2">
                         <SlidersHorizontal className="h-4 w-4 shrink-0 text-white/45" />
                         <SelectValue placeholder="Ordenar" />
