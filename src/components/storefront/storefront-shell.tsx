@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -647,12 +648,17 @@ function StorefrontNav() {
       >
         <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-full border border-white/10 bg-[#061320]/88 px-4 py-3 shadow-[0_22px_60px_rgba(2,6,23,0.5)] backdrop-blur">
           <Link href="/" className="min-w-0">
-            <div className="flex min-w-0 flex-col">
-              <span className="text-[10px] uppercase tracking-[0.28em] text-sky-300/80">
+            <div className="flex min-w-0 items-center gap-3">
+              <Image
+                src="/logo-blanco-salta.png"
+                alt="TechnoStore Salta"
+                width={716}
+                height={190}
+                priority
+                className="h-auto w-[132px] shrink-0 sm:w-[152px]"
+              />
+              <span className="hidden text-[10px] uppercase tracking-[0.28em] text-sky-300/80 sm:inline">
                 Tienda oficial
-              </span>
-              <span className="truncate text-sm font-semibold text-white sm:text-base">
-                TechnoStore Salta
               </span>
             </div>
           </Link>
@@ -716,9 +722,18 @@ export function StorefrontFooter({ className }: { className?: string }) {
         className
       )}
     >
-      <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
-        Made with <Heart className="h-4 w-4 fill-rose-400 text-rose-400" /> in Salta, Argentina
-      </p>
+      <div className="inline-flex flex-col items-center gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.04] px-5 py-4">
+        <Image
+          src="/una-tinta-blanco.png"
+          alt="TechnoStore"
+          width={1385}
+          height={372}
+          className="h-auto w-[132px] opacity-90"
+        />
+        <p className="inline-flex items-center gap-2 text-white/45">
+          Made with <Heart className="h-4 w-4 fill-rose-400 text-rose-400" /> in Salta, Argentina
+        </p>
+      </div>
     </footer>
   );
 }

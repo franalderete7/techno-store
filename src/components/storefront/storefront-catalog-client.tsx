@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
@@ -260,9 +261,19 @@ export function StorefrontCatalogClient({
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_34%),linear-gradient(180deg,#07111d_0%,#020611_40%,#020611_100%)] text-white">
         <section className="mx-auto max-w-7xl px-6 pb-6 pt-32 sm:px-10 sm:pt-36">
           <div className="rounded-[2.25rem] border border-white/10 bg-white/[0.05] p-7 pr-24 shadow-[0_40px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-9 sm:pr-10">
-            <h1 className="font-serif text-3xl leading-tight tracking-tight text-white sm:text-4xl">
-              TechnoStore Salta
-            </h1>
+            <div className="flex flex-col gap-4">
+              <Image
+                src="/logo-blanco-salta.png"
+                alt="TechnoStore Salta"
+                width={716}
+                height={190}
+                priority
+                className="h-auto w-full max-w-[360px] sm:max-w-[430px]"
+              />
+              <p className="text-sm uppercase tracking-[0.28em] text-sky-200/80 sm:text-[0.82rem]">
+                {displayLocationName}
+              </p>
+            </div>
           </div>
         </section>
 
