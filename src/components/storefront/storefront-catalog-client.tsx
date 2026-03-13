@@ -260,15 +260,15 @@ export function StorefrontCatalogClient({
     <StorefrontShell>
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_34%),linear-gradient(180deg,#07111d_0%,#020611_40%,#020611_100%)] text-white">
         <section className="mx-auto max-w-7xl px-6 pb-6 pt-32 sm:px-10 sm:pt-36">
-          <div className="rounded-[2.25rem] border border-white/10 bg-white/[0.05] p-7 pr-24 shadow-[0_40px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-9 sm:pr-10">
-            <div className="flex flex-col gap-4">
+          <div className="rounded-[2.25rem] border border-white/10 bg-white/[0.05] p-7 shadow-[0_40px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-9">
+            <div className="flex flex-col items-center gap-4 text-center">
               <Image
                 src="/logo-blanco-salta.png"
                 alt="TechnoStore Salta"
                 width={716}
                 height={190}
                 priority
-                className="h-auto w-full max-w-[360px] sm:max-w-[430px]"
+                className="mx-auto h-auto w-full max-w-[360px] sm:max-w-[430px]"
               />
               <p className="text-sm uppercase tracking-[0.28em] text-sky-200/80 sm:text-[0.82rem]">
                 {displayLocationName}
@@ -532,7 +532,7 @@ export function StorefrontCatalogClient({
             <h2 className="text-2xl font-semibold tracking-tight text-white">FAQs</h2>
 
             <div className="mt-6 space-y-4">
-              <FaqItem title="Quiénes somos" icon={<Store className="h-4 w-4" />} defaultOpen>
+              <FaqItem title="Quiénes somos" icon={<Store className="h-4 w-4" />}>
                 <p>
                   {displayLocationName} es una tienda de tecnología ubicada en Salta, Argentina.
                   Trabajamos con atención directa, equipos seleccionados y publicación clara de
