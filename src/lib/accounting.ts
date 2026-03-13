@@ -24,9 +24,13 @@ export type OwnershipShare = {
 export type RealizedUnitSale = {
   unitId: number;
   dateSold: string;
+  revenueUsd: number;
   revenueArs: number;
+  costUsd: number;
   costArs: number;
+  profitUsd: number;
   profitArs: number;
+  fxRate: number;
   suspiciousLegacyRevenue: boolean;
 };
 
@@ -34,8 +38,11 @@ export type FinancierSaleSlice = {
   label: string;
   key: string;
   sharePct: number;
+  revenueUsd: number;
   revenueArs: number;
+  costUsd: number;
   costArs: number;
+  profitUsd: number;
   profitArs: number;
   dateSold: string;
 };
@@ -208,6 +215,45 @@ export function resolveSaleAmountArs(unit: StockUnit, product: Product | undefin
   };
 }
 
+export function resolveEffectiveUsdRate(unit: StockUnit, product: Product | undefined) {
+  if (unit.sale_fx_rate != null && unit.sale_fx_rate > 0) return unit.sale_fx_rate;
+
+  if (
+    normalizeSaleCurrency(unit.sale_currency) === "USD" &&
+    unit.sale_amount != null &&
+    unit.sale_amount > 0 &&
+    unit.sale_amount_ars != null &&
+    unit.sale_amount_ars > 0
+  ) {
+    return roundMoney(unit.sale_amount_ars / unit.sale_amount);
+  }
+
+  if (product?.usd_rate != null && product.usd_rate > 0) return product.usd_rate;
+  return DEFAULT_USD_RATE;
+}
+
+export function resolveSaleAmountUsd(unit: StockUnit, product: Product | undefined) {
+  const saleAmount = unit.sale_amount;
+  const saleCurrency = normalizeSaleCurrency(unit.sale_currency);
+
+  if (saleAmount != null && saleAmount > 0) {
+    if (saleCurrency === "USD") return saleAmount;
+    return roundMoney(saleAmount / resolveEffectiveUsdRate(unit, product));
+  }
+
+  const saleAmountArs = unit.sale_amount_ars;
+  if (saleAmountArs != null && saleAmountArs > 0) {
+    return roundMoney(saleAmountArs / resolveEffectiveUsdRate(unit, product));
+  }
+
+  const legacyPriceSold = unit.price_sold;
+  if (legacyPriceSold != null && legacyPriceSold > 0) {
+    return roundMoney(legacyPriceSold / resolveEffectiveUsdRate(unit, product));
+  }
+
+  return null;
+}
+
 export function resolveCostAmountArs(
   unit: StockUnit,
   product: Product | undefined,
@@ -230,19 +276,45 @@ export function resolveCostAmountArs(
   return roundMoney(unit.cost_unit * usdRate);
 }
 
+export function resolveCostAmountUsd(
+  unit: StockUnit,
+  product: Product | undefined,
+  preferredUsdRate?: number | null
+) {
+  if (unit.cost_unit == null) return 0;
+  if ((unit.cost_currency ?? "USD").toUpperCase() === "USD") return unit.cost_unit;
+
+  const usdRate =
+    preferredUsdRate && preferredUsdRate > 0
+      ? preferredUsdRate
+      : resolveEffectiveUsdRate(unit, product);
+
+  return roundMoney(unit.cost_unit / usdRate);
+}
+
 export function buildRealizedUnitSale(unit: StockUnit, product: Product | undefined): RealizedUnitSale | null {
   if (unit.status !== "sold") return null;
 
   const saleDate = unit.date_sold ?? "";
   const revenue = resolveSaleAmountArs(unit, product);
   if (revenue.amountArs == null || revenue.amountArs <= 0) return null;
+  const fxRate = revenue.fxRate && revenue.fxRate > 0
+    ? revenue.fxRate
+    : resolveEffectiveUsdRate(unit, product);
+  const revenueUsd = resolveSaleAmountUsd(unit, product) ?? roundMoney(revenue.amountArs / fxRate);
+  const costArs = resolveCostAmountArs(unit, product, fxRate);
+  const costUsd = resolveCostAmountUsd(unit, product, fxRate);
 
   return {
     unitId: unit.id,
     dateSold: saleDate,
+    revenueUsd,
     revenueArs: revenue.amountArs,
-    costArs: resolveCostAmountArs(unit, product, revenue.fxRate),
-    profitArs: roundMoney(revenue.amountArs - resolveCostAmountArs(unit, product, revenue.fxRate)),
+    costUsd,
+    costArs,
+    profitUsd: roundMoney(revenueUsd - costUsd),
+    profitArs: roundMoney(revenue.amountArs - costArs),
+    fxRate,
     suspiciousLegacyRevenue: revenue.suspiciousLegacyRevenue,
   };
 }
@@ -257,8 +329,11 @@ export function splitSaleByOwnership(
 
   return shares.map((share, index) => {
     const ratio = share.sharePct / 100;
+    const revenueUsd = roundMoney(sale.revenueUsd * ratio);
     const revenueArs = roundMoney(sale.revenueArs * ratio);
+    const costUsd = roundMoney(sale.costUsd * ratio);
     const costArs = roundMoney(sale.costArs * ratio);
+    const profitUsd = roundMoney(sale.profitUsd * ratio);
     const profitArs = roundMoney(sale.profitArs * ratio);
 
     if (index !== shares.length - 1) {
@@ -266,8 +341,11 @@ export function splitSaleByOwnership(
         label: share.label,
         key: share.key,
         sharePct: share.sharePct,
+        revenueUsd,
         revenueArs,
+        costUsd,
         costArs,
+        profitUsd,
         profitArs,
         dateSold: sale.dateSold,
       };
@@ -276,20 +354,26 @@ export function splitSaleByOwnership(
     const prior = shares.slice(0, shares.length - 1).reduce(
       (totals, current) => {
         const currentRatio = current.sharePct / 100;
+        totals.revenueUsd += roundMoney(sale.revenueUsd * currentRatio);
         totals.revenueArs += roundMoney(sale.revenueArs * currentRatio);
+        totals.costUsd += roundMoney(sale.costUsd * currentRatio);
         totals.costArs += roundMoney(sale.costArs * currentRatio);
+        totals.profitUsd += roundMoney(sale.profitUsd * currentRatio);
         totals.profitArs += roundMoney(sale.profitArs * currentRatio);
         return totals;
       },
-      { revenueArs: 0, costArs: 0, profitArs: 0 }
+      { revenueUsd: 0, revenueArs: 0, costUsd: 0, costArs: 0, profitUsd: 0, profitArs: 0 }
     );
 
     return {
       label: share.label,
       key: share.key,
       sharePct: share.sharePct,
+      revenueUsd: roundMoney(sale.revenueUsd - prior.revenueUsd),
       revenueArs: roundMoney(sale.revenueArs - prior.revenueArs),
+      costUsd: roundMoney(sale.costUsd - prior.costUsd),
       costArs: roundMoney(sale.costArs - prior.costArs),
+      profitUsd: roundMoney(sale.profitUsd - prior.profitUsd),
       profitArs: roundMoney(sale.profitArs - prior.profitArs),
       dateSold: sale.dateSold,
     };
@@ -299,21 +383,26 @@ export function splitSaleByOwnership(
 export function formatSaleDisplay(unit: StockUnit) {
   const currency = normalizeSaleCurrency(unit.sale_currency);
   const amount = unit.sale_amount;
+  const arsAmount = unit.sale_amount_ars ?? unit.price_sold;
 
   if (amount != null && amount > 0) {
-    if (currency === "USD") {
-      const ars = unit.sale_amount_ars != null && unit.sale_amount_ars > 0
-        ? ` (~$${unit.sale_amount_ars.toLocaleString("es-AR", { maximumFractionDigits: 0 })})`
-        : "";
+    const usdDisplay =
+      currency === "USD"
+        ? `US$${amount.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`
+        : "—";
+    const arsDisplay =
+      currency === "ARS"
+        ? `$${amount.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`
+        : arsAmount != null && arsAmount > 0
+          ? `$${arsAmount.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`
+          : "—";
 
-      return `US$${amount.toLocaleString("es-AR", { maximumFractionDigits: 2 })}${ars}`;
-    }
-
-    return `$${amount.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+    if (currency === "USD") return `${usdDisplay} · ARS ${arsDisplay}`;
+    return `USD ${usdDisplay} · ${arsDisplay}`;
   }
 
-  if (unit.price_sold != null && unit.price_sold > 0) {
-    return `$${unit.price_sold.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+  if (arsAmount != null && arsAmount > 0) {
+    return `USD — · $${arsAmount.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
   }
 
   return "—";

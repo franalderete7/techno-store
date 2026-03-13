@@ -41,7 +41,6 @@ interface SalesChartProps {
   products: Product[];
   financiers: Financier[];
   purchaseFinanciers: PurchaseFinancier[];
-  currency?: string;
 }
 
 type StatusCard = {
@@ -57,16 +56,21 @@ type ChartPoint = {
   key: string;
   label: string;
   units: number;
-  revenue: number;
-  profit: number;
+  revenueUsd: number;
+  revenueArs: number;
+  profitUsd: number;
+  profitArs: number;
 };
 
 type FunderSummary = {
   fundedBy: string;
   units: number;
-  revenue: number;
-  cost: number;
-  profit: number;
+  revenueUsd: number;
+  revenueArs: number;
+  costUsd: number;
+  costArs: number;
+  profitUsd: number;
+  profitArs: number;
 };
 
 const STATUS_COLORS: Record<StockStatus, { color: string; glow: string }> = {
@@ -85,13 +89,36 @@ const formatDayKey = (date: Date) =>
 const formatMonthKey = (date: Date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
 
+function formatUsdMoney(value: number) {
+  return `US$${value.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatArsMoney(value: number) {
+  return `$${value.toLocaleString("es-AR", {
+    maximumFractionDigits: 0,
+  })}`;
+}
+
+function formatMoneyPair(usd: number, ars: number) {
+  return `${formatUsdMoney(usd)} · ${formatArsMoney(ars)}`;
+}
+
+function formatCompactUsd(value: number) {
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000) return `US$${(value / 1_000_000).toFixed(1)}M`;
+  if (absolute >= 1_000) return `US$${(value / 1_000).toFixed(0)}k`;
+  return `US$${value.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+}
+
 export function SalesChart({
   units,
   purchases,
   products,
   financiers,
   purchaseFinanciers,
-  currency = "ARS",
 }: SalesChartProps) {
   const [period, setPeriod] = useState<Period>("daily");
 
@@ -167,17 +194,24 @@ export function SalesChart({
   );
 
   const totals = useMemo(() => {
-    const revenue = realizedUnitSales.reduce((sum, sale) => sum + sale.revenueArs, 0);
-    const cost = realizedUnitSales.reduce((sum, sale) => sum + sale.costArs, 0);
+    const revenueUsd = realizedUnitSales.reduce((sum, sale) => sum + sale.revenueUsd, 0);
+    const revenueArs = realizedUnitSales.reduce((sum, sale) => sum + sale.revenueArs, 0);
+    const costUsd = realizedUnitSales.reduce((sum, sale) => sum + sale.costUsd, 0);
+    const costArs = realizedUnitSales.reduce((sum, sale) => sum + sale.costArs, 0);
     const count = realizedUnitSales.length;
-    const profit = realizedUnitSales.reduce((sum, sale) => sum + sale.profitArs, 0);
+    const profitUsd = realizedUnitSales.reduce((sum, sale) => sum + sale.profitUsd, 0);
+    const profitArs = realizedUnitSales.reduce((sum, sale) => sum + sale.profitArs, 0);
 
     return {
       count: soldStatusCount,
-      revenue,
-      cost,
-      profit,
-      avgTicket: count > 0 ? revenue / count : 0,
+      revenueUsd,
+      revenueArs,
+      costUsd,
+      costArs,
+      profitUsd,
+      profitArs,
+      avgTicketUsd: count > 0 ? revenueUsd / count : 0,
+      avgTicketArs: count > 0 ? revenueArs / count : 0,
       sellThrough: units.length > 0 ? (soldStatusCount / units.length) * 100 : 0,
     };
   }, [realizedUnitSales, soldStatusCount, units.length]);
@@ -216,8 +250,10 @@ export function SalesChart({
             month: "short",
           }),
           units: 0,
-          revenue: 0,
-          profit: 0,
+          revenueUsd: 0,
+          revenueArs: 0,
+          profitUsd: 0,
+          profitArs: 0,
         });
       }
     } else {
@@ -232,8 +268,10 @@ export function SalesChart({
             year: "2-digit",
           }),
           units: 0,
-          revenue: 0,
-          profit: 0,
+          revenueUsd: 0,
+          revenueArs: 0,
+          profitUsd: 0,
+          profitArs: 0,
         });
       }
     }
@@ -245,8 +283,10 @@ export function SalesChart({
       if (!entry) return;
 
       entry.units += 1;
-      entry.revenue += sale.revenueArs;
-      entry.profit += sale.profitArs;
+      entry.revenueUsd += sale.revenueUsd;
+      entry.revenueArs += sale.revenueArs;
+      entry.profitUsd += sale.profitUsd;
+      entry.profitArs += sale.profitArs;
     });
 
     return Array.from(buckets.values());
@@ -256,11 +296,13 @@ export function SalesChart({
     return chartData.reduce(
       (summary, point) => {
         summary.units += point.units;
-        summary.revenue += point.revenue;
-        summary.profit += point.profit;
+        summary.revenueUsd += point.revenueUsd;
+        summary.revenueArs += point.revenueArs;
+        summary.profitUsd += point.profitUsd;
+        summary.profitArs += point.profitArs;
         return summary;
       },
-      { units: 0, revenue: 0, profit: 0 }
+      { units: 0, revenueUsd: 0, revenueArs: 0, profitUsd: 0, profitArs: 0 }
     );
   }, [chartData]);
 
@@ -275,17 +317,26 @@ export function SalesChart({
 
         if (formatDayKey(soldDate) === currentDayKey) {
           summary.todayUnits += 1;
-          summary.todayRevenue += sale.revenueArs;
+          summary.todayRevenueUsd += sale.revenueUsd;
+          summary.todayRevenueArs += sale.revenueArs;
         }
 
         if (formatMonthKey(soldDate) === currentMonthKey) {
           summary.monthUnits += 1;
-          summary.monthRevenue += sale.revenueArs;
+          summary.monthRevenueUsd += sale.revenueUsd;
+          summary.monthRevenueArs += sale.revenueArs;
         }
 
         return summary;
       },
-      { todayUnits: 0, todayRevenue: 0, monthUnits: 0, monthRevenue: 0 }
+      {
+        todayUnits: 0,
+        todayRevenueUsd: 0,
+        todayRevenueArs: 0,
+        monthUnits: 0,
+        monthRevenueUsd: 0,
+        monthRevenueArs: 0,
+      }
     );
   }, [realizedUnitSalesWithDate]);
 
@@ -296,31 +347,37 @@ export function SalesChart({
       const existing = summaryMap.get(sale.key);
       if (existing) {
         existing.units += sale.sharePct / 100;
-        existing.revenue += sale.revenueArs;
-        existing.cost += sale.costArs;
-        existing.profit += sale.profitArs;
+        existing.revenueUsd += sale.revenueUsd;
+        existing.revenueArs += sale.revenueArs;
+        existing.costUsd += sale.costUsd;
+        existing.costArs += sale.costArs;
+        existing.profitUsd += sale.profitUsd;
+        existing.profitArs += sale.profitArs;
         return;
       }
 
       summaryMap.set(sale.key, {
         fundedBy: sale.label,
         units: sale.sharePct / 100,
-        revenue: sale.revenueArs,
-        cost: sale.costArs,
-        profit: sale.profitArs,
+        revenueUsd: sale.revenueUsd,
+        revenueArs: sale.revenueArs,
+        costUsd: sale.costUsd,
+        costArs: sale.costArs,
+        profitUsd: sale.profitUsd,
+        profitArs: sale.profitArs,
       });
     });
 
     return Array.from(summaryMap.values()).sort((a, b) => {
-      if (b.profit !== a.profit) return b.profit - a.profit;
-      if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+      if (b.profitUsd !== a.profitUsd) return b.profitUsd - a.profitUsd;
+      if (b.revenueUsd !== a.revenueUsd) return b.revenueUsd - a.revenueUsd;
       return a.fundedBy.localeCompare(b.fundedBy, "es-AR");
     });
   }, [financierSales]);
 
   const maxFunderProfitAbs = useMemo(() => {
     return funderSummaries.reduce((max, funder) => {
-      return Math.max(max, Math.abs(funder.profit));
+      return Math.max(max, Math.abs(funder.profitUsd));
     }, 0);
   }, [funderSummaries]);
 
@@ -329,18 +386,11 @@ export function SalesChart({
   const peakPoint = useMemo(() => {
     return chartData.reduce<ChartPoint | null>((best, point) => {
       if (!best) return point;
-      if (point.revenue > best.revenue) return point;
-      if (point.revenue === best.revenue && point.units > best.units) return point;
+      if (point.revenueUsd > best.revenueUsd) return point;
+      if (point.revenueUsd === best.revenueUsd && point.units > best.units) return point;
       return best;
     }, null);
   }, [chartData]);
-
-  const formatMoney = (value: number) => {
-    const prefix = currency === "USD" ? "US$" : "$";
-    return `${prefix}${value.toLocaleString("es-AR", {
-      maximumFractionDigits: 0,
-    })}`;
-  };
 
   return (
     <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -362,7 +412,8 @@ export function SalesChart({
                 profit come from sale snapshots on each unit. Ownership is assigned through{" "}
                 <code className="mx-1 rounded bg-background/70 px-1 py-0.5">purchase_id</code>
                 and split with <code className="mx-1 rounded bg-background/70 px-1 py-0.5">purchase_financiers</code>
-                when a purchase is financed by more than one person.
+                when a purchase is financed by more than one person. All money values
+                below show USD first and ARS second.
               </p>
             </div>
           </div>
@@ -392,22 +443,31 @@ export function SalesChart({
             }
             hint={
               period === "daily"
-                ? formatMoney(currentSnapshot.todayRevenue)
-                : formatMoney(currentSnapshot.monthRevenue)
+                ? `Revenue ${formatMoneyPair(
+                    currentSnapshot.todayRevenueUsd,
+                    currentSnapshot.todayRevenueArs
+                  )}`
+                : `Revenue ${formatMoneyPair(
+                    currentSnapshot.monthRevenueUsd,
+                    currentSnapshot.monthRevenueArs
+                  )}`
             }
           />
           <MetricCard
             icon={ShoppingBag}
             label={period === "daily" ? "Last 30 Days" : "Last 12 Months"}
             value={`${activeWindow.units} sold`}
-            hint={formatMoney(activeWindow.revenue)}
+            hint={`Revenue ${formatMoneyPair(activeWindow.revenueUsd, activeWindow.revenueArs)}`}
           />
           <MetricCard
             icon={TrendingUp}
             label="Realized Profit"
-            value={formatMoney(totals.profit)}
-            hint={`Avg ticket ${formatMoney(totals.avgTicket)}`}
-            highlight={totals.profit >= 0}
+            value={formatUsdMoney(totals.profitUsd)}
+            hint={`${formatArsMoney(totals.profitArs)} · Avg ticket ${formatMoneyPair(
+              totals.avgTicketUsd,
+              totals.avgTicketArs
+            )}`}
+            highlight={totals.profitUsd >= 0}
           />
           <MetricCard
             icon={Package2}
@@ -446,7 +506,7 @@ export function SalesChart({
             <div>
               <p className="text-sm font-medium">Trend</p>
               <p className="text-xs text-muted-foreground">
-                Bars show units sold, the area shows revenue.
+                Bars show units sold, the area shows realized revenue in USD.
               </p>
             </div>
             {peakPoint && (
@@ -455,7 +515,7 @@ export function SalesChart({
                 <span className="font-medium text-foreground">
                   {peakPoint.label}
                 </span>{" "}
-                with {formatMoney(peakPoint.revenue)}
+                with {formatMoneyPair(peakPoint.revenueUsd, peakPoint.revenueArs)}
               </p>
             )}
           </div>
@@ -517,15 +577,11 @@ export function SalesChart({
                 <YAxis
                   yAxisId="revenue"
                   orientation="right"
-                  tickFormatter={(value) => {
-                    if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M`;
-                    if (value >= 1_000) return `${Math.round(value / 1_000)}k`;
-                    return `${value}`;
-                  }}
+                  tickFormatter={(value) => formatCompactUsd(Number(value))}
                   tick={{ fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
-                  width={40}
+                  width={52}
                   className="fill-muted-foreground"
                 />
                 <Tooltip
@@ -535,9 +591,7 @@ export function SalesChart({
 
                     const unitsValue =
                       payload.find((entry) => entry.dataKey === "units")?.value ?? 0;
-                    const revenueValue =
-                      payload.find((entry) => entry.dataKey === "revenue")?.value ?? 0;
-                    const profitValue = payload[0]?.payload?.profit ?? 0;
+                    const point = payload[0]?.payload as ChartPoint | undefined;
 
                     return (
                       <div className="min-w-[180px] rounded-xl border bg-card p-3 text-sm shadow-lg">
@@ -549,21 +603,20 @@ export function SalesChart({
                           </div>
                           <div className="flex items-center justify-between gap-4">
                             <span>Revenue</span>
-                            <span className="font-medium text-foreground">
-                              {formatMoney(Number(revenueValue))}
-                            </span>
+                            <MoneyStack
+                              usd={point?.revenueUsd ?? 0}
+                              ars={point?.revenueArs ?? 0}
+                              align="right"
+                            />
                           </div>
                           <div className="flex items-center justify-between gap-4">
                             <span>Profit</span>
-                            <span
-                              className={`font-medium ${
-                                Number(profitValue) >= 0
-                                  ? "text-emerald-500"
-                                  : "text-red-500"
-                              }`}
-                            >
-                              {formatMoney(Number(profitValue))}
-                            </span>
+                            <MoneyStack
+                              usd={point?.profitUsd ?? 0}
+                              ars={point?.profitArs ?? 0}
+                              align="right"
+                              tone={(point?.profitUsd ?? 0) >= 0 ? "positive" : "negative"}
+                            />
                           </div>
                         </div>
                       </div>
@@ -580,7 +633,7 @@ export function SalesChart({
                 <Area
                   yAxisId="revenue"
                   type="monotone"
-                  dataKey="revenue"
+                  dataKey="revenueUsd"
                   stroke="#10b981"
                   strokeWidth={2.5}
                   fill="rgba(16, 185, 129, 0.16)"
@@ -651,7 +704,7 @@ export function SalesChart({
                 {funderSummaries.map((funder) => {
                   const width =
                     maxFunderProfitAbs > 0
-                      ? (Math.abs(funder.profit) / maxFunderProfitAbs) * 100
+                      ? (Math.abs(funder.profitUsd) / maxFunderProfitAbs) * 100
                       : 0;
 
                   return (
@@ -663,28 +716,27 @@ export function SalesChart({
                             {funder.units.toLocaleString("es-AR", {
                               minimumFractionDigits: Number.isInteger(funder.units) ? 0 : 2,
                               maximumFractionDigits: 2,
-                            })} equivalent sold · Revenue {formatMoney(funder.revenue)}
+                            })} equivalent sold · Revenue {formatMoneyPair(funder.revenueUsd, funder.revenueArs)}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <p
-                            className={`text-sm font-semibold ${
-                              funder.profit >= 0 ? "text-emerald-500" : "text-red-500"
-                            }`}
-                          >
-                            {formatMoney(funder.profit)}
-                          </p>
+                        <div className="space-y-1 text-right">
+                          <MoneyStack
+                            usd={funder.profitUsd}
+                            ars={funder.profitArs}
+                            align="right"
+                            tone={funder.profitUsd >= 0 ? "positive" : "negative"}
+                          />
                           <p className="text-xs text-muted-foreground">
-                            Cost {formatMoney(funder.cost)}
+                            Cost {formatMoneyPair(funder.costUsd, funder.costArs)}
                           </p>
                         </div>
                       </div>
                       <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
                         <div
                           className={`h-full rounded-full ${
-                            funder.profit >= 0 ? "bg-emerald-500" : "bg-red-500"
+                            funder.profitUsd >= 0 ? "bg-emerald-500" : "bg-red-500"
                           }`}
-                          style={{ width: `${funder.profit === 0 ? 0 : Math.max(width, 6)}%` }}
+                          style={{ width: `${funder.profitUsd === 0 ? 0 : Math.max(width, 6)}%` }}
                         />
                       </div>
                     </div>
@@ -705,19 +757,22 @@ export function SalesChart({
             <div className="grid gap-3">
               <InsightRow
                 label="All-time revenue"
-                value={formatMoney(totals.revenue)}
+                value={formatUsdMoney(totals.revenueUsd)}
+                supporting={formatArsMoney(totals.revenueArs)}
                 icon={BadgeDollarSign}
               />
               <InsightRow
                 label="All-time cost"
-                value={formatMoney(totals.cost)}
+                value={formatUsdMoney(totals.costUsd)}
+                supporting={formatArsMoney(totals.costArs)}
                 icon={ReceiptText}
               />
               <InsightRow
                 label="All-time profit"
-                value={formatMoney(totals.profit)}
+                value={formatUsdMoney(totals.profitUsd)}
+                supporting={formatArsMoney(totals.profitArs)}
                 icon={TrendingUp}
-                positive={totals.profit >= 0}
+                positive={totals.profitUsd >= 0}
               />
               <InsightRow
                 label="In stock right now"
@@ -731,9 +786,10 @@ export function SalesChart({
               />
               <InsightRow
                 label="Top funded by"
-                value={topFunder ? `${topFunder.fundedBy} · ${formatMoney(topFunder.profit)}` : "No sales yet"}
+                value={topFunder ? `${topFunder.fundedBy} · ${formatUsdMoney(topFunder.profitUsd)}` : "No sales yet"}
+                supporting={topFunder ? formatArsMoney(topFunder.profitArs) : undefined}
                 icon={CircleDollarSign}
-                positive={topFunder ? topFunder.profit >= 0 : undefined}
+                positive={topFunder ? topFunder.profitUsd >= 0 : undefined}
               />
               <InsightRow
                 label="Owned sold items"
@@ -812,14 +868,42 @@ function MetricCard({
   );
 }
 
+function MoneyStack({
+  usd,
+  ars,
+  align = "left",
+  tone = "default",
+}: {
+  usd: number;
+  ars: number;
+  align?: "left" | "right";
+  tone?: "default" | "positive" | "negative";
+}) {
+  const toneClass =
+    tone === "positive"
+      ? "text-emerald-500"
+      : tone === "negative"
+        ? "text-red-500"
+        : "text-foreground";
+
+  return (
+    <div className={`space-y-0.5 ${align === "right" ? "text-right" : ""}`}>
+      <p className={`font-medium tabular-nums ${toneClass}`}>{formatUsdMoney(usd)}</p>
+      <p className="text-xs tabular-nums text-muted-foreground">{formatArsMoney(ars)}</p>
+    </div>
+  );
+}
+
 function InsightRow({
   label,
   value,
+  supporting,
   icon: Icon,
   positive,
 }: {
   label: string;
   value: string;
+  supporting?: string;
   icon: ElementType;
   positive?: boolean;
 }) {
@@ -832,15 +916,22 @@ function InsightRow({
         <span className="truncate text-sm text-muted-foreground">{label}</span>
       </div>
       <span
-        className={`text-sm font-medium ${
-          positive === undefined
-            ? "text-foreground"
-            : positive
-              ? "text-emerald-500"
-              : "text-red-500"
-        }`}
+        className="text-right"
       >
-        {value}
+        <span
+          className={`block text-sm font-medium ${
+            positive === undefined
+              ? "text-foreground"
+              : positive
+                ? "text-emerald-500"
+                : "text-red-500"
+          }`}
+        >
+          {value}
+        </span>
+        {supporting ? (
+          <span className="block text-xs text-muted-foreground">{supporting}</span>
+        ) : null}
       </span>
     </div>
   );

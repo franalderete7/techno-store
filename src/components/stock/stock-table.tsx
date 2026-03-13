@@ -23,10 +23,11 @@ import type {
 import { STOCK_STATUS_OPTIONS } from "@/types/stock";
 import {
   DEFAULT_USD_RATE,
-  formatSaleDisplay,
+  buildRealizedUnitSale,
   getFinancierOptions,
   normalizeSaleCurrency,
   resolveCostAmountArs,
+  resolveCostAmountUsd,
   roundMoney,
 } from "@/lib/accounting";
 import { Button } from "@/components/ui/button";
@@ -125,6 +126,46 @@ function formatPurchaseDate(value: string | null | undefined) {
 
 function formatPurchaseOption(purchase: Purchase) {
   return `${purchase.purchase_id} · ${purchase.supplier_name} · ${formatPurchaseDate(purchase.date_purchase)}`;
+}
+
+function formatUsdMoney(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `US$${value.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
+}
+
+function formatArsMoney(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `$${value.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+}
+
+function MoneyPair({
+  usd,
+  ars,
+  highlight,
+}: {
+  usd: number | null | undefined;
+  ars: number | null | undefined;
+  highlight?: "positive" | "negative" | "neutral";
+}) {
+  const tone =
+    highlight === "positive"
+      ? "text-emerald-500"
+      : highlight === "negative"
+        ? "text-red-500"
+        : "text-foreground";
+
+  return (
+    <div className="space-y-1 text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <span className="uppercase tracking-wide text-muted-foreground">USD</span>
+        <span className={`font-medium tabular-nums ${tone}`}>{formatUsdMoney(usd)}</span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="uppercase tracking-wide text-muted-foreground">ARS</span>
+        <span className={`font-medium tabular-nums ${tone}`}>{formatArsMoney(ars)}</span>
+      </div>
+    </div>
+  );
 }
 
 async function dataUrlToFile(dataUrl: string, filename: string): Promise<File> {
@@ -428,7 +469,18 @@ export function StockTable() {
           ? selectedFormProduct.usd_rate
           : DEFAULT_USD_RATE)
       : null;
+  const effectivePreviewUsdRate =
+    selectedSaleFxRate ??
+    (selectedFormProduct?.usd_rate && selectedFormProduct.usd_rate > 0
+      ? selectedFormProduct.usd_rate
+      : DEFAULT_USD_RATE);
   const saleAmountPreview = parseOptionalNumber(formData.sale_amount);
+  const saleAmountUsdPreview =
+    saleAmountPreview != null
+      ? selectedSaleCurrency === "USD"
+        ? saleAmountPreview
+        : roundMoney(saleAmountPreview / effectivePreviewUsdRate)
+      : null;
   const saleAmountArsPreview =
     saleAmountPreview != null
       ? selectedSaleCurrency === "USD"
@@ -436,6 +488,12 @@ export function StockTable() {
         : saleAmountPreview
       : null;
   const costAmountPreview = parseOptionalNumber(formData.cost_unit);
+  const costAmountUsdPreview =
+    costAmountPreview != null
+      ? (parseOptionalText(formData.cost_currency) ?? "USD").toUpperCase() === "USD"
+        ? costAmountPreview
+        : roundMoney(costAmountPreview / effectivePreviewUsdRate)
+      : null;
   const costAmountArsPreview =
     costAmountPreview != null
       ? resolveCostAmountArs(
@@ -720,11 +778,6 @@ export function StockTable() {
     });
   };
 
-  const fmtPrice = (val: number | null, cur: string | null | undefined) => {
-    if (val == null) return "—";
-    return `${cur === "ARS" ? "$" : "US$"}${val.toLocaleString("es-AR")}`;
-  };
-
   return (
     <div className="min-h-screen bg-background px-3 py-4 sm:px-6 sm:py-6">
       <div className="mx-auto w-full max-w-7xl">
@@ -823,12 +876,26 @@ export function StockTable() {
             <p className="mb-2 text-xs text-muted-foreground sm:mb-3 sm:text-sm">
               Showing {filtered.length} of {units.length} units
             </p>
+            <p className="mb-3 text-[11px] text-muted-foreground sm:text-xs">
+              Cost, sale revenue, and profit always show USD first and ARS second.
+            </p>
 
             {/* Mobile: Cards | Desktop: Table */}
-            <div className="sm:hidden space-y-2">
-            {filtered.map((unit) => {
+            <div className="space-y-2 sm:hidden">
+              {filtered.map((unit) => {
                 const product = productMap.get(unit.product_key);
-                const supplierName = purchaseMap.get(unit.purchase_id ?? "")?.supplier_name ?? unit.supplier_name;
+                const realized = buildRealizedUnitSale(unit, product);
+                const costUsd =
+                  unit.cost_unit != null
+                    ? resolveCostAmountUsd(unit, product, realized?.fxRate)
+                    : null;
+                const costArs =
+                  unit.cost_unit != null
+                    ? resolveCostAmountArs(unit, product, realized?.fxRate)
+                    : null;
+                const supplierName =
+                  purchaseMap.get(unit.purchase_id ?? "")?.supplier_name ?? unit.supplier_name;
+
                 return (
                   <div key={unit.id} className="rounded-lg border bg-card p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -843,15 +910,39 @@ export function StockTable() {
                       <StatusBadge status={unit.status} />
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>Cost: {fmtPrice(unit.cost_unit, unit.cost_currency)}</span>
                       {unit.color && <span>Color: {unit.color}</span>}
                       {unit.battery_health != null && <span>Battery: {unit.battery_health}%</span>}
-                      {(unit.sale_amount != null || unit.price_sold != null) && (
-                        <span className="text-emerald-400">
-                          Sold: {formatSaleDisplay(unit)}
-                        </span>
-                      )}
                       {supplierName && <span>{supplierName}</span>}
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="rounded-md border bg-muted/20 p-2">
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Cost Basis
+                        </p>
+                        <MoneyPair usd={costUsd} ars={costArs} />
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-2">
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Sale Revenue
+                        </p>
+                        <MoneyPair usd={realized?.revenueUsd ?? null} ars={realized?.revenueArs ?? null} />
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-2">
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Profit
+                        </p>
+                        <MoneyPair
+                          usd={realized?.profitUsd ?? null}
+                          ars={realized?.profitArs ?? null}
+                          highlight={
+                            realized
+                              ? realized.profitUsd >= 0
+                                ? "positive"
+                                : "negative"
+                              : "neutral"
+                          }
+                        />
+                      </div>
                     </div>
                     <div className="mt-2 flex gap-1">
                       <Button variant="outline" size="sm" className="h-8 flex-1" onClick={() => openEdit(unit)}>
@@ -879,8 +970,9 @@ export function StockTable() {
                     <TableHead className="sticky top-0 z-20 bg-background">Color</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Battery</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Status</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background">Cost</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background">Sale</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Cost Basis</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Sale Revenue</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Profit</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Supplier</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Purchase</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Received</TableHead>
@@ -890,7 +982,18 @@ export function StockTable() {
                 <TableBody>
                   {filtered.map((unit) => {
                     const product = productMap.get(unit.product_key);
-                    const supplierName = purchaseMap.get(unit.purchase_id ?? "")?.supplier_name ?? unit.supplier_name;
+                    const realized = buildRealizedUnitSale(unit, product);
+                    const costUsd =
+                      unit.cost_unit != null
+                        ? resolveCostAmountUsd(unit, product, realized?.fxRate)
+                        : null;
+                    const costArs =
+                      unit.cost_unit != null
+                        ? resolveCostAmountArs(unit, product, realized?.fxRate)
+                        : null;
+                    const supplierName =
+                      purchaseMap.get(unit.purchase_id ?? "")?.supplier_name ?? unit.supplier_name;
+
                     return (
                       <TableRow key={unit.id}>
                         <TableCell className="font-mono text-xs">{unit.imei1}</TableCell>
@@ -903,15 +1006,24 @@ export function StockTable() {
                         <TableCell>{unit.color ?? "—"}</TableCell>
                         <TableCell>{unit.battery_health != null ? `${unit.battery_health}%` : "—"}</TableCell>
                         <TableCell><StatusBadge status={unit.status} /></TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {fmtPrice(unit.cost_unit, unit.cost_currency)}
+                        <TableCell className="min-w-[132px]">
+                          <MoneyPair usd={costUsd} ars={costArs} />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {(unit.sale_amount != null || unit.price_sold != null) ? (
-                            <span className="text-emerald-400 font-medium">
-                              {formatSaleDisplay(unit)}
-                            </span>
-                          ) : "—"}
+                        <TableCell className="min-w-[132px]">
+                          <MoneyPair usd={realized?.revenueUsd ?? null} ars={realized?.revenueArs ?? null} />
+                        </TableCell>
+                        <TableCell className="min-w-[132px]">
+                          <MoneyPair
+                            usd={realized?.profitUsd ?? null}
+                            ars={realized?.profitArs ?? null}
+                            highlight={
+                              realized
+                                ? realized.profitUsd >= 0
+                                  ? "positive"
+                                  : "negative"
+                                : "neutral"
+                            }
+                          />
                         </TableCell>
                         <TableCell>{supplierName ?? "—"}</TableCell>
                         <TableCell className="font-mono text-xs">{unit.purchase_id ?? "—"}</TableCell>
@@ -1310,17 +1422,29 @@ export function StockTable() {
                   </p>
                 </div>
               </div>
-              <div className="mt-3 rounded-md border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+              <div className="mt-3 grid gap-2 rounded-md border bg-background/70 px-3 py-2 text-xs text-muted-foreground sm:grid-cols-2">
+                <div className="flex items-center justify-between gap-4">
+                  <span>Sale value (USD)</span>
+                  <span className="font-medium text-foreground">
+                    {formatUsdMoney(saleAmountUsdPreview)}
+                  </span>
+                </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Revenue snapshot (ARS)</span>
                   <span className="font-medium text-foreground">
-                    {saleAmountArsPreview != null ? `$${saleAmountArsPreview.toLocaleString("es-AR", { maximumFractionDigits: 2 })}` : "—"}
+                    {formatArsMoney(saleAmountArsPreview)}
                   </span>
                 </div>
-                <div className="mt-1 flex items-center justify-between gap-4">
+                <div className="flex items-center justify-between gap-4">
+                  <span>Cost basis (USD)</span>
+                  <span className="font-medium text-foreground">
+                    {formatUsdMoney(costAmountUsdPreview)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
                   <span>Cost snapshot (ARS)</span>
                   <span className="font-medium text-foreground">
-                    {costAmountArsPreview != null ? `$${costAmountArsPreview.toLocaleString("es-AR", { maximumFractionDigits: 2 })}` : "—"}
+                    {formatArsMoney(costAmountArsPreview)}
                   </span>
                 </div>
               </div>
