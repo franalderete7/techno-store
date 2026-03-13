@@ -16,9 +16,9 @@ export const metadata: Metadata = {
   title: "TechnoStore",
   description: "TechnoStore storefront and admin",
   icons: {
-    icon: "/favicon-techno-store.png",
-    shortcut: "/favicon-techno-store.png",
-    apple: "/favicon-techno-store.png",
+    icon: "/icon.png?v=20260313",
+    shortcut: "/favicon.ico?v=20260313",
+    apple: "/apple-icon.png?v=20260313",
   },
 };
 
