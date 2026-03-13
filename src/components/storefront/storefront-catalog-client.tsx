@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   ChevronDown,
-  Clock3,
+  ChevronLeft,
+  ChevronRight,
   CreditCard,
   MapPin,
   Search,
@@ -45,6 +46,9 @@ import {
 
 type SortKey = "recommended" | "price-asc" | "price-desc" | "name-asc";
 type AvailabilityFilter = "all" | "in-stock" | "on-order";
+type PageItem = number | "ellipsis";
+
+const PRODUCTS_PER_PAGE = 12;
 
 function formatMoney(value: number | null | undefined) {
   if (typeof value !== "number" || Number.isNaN(value)) return "Consultar";
@@ -65,6 +69,41 @@ function matchesAvailability(product: StorefrontProduct, filter: AvailabilityFil
   if (filter === "all") return true;
   if (filter === "in-stock") return code === "immediate" || code === "pickup";
   return code === "on_order" || code === "scheduled";
+}
+
+function getVisiblePageItems(totalPages: number, currentPage: number): PageItem[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+
+  if (currentPage <= 3) {
+    pages.add(2);
+    pages.add(3);
+    pages.add(4);
+  }
+
+  if (currentPage >= totalPages - 2) {
+    pages.add(totalPages - 1);
+    pages.add(totalPages - 2);
+    pages.add(totalPages - 3);
+  }
+
+  const sortedPages = [...pages]
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((left, right) => left - right);
+  const items: PageItem[] = [];
+
+  sortedPages.forEach((page, index) => {
+    const previous = sortedPages[index - 1];
+    if (previous && page - previous > 1) {
+      items.push("ellipsis");
+    }
+    items.push(page);
+  });
+
+  return items;
 }
 
 function FaqItem({
@@ -110,6 +149,7 @@ export function StorefrontCatalogClient({
   const [category, setCategory] = useState("all");
   const [availability, setAvailability] = useState<AvailabilityFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
+  const [currentPage, setCurrentPage] = useState(1);
   const deferredQuery = useDeferredValue(query);
 
   const categories = useMemo(
@@ -172,6 +212,20 @@ export function StorefrontCatalogClient({
 
     return filtered;
   }, [availability, category, deferredQuery, products, sortKey]);
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
+  const pageItems = useMemo(
+    () => getVisiblePageItems(totalPages, currentPage),
+    [currentPage, totalPages]
+  );
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    return filteredProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+  }, [currentPage, filteredProducts]);
+  const pageStart = filteredProducts.length === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+  const pageEnd = Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length);
+  const productCountLabel =
+    filteredProducts.length === 1 ? "1 equipo" : `${filteredProducts.length} equipos`;
+  const paginationLabel = totalPages === 1 ? "1 página" : `${totalPages} páginas`;
 
   const displayAddress = storeContext?.store_address?.trim() || "Caseros 1365, Salta Capital";
   const displayLocationName = storeContext?.store_location_name?.trim() || "TechnoStore Salta";
@@ -188,6 +242,19 @@ export function StorefrontCatalogClient({
     storeContext?.store_social_instagram?.trim() || "@technostore.salta";
   const featuredCategories = categories.slice(0, 6);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [availability, category, deferredQuery, sortKey]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <StorefrontShell>
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_34%),linear-gradient(180deg,#07111d_0%,#020611_40%,#020611_100%)] text-white">
@@ -196,47 +263,6 @@ export function StorefrontCatalogClient({
             <h1 className="font-serif text-3xl leading-tight tracking-tight text-white sm:text-4xl">
               TechnoStore Salta
             </h1>
-          </div>
-        </section>
-
-        <section id="faqs" className="mx-auto max-w-7xl px-6 pb-8 sm:px-10">
-          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-            <h2 className="text-2xl font-semibold tracking-tight text-white">FAQs</h2>
-
-            <div className="mt-6 space-y-4">
-              <FaqItem title="Quiénes somos" icon={<Store className="h-4 w-4" />} defaultOpen>
-                <p>
-                  {displayLocationName} es una tienda de tecnología ubicada en Salta, Argentina.
-                  Trabajamos con atención directa, equipos seleccionados y publicación clara de
-                  condición, precio y tiempos de entrega.
-                </p>
-                <p className="mt-2">Atención por WhatsApp e Instagram: {displayInstagram}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {featuredCategories.map((entry) => (
-                    <Badge
-                      key={entry}
-                      className="rounded-full border border-white/10 bg-white/[0.05] text-white/85"
-                    >
-                      {entry}
-                    </Badge>
-                  ))}
-                </div>
-              </FaqItem>
-
-              <FaqItem title="Dónde estamos" icon={<MapPin className="h-4 w-4" />}>
-                <p>{displayAddress}</p>
-                <p className="mt-2">Horario de atención: {displayHours}</p>
-              </FaqItem>
-
-              <FaqItem title="Pagos y financiación" icon={<CreditCard className="h-4 w-4" />}>
-                <p>{displayPaymentMethods}</p>
-                <p className="mt-2">{displayCreditPolicy}</p>
-              </FaqItem>
-
-              <FaqItem title="Envíos y coordinación" icon={<Truck className="h-4 w-4" />}>
-                <p>{displayShippingPolicy}</p>
-              </FaqItem>
-            </div>
           </div>
         </section>
 
@@ -303,6 +329,15 @@ export function StorefrontCatalogClient({
             </div>
           </div>
 
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-white/55">
+            <p>
+              {filteredProducts.length === 0
+                ? "Sin resultados para estos filtros"
+                : `Mostrando ${pageStart}-${pageEnd} de ${productCountLabel}`}
+            </p>
+            <p>{paginationLabel}</p>
+          </div>
+
           {filteredProducts.length === 0 ? (
             <div className="mt-6 rounded-[2rem] border border-dashed border-white/15 bg-white/[0.03] px-6 py-12 text-center text-white/65">
               <p className="text-xl font-medium text-white">No encontré equipos con ese filtro</p>
@@ -311,121 +346,215 @@ export function StorefrontCatalogClient({
               </p>
             </div>
           ) : (
-            <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {filteredProducts.map((product) => {
-                const image = getStorefrontImage(product);
-                const slug = getStorefrontSlug(product);
-                const displayPrice = getDisplayPrice(product);
-                const deliveryLabel = getStorefrontDeliveryTypeLabel(product);
-                const daysLabel = getStorefrontDeliveryDaysLabel(product);
+            <>
+              <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {paginatedProducts.map((product) => {
+                  const image = getStorefrontImage(product);
+                  const slug = getStorefrontSlug(product);
+                  const displayPrice = getDisplayPrice(product);
+                  const deliveryLabel = getStorefrontDeliveryTypeLabel(product);
+                  const daysLabel = getStorefrontDeliveryDaysLabel(product);
 
-                return (
-                  <article
-                    key={product.id}
-                    className="group overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04] transition hover:-translate-y-1 hover:border-sky-300/40 hover:bg-white/[0.06]"
-                  >
-                    <Link href={`/productos/${slug}`} className="block">
-                      <div className="relative aspect-square overflow-hidden bg-[linear-gradient(160deg,rgba(34,211,238,0.18),rgba(15,23,42,0.8))]">
-                        {image ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={image}
-                            alt={product.product_name}
-                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-sm text-white/45">
-                            Sin imagen
-                          </div>
-                        )}
-                        <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-                          <Badge className="rounded-full border border-black/20 bg-black/70 text-white backdrop-blur">
-                            {product.category}
-                          </Badge>
-                          <Badge
-                            className={cn(
-                              "rounded-full border px-3 py-1 font-medium backdrop-blur",
-                              getStorefrontConditionTone(product.condition)
-                            )}
-                          >
-                            {getStorefrontConditionLabel(product.condition)}
-                          </Badge>
-                          <Badge
-                            className={cn(
-                              "rounded-full border px-3 py-1 font-medium backdrop-blur",
-                              getStorefrontAvailabilityTone(product)
-                            )}
-                          >
-                            {deliveryLabel}
-                          </Badge>
-                          {daysLabel ? (
+                  return (
+                    <article
+                      key={product.id}
+                      className="group overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04] transition hover:-translate-y-1 hover:border-sky-300/40 hover:bg-white/[0.06]"
+                    >
+                      <Link href={`/productos/${slug}`} className="block">
+                        <div className="relative aspect-square overflow-hidden bg-[linear-gradient(160deg,rgba(34,211,238,0.18),rgba(15,23,42,0.8))]">
+                          {image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={image}
+                              alt={product.product_name}
+                              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-sm text-white/45">
+                              Sin imagen
+                            </div>
+                          )}
+                          <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+                            <Badge className="rounded-full border border-black/20 bg-black/70 text-white backdrop-blur">
+                              {product.category}
+                            </Badge>
                             <Badge
                               className={cn(
                                 "rounded-full border px-3 py-1 font-medium backdrop-blur",
-                                getStorefrontDeliveryDaysTone(product)
+                                getStorefrontConditionTone(product.condition)
                               )}
                             >
-                              {daysLabel}
+                              {getStorefrontConditionLabel(product.condition)}
                             </Badge>
+                            <Badge
+                              className={cn(
+                                "rounded-full border px-3 py-1 font-medium backdrop-blur",
+                                getStorefrontAvailabilityTone(product)
+                              )}
+                            >
+                              {deliveryLabel}
+                            </Badge>
+                            {daysLabel ? (
+                              <Badge
+                                className={cn(
+                                  "rounded-full border px-3 py-1 font-medium backdrop-blur",
+                                  getStorefrontDeliveryDaysTone(product)
+                                )}
+                              >
+                                {daysLabel}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                      </Link>
+
+                      <div className="space-y-4 p-6">
+                        <div className="space-y-2">
+                          <h3 className="text-xl font-semibold tracking-tight text-white">
+                            {product.product_name}
+                          </h3>
+                          <p className="text-sm leading-6 text-white/60">
+                            {[
+                              product.ram_gb ? `${product.ram_gb}GB RAM` : null,
+                              product.storage_gb ? `${product.storage_gb}GB` : null,
+                              product.color || null,
+                              product.network ? product.network.toUpperCase() : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="text-3xl font-semibold tracking-tight text-white">
+                            {formatMoney(displayPrice)}
+                          </p>
+                          {product.promo_price_ars ? (
+                            <p className="text-sm text-white/45 line-through">
+                              {formatMoney(product.price_ars)}
+                            </p>
                           ) : null}
+                          <p className="text-sm text-white/60">
+                            Precio contado / transferencia bancaria.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <Button
+                            asChild
+                            variant="outline"
+                            className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10"
+                          >
+                            <Link href={`/productos/${slug}`}>
+                              Ver detalle
+                              <ArrowRight className="h-4 w-4" />
+                            </Link>
+                          </Button>
+
+                          <StorefrontAddToCartButton
+                            product={product}
+                            className="rounded-full bg-sky-300 text-slate-950 hover:bg-sky-200"
+                          >
+                            Agregar
+                          </StorefrontAddToCartButton>
                         </div>
                       </div>
-                    </Link>
+                    </article>
+                  );
+                })}
+              </div>
 
-                    <div className="space-y-4 p-6">
-                      <div className="space-y-2">
-                        <h3 className="text-xl font-semibold tracking-tight text-white">
-                          {product.product_name}
-                        </h3>
-                        <p className="text-sm leading-6 text-white/60">
-                          {[
-                            product.ram_gb ? `${product.ram_gb}GB RAM` : null,
-                            product.storage_gb ? `${product.storage_gb}GB` : null,
-                            product.color || null,
-                            product.network ? product.network.toUpperCase() : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </div>
+              {totalPages > 1 ? (
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                    onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Anterior
+                  </Button>
 
-                      <div className="space-y-1">
-                        <p className="text-3xl font-semibold tracking-tight text-white">
-                          {formatMoney(displayPrice)}
-                        </p>
-                        {product.promo_price_ars ? (
-                          <p className="text-sm text-white/45 line-through">
-                            {formatMoney(product.price_ars)}
-                          </p>
-                        ) : null}
-                        <p className="text-sm text-white/60">Precio contado / transferencia bancaria.</p>
-                      </div>
+                  {pageItems.map((item, index) =>
+                    item === "ellipsis" ? (
+                      <span key={`ellipsis-${index}`} className="px-2 text-sm text-white/40">
+                        ...
+                      </span>
+                    ) : (
+                      <Button
+                        key={item}
+                        type="button"
+                        variant={item === currentPage ? "default" : "outline"}
+                        className={cn(
+                          "h-10 min-w-10 rounded-full px-4",
+                          item === currentPage
+                            ? "bg-sky-300 text-slate-950 hover:bg-sky-200"
+                            : "border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                        )}
+                        onClick={() => handlePageChange(item)}
+                      >
+                        {item}
+                      </Button>
+                    )
+                  )}
 
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <Button
-                          asChild
-                          variant="outline"
-                          className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10"
-                        >
-                          <Link href={`/productos/${slug}`}>
-                            Ver detalle
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                        </Button>
-
-                        <StorefrontAddToCartButton
-                          product={product}
-                          className="rounded-full bg-sky-300 text-slate-950 hover:bg-sky-200"
-                        >
-                          Agregar
-                        </StorefrontAddToCartButton>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                    onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Siguiente
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
+            </>
           )}
+        </section>
+
+        <section id="faqs" className="mx-auto max-w-7xl px-6 pb-8 sm:px-10">
+          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+            <h2 className="text-2xl font-semibold tracking-tight text-white">FAQs</h2>
+
+            <div className="mt-6 space-y-4">
+              <FaqItem title="Quiénes somos" icon={<Store className="h-4 w-4" />} defaultOpen>
+                <p>
+                  {displayLocationName} es una tienda de tecnología ubicada en Salta, Argentina.
+                  Trabajamos con atención directa, equipos seleccionados y publicación clara de
+                  condición, precio y tiempos de entrega.
+                </p>
+                <p className="mt-2">Atención por WhatsApp e Instagram: {displayInstagram}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {featuredCategories.map((entry) => (
+                    <Badge
+                      key={entry}
+                      className="rounded-full border border-white/10 bg-white/[0.05] text-white/85"
+                    >
+                      {entry}
+                    </Badge>
+                  ))}
+                </div>
+              </FaqItem>
+
+              <FaqItem title="Dónde estamos" icon={<MapPin className="h-4 w-4" />}>
+                <p>{displayAddress}</p>
+                <p className="mt-2">Horario de atención: {displayHours}</p>
+              </FaqItem>
+
+              <FaqItem title="Pagos y financiación" icon={<CreditCard className="h-4 w-4" />}>
+                <p>{displayPaymentMethods}</p>
+                <p className="mt-2">{displayCreditPolicy}</p>
+              </FaqItem>
+
+              <FaqItem title="Envíos y coordinación" icon={<Truck className="h-4 w-4" />}>
+                <p>{displayShippingPolicy}</p>
+              </FaqItem>
+            </div>
+          </div>
         </section>
         <StorefrontFooter />
       </div>
