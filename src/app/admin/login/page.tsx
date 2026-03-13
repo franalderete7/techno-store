@@ -1,17 +1,24 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { AdminLoginForm } from "@/components/auth/admin-login-form";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { getAdminAllowlist, isAllowedAdminEmail } from "@/lib/admin-auth";
+import { getAdminVisibleDefaultPath, getAdminVisibleLoginPath, isAdminHostname } from "@/lib/host-routing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function AdminLoginPage() {
+  const requestHeaders = headers();
+  const hostname = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
+  const defaultNextPath = getAdminVisibleDefaultPath(hostname);
+  const loginPath = getAdminVisibleLoginPath(hostname);
+  const adminOnSubdomain = isAdminHostname(hostname);
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (user?.email && isAllowedAdminEmail(user.email)) {
-    redirect("/admin");
+    redirect(defaultNextPath);
   }
 
   const allowlist = getAdminAllowlist();
@@ -24,19 +31,27 @@ export default async function AdminLoginPage() {
           <div className="space-y-4">
             <h1 className="text-4xl font-semibold tracking-tight">Admin privado con Supabase Auth</h1>
             <p className="max-w-lg text-base leading-7 text-white/70">
-              El storefront queda publico en `/`, mientras que productos, stock, compras,
-              y CRM viven bajo `/admin/*` con login por email.
+              El storefront queda publico para clientes, mientras que productos, stock, compras
+              y CRM requieren login por email.
             </p>
           </div>
 
           <div className="grid gap-4 text-sm text-white/70">
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="font-medium text-white">Storefront</p>
-              <p className="mt-1">`/` y `/productos/[handle]` son publicos y solo lectura.</p>
+              <p className="mt-1">
+                {adminOnSubdomain
+                  ? "La tienda publica vive en el storefront y este subdominio queda reservado para el panel."
+                  : "`/` y `/productos/[handle]` son publicos y solo lectura."}
+              </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="font-medium text-white">Admin</p>
-              <p className="mt-1">`/admin`, `/admin/stock`, `/admin/purchases`, `/admin/crm`.</p>
+              <p className="mt-1">
+                {adminOnSubdomain
+                  ? "`/`, `/stock`, `/purchases`, `/crm`, `/login`."
+                  : "`/admin`, `/admin/stock`, `/admin/purchases`, `/admin/crm`."}
+              </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="font-medium text-white">Emails habilitados</p>
@@ -55,14 +70,14 @@ export default async function AdminLoginPage() {
                 Ese email no esta habilitado para el admin. Cerra sesion y entra con una cuenta permitida.
               </p>
               <div className="mt-4">
-                <SignOutButton />
+                <SignOutButton loginPath={loginPath} />
               </div>
             </div>
           ) : null}
         </div>
 
         <div className="flex items-center justify-center">
-          <AdminLoginForm />
+          <AdminLoginForm defaultNextPath={defaultNextPath} />
         </div>
       </div>
     </div>

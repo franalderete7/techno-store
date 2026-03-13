@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { ShieldCheck } from "lucide-react";
 import { TopNav } from "@/components/layout/top-nav";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { getAdminVisibleBasePath, getAdminVisibleLoginPath } from "@/lib/host-routing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -14,6 +16,10 @@ export default async function AdminLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const requestHeaders = headers();
+  const hostname = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
+  const basePath = getAdminVisibleBasePath(hostname);
+  const loginPath = getAdminVisibleLoginPath(hostname);
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
@@ -28,9 +34,9 @@ export default async function AdminLayout({
             <span className="font-medium text-foreground">Panel admin</span>
             <span className="hidden sm:inline">{user?.email || "Sesion activa"}</span>
           </div>
-          <SignOutButton />
+          <SignOutButton loginPath={loginPath} />
         </div>
-        <TopNav basePath="/admin" />
+        <TopNav basePath={basePath} />
       </div>
       <main className="pb-16 sm:pb-0">{children}</main>
     </div>

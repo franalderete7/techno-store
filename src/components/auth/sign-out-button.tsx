@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/utils";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 
-export function SignOutButton() {
+type SignOutButtonProps = {
+  loginPath?: string;
+};
+
+export function SignOutButton({ loginPath = "/admin/login" }: SignOutButtonProps) {
   const router = useRouter();
 
   const handleSignOut = async () => {
@@ -18,7 +22,7 @@ export function SignOutButton() {
       return;
     }
 
-    router.replace("/admin/login");
+    router.replace(loginPath);
     router.refresh();
   };
 

@@ -10,7 +10,11 @@ import { getErrorMessage } from "@/lib/utils";
 
 type Mode = "login" | "signup";
 
-export function AdminLoginForm() {
+type AdminLoginFormProps = {
+  defaultNextPath?: string;
+};
+
+export function AdminLoginForm({ defaultNextPath = "/admin" }: AdminLoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
@@ -26,7 +30,10 @@ export function AdminLoginForm() {
     return null;
   });
 
-  const nextPath = useMemo(() => searchParams.get("next") || "/admin", [searchParams]);
+  const nextPath = useMemo(
+    () => searchParams.get("next") || defaultNextPath,
+    [defaultNextPath, searchParams]
+  );
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -81,8 +88,7 @@ export function AdminLoginForm() {
           {mode === "login" ? "Entrar al panel" : "Crear cuenta admin"}
         </h1>
         <p className="text-sm text-white/70">
-          El panel usa Supabase Auth con email. Solo los emails habilitados pueden entrar a
-          `/admin`.
+          El panel usa Supabase Auth con email. Solo los emails habilitados pueden entrar.
         </p>
       </div>
 
