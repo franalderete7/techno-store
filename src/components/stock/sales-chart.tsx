@@ -21,7 +21,6 @@ import {
   ReceiptText,
   ShoppingBag,
   TrendingUp,
-  TriangleAlert,
 } from "lucide-react";
 import type { Product } from "@/types/database";
 import type { Financier, Purchase, PurchaseFinancier, StockStatus, StockUnit } from "@/types/stock";
@@ -160,11 +159,6 @@ export function SalesChart({
         return [{ ...realized, purchaseId: unit.purchase_id }];
       }),
     [productMap, units]
-  );
-
-  const suspiciousLegacyRevenueCount = useMemo(
-    () => realizedUnitSales.filter((sale) => sale.suspiciousLegacyRevenue).length,
-    [realizedUnitSales]
   );
 
   const soldUnitsMissingPriceCount = soldStatusCount - realizedUnitSales.length;
@@ -489,13 +483,6 @@ export function SalesChart({
             {soldUnitsMissingPriceCount} sold item{soldUnitsMissingPriceCount === 1 ? "" : "s"} still
             missing a valid sale snapshot. Realized profit only counts sold items with a
             saved sale amount.
-          </div>
-        )}
-        {suspiciousLegacyRevenueCount > 0 && (
-          <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
-            <TriangleAlert className="mr-2 inline h-4 w-4 align-text-bottom" />
-            {suspiciousLegacyRevenueCount} sold item{suspiciousLegacyRevenueCount === 1 ? "" : "s"} look like
-            USD sale prices saved in the old ARS-only field. Review those sales before trusting the profit totals.
           </div>
         )}
       </div>

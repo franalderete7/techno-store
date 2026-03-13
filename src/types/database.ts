@@ -12,7 +12,6 @@ export type Json =
 export interface Database {
   public: {
     Enums: {
-      error_severity: "low" | "medium" | "high";
       payment_method: "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal";
       payment_status: "pending" | "paid" | "partial";
       stock_status: "in_stock" | "reserved" | "sold" | "warranty" | "returned";
@@ -96,39 +95,6 @@ export interface Database {
         };
         Relationships: [];
       };
-      "crm_funnel_stages": {
-        Row: {
-          "stage_key": string;
-          "label": string;
-          "description": string;
-          "sort_order": number;
-          "color_hex": string;
-          "is_terminal": boolean;
-          "created_at": string;
-          "updated_at": string;
-        };
-        Insert: {
-          "stage_key"?: string | null;
-          "label": string;
-          "description": string;
-          "sort_order": number;
-          "color_hex": string;
-          "is_terminal"?: boolean | null;
-          "created_at"?: string | null;
-          "updated_at"?: string | null;
-        };
-        Update: {
-          "stage_key"?: string | null;
-          "label"?: string | null;
-          "description"?: string | null;
-          "sort_order"?: number | null;
-          "color_hex"?: string | null;
-          "is_terminal"?: boolean | null;
-          "created_at"?: string | null;
-          "updated_at"?: string | null;
-        };
-        Relationships: [];
-      };
       "crm_tag_definitions": {
         Row: {
           "tag_key": string;
@@ -177,7 +143,6 @@ export interface Database {
           "is_salta_capital": boolean | null;
           "preferred_brand": string | null;
           "preferred_budget": string | null;
-          "payment_preference": string | null;
           "interested_product": string | null;
           "funnel_stage": string | null;
           "lead_score": number | null;
@@ -186,7 +151,6 @@ export interface Database {
           "last_bot_interaction": string | null;
           "last_human_interaction": string | null;
           "human_assigned": boolean | null;
-          "manychat_subscribed_at": string | null;
           "manychat_tags": string[] | null;
           "created_at": string | null;
           "updated_at": string | null;
@@ -205,7 +169,6 @@ export interface Database {
           "topics_mentioned": string[];
           "first_seen_at": string | null;
           "lead_source": string | null;
-          "lead_source_detail": string | null;
           "browsing_at": string | null;
           "interested_at": string | null;
           "closing_at": string | null;
@@ -222,7 +185,6 @@ export interface Database {
           "is_salta_capital"?: boolean | null;
           "preferred_brand"?: string | null;
           "preferred_budget"?: string | null;
-          "payment_preference"?: string | null;
           "interested_product"?: string | null;
           "funnel_stage"?: string | null;
           "lead_score"?: number | null;
@@ -231,7 +193,6 @@ export interface Database {
           "last_bot_interaction"?: string | null;
           "last_human_interaction"?: string | null;
           "human_assigned"?: boolean | null;
-          "manychat_subscribed_at"?: string | null;
           "manychat_tags"?: string[] | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
@@ -250,7 +211,6 @@ export interface Database {
           "topics_mentioned": string[];
           "first_seen_at"?: string | null;
           "lead_source"?: string | null;
-          "lead_source_detail"?: string | null;
           "browsing_at"?: string | null;
           "interested_at"?: string | null;
           "closing_at"?: string | null;
@@ -267,7 +227,6 @@ export interface Database {
           "is_salta_capital"?: boolean | null;
           "preferred_brand"?: string | null;
           "preferred_budget"?: string | null;
-          "payment_preference"?: string | null;
           "interested_product"?: string | null;
           "funnel_stage"?: string | null;
           "lead_score"?: number | null;
@@ -276,7 +235,6 @@ export interface Database {
           "last_bot_interaction"?: string | null;
           "last_human_interaction"?: string | null;
           "human_assigned"?: boolean | null;
-          "manychat_subscribed_at"?: string | null;
           "manychat_tags"?: string[] | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
@@ -295,7 +253,6 @@ export interface Database {
           "topics_mentioned"?: string[] | null;
           "first_seen_at"?: string | null;
           "lead_source"?: string | null;
-          "lead_source_detail"?: string | null;
           "browsing_at"?: string | null;
           "interested_at"?: string | null;
           "closing_at"?: string | null;
@@ -507,7 +464,6 @@ export interface Database {
           "purchase_id": string;
           "date_purchase": string;
           "supplier_name": string;
-          "payment_method": "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal" | null;
           "payment_status": "pending" | "paid" | "partial" | null;
           "total_cost": number | null;
           "currency": string | null;
@@ -515,14 +471,12 @@ export interface Database {
           "created_by": string | null;
           "created_at": string | null;
           "updated_at": string | null;
-          "funded_by": string | null;
         };
         Insert: {
           "id"?: number | null;
           "purchase_id": string;
           "date_purchase"?: string | null;
           "supplier_name": string;
-          "payment_method"?: "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal" | null;
           "payment_status"?: "pending" | "paid" | "partial" | null;
           "total_cost"?: number | null;
           "currency"?: string | null;
@@ -530,14 +484,12 @@ export interface Database {
           "created_by"?: string | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
-          "funded_by"?: string | null;
         };
         Update: {
           "id"?: number | null;
           "purchase_id"?: string | null;
           "date_purchase"?: string | null;
           "supplier_name"?: string | null;
-          "payment_method"?: "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal" | null;
           "payment_status"?: "pending" | "paid" | "partial" | null;
           "total_cost"?: number | null;
           "currency"?: string | null;
@@ -545,7 +497,6 @@ export interface Database {
           "created_by"?: string | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
-          "funded_by"?: string | null;
         };
         Relationships: [];
       };
@@ -600,45 +551,6 @@ export interface Database {
         };
         Relationships: [];
       };
-      "stock_errors_log": {
-        Row: {
-          "id": number;
-          "event": string;
-          "severity": "low" | "medium" | "high";
-          "error_code": string;
-          "message": string | null;
-          "payload": Json | null;
-          "resolved": boolean | null;
-          "resolved_at": string | null;
-          "resolved_by": string | null;
-          "created_at": string | null;
-        };
-        Insert: {
-          "id"?: number | null;
-          "event": string;
-          "severity"?: "low" | "medium" | "high" | null;
-          "error_code": string;
-          "message"?: string | null;
-          "payload"?: Json | null;
-          "resolved"?: boolean | null;
-          "resolved_at"?: string | null;
-          "resolved_by"?: string | null;
-          "created_at"?: string | null;
-        };
-        Update: {
-          "id"?: number | null;
-          "event"?: string | null;
-          "severity"?: "low" | "medium" | "high" | null;
-          "error_code"?: string | null;
-          "message"?: string | null;
-          "payload"?: Json | null;
-          "resolved"?: boolean | null;
-          "resolved_at"?: string | null;
-          "resolved_by"?: string | null;
-          "created_at"?: string | null;
-        };
-        Relationships: [];
-      };
       "stock_units": {
         Row: {
           "id": number;
@@ -655,7 +567,6 @@ export interface Database {
           "notes": string | null;
           "created_at": string | null;
           "updated_at": string | null;
-          "price_sold": number | null;
           "proof_image_urls": string[] | null;
           "color": string | null;
           "battery_health": number | null;
@@ -680,7 +591,6 @@ export interface Database {
           "notes"?: string | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
-          "price_sold"?: number | null;
           "proof_image_urls"?: string[] | null;
           "color"?: string | null;
           "battery_health"?: number | null;
@@ -705,7 +615,6 @@ export interface Database {
           "notes"?: string | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
-          "price_sold"?: number | null;
           "proof_image_urls"?: string[] | null;
           "color"?: string | null;
           "battery_health"?: number | null;
@@ -751,8 +660,6 @@ export interface Database {
           "items": Json;
           "transfer_aliases": string[];
           "notes": string | null;
-          "contacted": boolean;
-          "contacted_at": string | null;
           "created_at": string;
           "address": string | null;
           "zip_code": string | null;
@@ -772,8 +679,6 @@ export interface Database {
           "items": Json;
           "transfer_aliases": string[];
           "notes"?: string | null;
-          "contacted"?: boolean | null;
-          "contacted_at"?: string | null;
           "created_at"?: string | null;
           "address"?: string | null;
           "zip_code"?: string | null;
@@ -793,8 +698,6 @@ export interface Database {
           "items"?: Json | null;
           "transfer_aliases"?: string[] | null;
           "notes"?: string | null;
-          "contacted"?: boolean | null;
-          "contacted_at"?: string | null;
           "created_at"?: string | null;
           "address"?: string | null;
           "zip_code"?: string | null;
@@ -833,7 +736,6 @@ export interface Database {
           "phone_area_province": string | null;
           "preferred_brand": string | null;
           "preferred_budget": string | null;
-          "payment_preference": string | null;
           "payment_method_last": string | null;
           "payment_methods_mentioned": string[] | null;
           "interested_product": string | null;
@@ -847,7 +749,6 @@ export interface Database {
           "last_bot_interaction": string | null;
           "last_human_interaction": string | null;
           "human_assigned": boolean | null;
-          "manychat_subscribed_at": string | null;
           "manychat_tags": string[] | null;
           "created_at": string | null;
           "updated_at": string | null;
@@ -859,37 +760,7 @@ export interface Database {
           "human_handoff_at": string | null;
           "first_seen_at": string | null;
           "lead_source": string | null;
-          "lead_source_detail": string | null;
           "whatsapp_wa_id": string | null;
-        };
-        Relationships: [];
-      };
-      "v_customer_stage_reached": {
-        Row: {
-          "customer_id": number | null;
-          "manychat_id": string | null;
-          "funnel_stage": string | null;
-          "reached_at": string | null;
-        };
-        Relationships: [];
-      };
-      "v_customer_timeline_events": {
-        Row: {
-          "customer_id": number | null;
-          "customer_label": string | null;
-          "customer_phone": string | null;
-          "activity_date": string | null;
-          "event_at": string | null;
-          "event_type": string | null;
-          "stage_key": string | null;
-          "stage_label": string | null;
-          "stage_sort_order": number | null;
-          "tag_key": string | null;
-          "tag_group": string | null;
-          "tag_label": string | null;
-          "conversation_id": number | null;
-          "conversation_role": string | null;
-          "message_preview": string | null;
         };
         Relationships: [];
       };
@@ -912,17 +783,6 @@ export interface Database {
           "cost_ars": number | null;
           "profit_ars": number | null;
           "equivalent_units_sold": number | null;
-        };
-        Relationships: [];
-      };
-      "v_funnel_daily": {
-        Row: {
-          "activity_date": string | null;
-          "funnel_stage": string | null;
-          "stage_label": string | null;
-          "sort_order": number | null;
-          "color_hex": string | null;
-          "customers_reached": number | null;
         };
         Relationships: [];
       };
@@ -990,23 +850,6 @@ export interface Database {
         };
         Relationships: [];
       };
-      "v_recent_purchases": {
-        Row: {
-          "id": number | null;
-          "purchase_id": string | null;
-          "date_purchase": string | null;
-          "supplier_name": string | null;
-          "payment_method": "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal" | null;
-          "payment_status": "pending" | "paid" | "partial" | null;
-          "total_cost": number | null;
-          "currency": string | null;
-          "notes": string | null;
-          "created_by": string | null;
-          "created_at": string | null;
-          "unit_count": number | null;
-        };
-        Relationships: [];
-      };
       "v_stock_summary": {
         Row: {
           "product_key": string | null;
@@ -1059,10 +902,6 @@ export type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
 export type ConversationInsert = Database["public"]["Tables"]["conversations"]["Insert"];
 export type ConversationUpdate = Database["public"]["Tables"]["conversations"]["Update"];
 
-export type CrmFunnelStage = Database["public"]["Tables"]["crm_funnel_stages"]["Row"];
-export type CrmFunnelStageInsert = Database["public"]["Tables"]["crm_funnel_stages"]["Insert"];
-export type CrmFunnelStageUpdate = Database["public"]["Tables"]["crm_funnel_stages"]["Update"];
-
 export type CrmTagDefinition = Database["public"]["Tables"]["crm_tag_definitions"]["Row"];
 export type CrmTagDefinitionInsert = Database["public"]["Tables"]["crm_tag_definitions"]["Insert"];
 export type CrmTagDefinitionUpdate = Database["public"]["Tables"]["crm_tag_definitions"]["Update"];
@@ -1082,6 +921,7 @@ export type ProductUpdate = Database["public"]["Tables"]["products"]["Update"];
 export type PurchaseFinancier = Database["public"]["Tables"]["purchase_financiers"]["Row"];
 export type PurchaseFinancierInsert = Database["public"]["Tables"]["purchase_financiers"]["Insert"];
 export type PurchaseFinancierUpdate = Database["public"]["Tables"]["purchase_financiers"]["Update"];
+
 export type PurchasePaymentLeg = Database["public"]["Tables"]["purchase_payment_legs"]["Row"];
 export type PurchasePaymentLegInsert = Database["public"]["Tables"]["purchase_payment_legs"]["Insert"];
 export type PurchasePaymentLegUpdate = Database["public"]["Tables"]["purchase_payment_legs"]["Update"];
@@ -1093,10 +933,6 @@ export type PurchaseUpdate = Database["public"]["Tables"]["purchases"]["Update"]
 export type Sticker = Database["public"]["Tables"]["stickers"]["Row"];
 export type StickerInsert = Database["public"]["Tables"]["stickers"]["Insert"];
 export type StickerUpdate = Database["public"]["Tables"]["stickers"]["Update"];
-
-export type StockErrorsLog = Database["public"]["Tables"]["stock_errors_log"]["Row"];
-export type StockErrorsLogInsert = Database["public"]["Tables"]["stock_errors_log"]["Insert"];
-export type StockErrorsLogUpdate = Database["public"]["Tables"]["stock_errors_log"]["Update"];
 
 export type StockUnit = Database["public"]["Tables"]["stock_units"]["Row"];
 export type StockUnitInsert = Database["public"]["Tables"]["stock_units"]["Insert"];
@@ -1112,15 +948,11 @@ export type StorefrontOrderUpdate = Database["public"]["Tables"]["storefront_ord
 
 export type VConversationSignalDaily = Database["public"]["Views"]["v_conversation_signal_daily"]["Row"];
 export type VCustomerContext = Database["public"]["Views"]["v_customer_context"]["Row"];
-export type VCustomerStageReached = Database["public"]["Views"]["v_customer_stage_reached"]["Row"];
-export type VCustomerTimelineEvents = Database["public"]["Views"]["v_customer_timeline_events"]["Row"];
 export type VFinancierProfitDaily = Database["public"]["Views"]["v_financier_profit_daily"]["Row"];
 export type VFinancierProfitMonthly = Database["public"]["Views"]["v_financier_profit_monthly"]["Row"];
-export type VFunnelDaily = Database["public"]["Views"]["v_funnel_daily"]["Row"];
 export type VProductCatalog = Database["public"]["Views"]["v_product_catalog"]["Row"];
 export type VRealizedSalesDaily = Database["public"]["Views"]["v_realized_sales_daily"]["Row"];
 export type VRealizedSalesMonthly = Database["public"]["Views"]["v_realized_sales_monthly"]["Row"];
 export type VRecentConversations = Database["public"]["Views"]["v_recent_conversations"]["Row"];
-export type VRecentPurchases = Database["public"]["Views"]["v_recent_purchases"]["Row"];
 export type VStockSummary = Database["public"]["Views"]["v_stock_summary"]["Row"];
 export type VStoreContext = Database["public"]["Views"]["v_store_context"]["Row"];

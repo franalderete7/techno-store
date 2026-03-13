@@ -31,7 +31,6 @@ export type RealizedUnitSale = {
   profitUsd: number;
   profitArs: number;
   fxRate: number;
-  suspiciousLegacyRevenue: boolean;
 };
 
 export type FinancierSaleSlice = {
@@ -53,15 +52,6 @@ export function normalizeSaleCurrency(value: string | null | undefined): SaleCur
 
 export function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
-export function formatLegacyFundedByLabel(value: string | null | undefined) {
-  const trimmed = value?.trim();
-  return trimmed || "Unassigned";
-}
-
-function normalizeOwnershipKey(label: string) {
-  return label.toLocaleLowerCase("es-AR");
 }
 
 function normalizeShareValue(value: number) {
@@ -97,7 +87,7 @@ export function formatOwnershipSummary(
 }
 
 export function buildOwnershipShares(
-  purchase: Purchase | null | undefined,
+  _purchase: Purchase | null | undefined,
   purchaseShares: PurchaseFinancier[],
   financierMap: Map<number, Financier>
 ): OwnershipShare[] {
@@ -131,13 +121,11 @@ export function buildOwnershipShares(
       });
     }
   }
-
-  const legacyLabel = formatLegacyFundedByLabel(purchase?.funded_by);
   return [
     {
       financierId: null,
-      label: legacyLabel,
-      key: normalizeOwnershipKey(legacyLabel),
+      label: "Unassigned",
+      key: "unassigned",
       sharePct: 100,
     },
   ];
@@ -171,7 +159,6 @@ export function resolveSaleAmountArs(unit: StockUnit, product: Product | undefin
     return {
       amountArs: unit.sale_amount_ars,
       fxRate: unit.sale_fx_rate ?? null,
-      suspiciousLegacyRevenue: false,
     };
   }
 
@@ -183,7 +170,6 @@ export function resolveSaleAmountArs(unit: StockUnit, product: Product | undefin
       return {
         amountArs: saleAmount,
         fxRate: null,
-        suspiciousLegacyRevenue: false,
       };
     }
 
@@ -197,21 +183,11 @@ export function resolveSaleAmountArs(unit: StockUnit, product: Product | undefin
     return {
       amountArs: roundMoney(saleAmount * fxRate),
       fxRate,
-      suspiciousLegacyRevenue: false,
     };
   }
-
-  const legacyPriceSold = unit.price_sold;
-  const suspiciousLegacyRevenue =
-    legacyPriceSold != null &&
-    legacyPriceSold > 0 &&
-    (unit.cost_currency ?? "USD").toUpperCase() === "USD" &&
-    legacyPriceSold < 10_000;
-
   return {
-    amountArs: legacyPriceSold != null && legacyPriceSold > 0 ? legacyPriceSold : null,
+    amountArs: null,
     fxRate: null,
-    suspiciousLegacyRevenue,
   };
 }
 
@@ -244,11 +220,6 @@ export function resolveSaleAmountUsd(unit: StockUnit, product: Product | undefin
   const saleAmountArs = unit.sale_amount_ars;
   if (saleAmountArs != null && saleAmountArs > 0) {
     return roundMoney(saleAmountArs / resolveEffectiveUsdRate(unit, product));
-  }
-
-  const legacyPriceSold = unit.price_sold;
-  if (legacyPriceSold != null && legacyPriceSold > 0) {
-    return roundMoney(legacyPriceSold / resolveEffectiveUsdRate(unit, product));
   }
 
   return null;
@@ -315,7 +286,6 @@ export function buildRealizedUnitSale(unit: StockUnit, product: Product | undefi
     profitUsd: roundMoney(revenueUsd - costUsd),
     profitArs: roundMoney(revenue.amountArs - costArs),
     fxRate,
-    suspiciousLegacyRevenue: revenue.suspiciousLegacyRevenue,
   };
 }
 
@@ -383,7 +353,7 @@ export function splitSaleByOwnership(
 export function formatSaleDisplay(unit: StockUnit) {
   const currency = normalizeSaleCurrency(unit.sale_currency);
   const amount = unit.sale_amount;
-  const arsAmount = unit.sale_amount_ars ?? unit.price_sold;
+  const arsAmount = unit.sale_amount_ars;
 
   if (amount != null && amount > 0) {
     const usdDisplay =

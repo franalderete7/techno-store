@@ -34,12 +34,10 @@ The repo no longer includes the older one-off migration files that were used dur
 Current public tables:
 
 - `conversations`
-- `crm_funnel_stages`
 - `crm_tag_definitions`
 - `customers`
 - `products`
 - `purchases`
-- `stock_errors_log`
 - `stock_units`
 - `stickers`
 - `store_settings`
@@ -48,19 +46,14 @@ Current public views:
 
 - `v_conversation_signal_daily`
 - `v_customer_context`
-- `v_customer_timeline_events`
-- `v_customer_stage_reached`
-- `v_funnel_daily`
 - `v_product_catalog`
 - `v_recent_conversations`
-- `v_recent_purchases`
 - `v_stock_summary`
 - `v_store_context`
 
 ## Lean Model
 
 - `conversations`
-- `crm_funnel_stages`
 - `crm_tag_definitions`
 - `customers`
 - `products`
@@ -97,7 +90,6 @@ Keep per-physical-unit facts in `stock_units`:
 - `status`
 - `date_received`
 - `date_sold`
-- `price_sold`
 - `proof_image_urls`
 - `notes`
 
@@ -198,7 +190,6 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 | date_received | date | YES | - | Date received into stock |
 | status | stock_status | NO | 'in_stock' | Current unit status |
 | date_sold | date | YES | - | Date sold |
-| price_sold | numeric(12, 2) | YES | - | Legacy mirrored sale price in ARS |
 | sale_amount | numeric(12, 2) | YES | - | Real sale amount in its original currency |
 | sale_currency | text | YES | - | `ARS` or `USD` |
 | sale_fx_rate | numeric(12, 2) | YES | - | FX rate used to freeze ARS revenue for USD sales |
@@ -243,11 +234,9 @@ Purchase orders from suppliers.
 | purchase_id | text | NO | - | Unique purchase identifier (e.g. PUR-2026-00031) |
 | date_purchase | date | NO | CURRENT_DATE | Purchase date |
 | supplier_name | text | NO | - | Supplier name |
-| payment_method | payment_method | YES | 'transferencia' | Legacy/summary supplier payment method for backward compatibility; detailed mixed payments live in `purchase_payment_legs` |
 | payment_status | payment_status | YES | 'pending' | Payment status |
 | total_cost | numeric(12, 2) | YES | - | Base purchase total in supplier currency |
 | currency | text | YES | 'USD' | Base purchase currency, usually USD |
-| funded_by | text | YES | 'own' | Legacy ownership summary for quick display/backward compatibility |
 | notes | text | YES | - | Notes |
 | created_by | text | YES | - | Who created this record |
 | created_at | timestamptz | YES | now() | Created timestamp |
@@ -373,34 +362,6 @@ WhatsApp sticker catalog used by v16. Sticker selection is driven by Supabase in
 
 ---
 
-### stock_errors_log
-
-Error tracking for stock operations.
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| id | serial | NO | - | Primary key |
-| event | text | NO | - | Event that caused the error |
-| severity | error_severity | NO | 'medium' | low, medium, high |
-| error_code | text | NO | - | Error code (e.g. DUPLICATE_IMEI1) |
-| message | text | YES | - | Human-readable message |
-| payload | jsonb | YES | - | Full context as JSON |
-| resolved | boolean | YES | false | Whether resolved |
-| resolved_at | timestamptz | YES | - | Resolution timestamp |
-| resolved_by | text | YES | - | Who resolved it |
-| created_at | timestamptz | YES | now() | Created timestamp |
-
-**Error codes:**
-- `DUPLICATE_IMEI1` – IMEI already exists
-- `INVALID_IMEI1_FORMAT` – Not 15 digits
-- `SALE_WITHOUT_STOCK` – IMEI not in stock
-- `SALE_IMEI_ALREADY_SOLD` – IMEI already sold
-- `MISSING_REQUIRED_FIELDS` – Required fields missing
-
-**Indexes:**
-- `idx_stock_errors_code` on `error_code`
-- `idx_stock_errors_resolved` on `resolved`
-
 ## Active Functions
 
 These are the functions actively used by the app and automation after the lean-schema cleanup.
@@ -421,7 +382,6 @@ These are the functions actively used by the app and automation after the lean-s
 | View | Description |
 |------|-------------|
 | `v_stock_summary` | Stock counts per product (in_stock, reserved, sold, total) joined with product info |
-| `v_recent_purchases` | Purchase orders with unit count |
 | `v_realized_sales_daily` | Daily realized revenue, cost, and profit from sold stock units |
 | `v_realized_sales_monthly` | Monthly realized revenue, cost, and profit from sold stock units |
 | `v_financier_profit_daily` | Daily realized revenue/cost/profit split by financier ownership |
@@ -447,6 +407,5 @@ Public tables are currently unrestricted in the live Supabase project, matching 
 | `customers` | unrestricted |
 | `products` | unrestricted |
 | `purchases` | unrestricted |
-| `stock_errors_log` | unrestricted |
 | `stock_units` | unrestricted |
 | `store_settings` | unrestricted |

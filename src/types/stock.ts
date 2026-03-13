@@ -29,10 +29,8 @@ export type PurchaseFinancier = PurchaseFinancierRow;
 export type PurchasePaymentLeg = PurchasePaymentLegRow;
 export type PurchasePaymentLegInsert = PurchasePaymentLegInsertRow;
 export type PurchasePaymentLegUpdate = PurchasePaymentLegUpdateRow;
-export type Purchase = Omit<PurchaseRow, "payment_method"> & { payment_method: PaymentMethod | null };
-export type PurchaseInsert = Omit<PurchaseInsertRow, "payment_method"> & {
-  payment_method?: PaymentMethod | null;
-};
+export type Purchase = PurchaseRow;
+export type PurchaseInsert = PurchaseInsertRow;
 
 export const STOCK_STATUS_OPTIONS: { value: StockStatus; label: string; color: string }[] = [
   { value: "in_stock", label: "In Stock", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },

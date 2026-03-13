@@ -358,8 +358,8 @@ export function StockTable() {
       cost_currency: unit.cost_currency ?? "USD",
       sale_amount: unit.sale_amount != null
         ? String(unit.sale_amount)
-        : unit.price_sold != null
-          ? String(unit.price_sold)
+        : normalizeSaleCurrency(unit.sale_currency) === "ARS" && unit.sale_amount_ars != null
+          ? String(unit.sale_amount_ars)
           : "",
       sale_currency: normalizeSaleCurrency(unit.sale_currency),
       sale_fx_rate: unit.sale_fx_rate != null ? String(unit.sale_fx_rate) : "",
@@ -512,7 +512,6 @@ export function StockTable() {
             notes: parseOptionalText(formData.notes),
             created_at: editingUnit?.created_at ?? null,
             updated_at: editingUnit?.updated_at ?? null,
-            price_sold: editingUnit?.price_sold ?? null,
             sale_amount: saleAmountPreview,
             sale_currency: selectedSaleCurrency,
             sale_fx_rate: selectedSaleFxRate,
@@ -521,7 +520,7 @@ export function StockTable() {
             proof_image_urls: editingUnit?.proof_image_urls ?? null,
             color: parseOptionalText(formData.color),
             battery_health: parseOptionalNumber(formData.battery_health),
-          },
+          } as StockUnit,
           selectedFormProduct,
           selectedSaleFxRate
         )
@@ -605,7 +604,6 @@ export function StockTable() {
               notes: parseOptionalText(formData.notes),
               created_at: editingUnit?.created_at ?? null,
               updated_at: editingUnit?.updated_at ?? null,
-              price_sold: editingUnit?.price_sold ?? null,
               sale_amount: saleAmount,
               sale_currency: saleCurrency,
               sale_fx_rate: saleFxRate,
@@ -614,7 +612,7 @@ export function StockTable() {
               proof_image_urls: editingUnit?.proof_image_urls ?? null,
               color: parseOptionalText(formData.color),
               battery_health: parseOptionalNumber(formData.battery_health),
-            },
+            } as StockUnit,
             selectedFormProduct,
             saleFxRate
           )
@@ -629,7 +627,6 @@ export function StockTable() {
       supplier_name: purchaseId ? null : parseOptionalText(formData.supplier_name),
       cost_unit: costAmount,
       cost_currency: parseOptionalText(formData.cost_currency) ?? "USD",
-      price_sold: saleAmountArs,
       sale_amount: saleAmount,
       sale_currency: isSold ? saleCurrency : null,
       sale_fx_rate: isSold ? saleFxRate : null,

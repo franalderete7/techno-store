@@ -326,7 +326,7 @@ export function PurchasesTable() {
       {
         id: null,
         financierId: defaultFinancierId,
-        paymentMethod: normalizePaymentMethod(purchase?.payment_method),
+        paymentMethod: DEFAULT_PAYMENT_METHOD,
         amount: purchase?.total_cost != null ? String(purchase.total_cost) : "",
         currency: normalizePaymentCurrency(purchase?.currency ?? DEFAULT_CURRENCY),
         fxRateToArs: "",
@@ -345,7 +345,7 @@ export function PurchasesTable() {
 
   const getPaymentSummary = (purchase: Purchase) => {
     const legs = paymentLegsByPurchaseId.get(purchase.purchase_id) ?? [];
-    if (legs.length === 0) return formatPaymentMethodLabel(purchase.payment_method);
+    if (legs.length === 0) return "No payment legs";
 
     if (legs.length === 1) {
       const leg = legs[0];
@@ -422,11 +422,9 @@ export function PurchasesTable() {
     setFormData({
       date_purchase: new Date().toISOString().split("T")[0],
       supplier_name: "",
-      payment_method: "transferencia",
       payment_status: "pending",
       total_cost: "",
       currency: "USD",
-      funded_by: "",
       notes: "",
       created_by: "",
     });
@@ -440,11 +438,9 @@ export function PurchasesTable() {
     setFormData({
       date_purchase: purchase.date_purchase,
       supplier_name: purchase.supplier_name,
-      payment_method: normalizePaymentMethod(purchase.payment_method),
       payment_status: normalizePaymentStatus(purchase.payment_status),
       total_cost: purchase.total_cost != null ? String(purchase.total_cost) : "",
       currency: purchase.currency ?? DEFAULT_CURRENCY,
-      funded_by: purchase.funded_by ?? "",
       notes: purchase.notes ?? "",
       created_by: purchase.created_by ?? "",
     });
@@ -582,28 +578,13 @@ export function PurchasesTable() {
       return;
     }
 
-    const ownershipLabels = ownershipValidation.rows.map((row) => {
-      const financier = financierMap.get(row.financierId ?? 0);
-      return financier?.display_name ?? "Unknown financier";
-    });
-    const fundedBySummary =
-      ownershipLabels.length === 1 ? ownershipLabels[0] : ownershipLabels.join(" · ");
-    const resolvedPaymentMethod =
-      paymentLegsTableReady && paymentLegValidation.rows.length > 0
-        ? new Set(paymentLegValidation.rows.map((row) => row.paymentMethod)).size === 1
-          ? paymentLegValidation.rows[0].paymentMethod
-          : "otro"
-        : (formData.payment_method as PaymentMethod) || DEFAULT_PAYMENT_METHOD;
-
     setSaving(true);
     const record: Record<string, unknown> = {
       date_purchase: formData.date_purchase || new Date().toISOString().split("T")[0],
       supplier_name: formData.supplier_name.trim(),
-      payment_method: resolvedPaymentMethod,
       payment_status: paymentStatus,
       total_cost: formData.total_cost ? parseFloat(formData.total_cost) : null,
       currency: formData.currency || "USD",
-      funded_by: fundedBySummary,
       notes: formData.notes?.trim() || null,
       created_by: formData.created_by?.trim() || null,
     };
@@ -1052,19 +1033,6 @@ export function PurchasesTable() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {!paymentLegsTableReady && (
-                <div className="space-y-2">
-                  <Label>Legacy Payment Method</Label>
-                  <Select value={formData.payment_method ?? "transferencia"} onValueChange={(v) => updateForm("payment_method", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_METHOD_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
               <div className="space-y-2">
                 <Label>Payment Status</Label>
                 <Select value={formData.payment_status ?? "pending"} onValueChange={(v) => updateForm("payment_status", v)}>
