@@ -309,8 +309,8 @@ export interface Database {
           "code": string;
           "display_name": string;
           "active": boolean;
-          "created_at": string | null;
-          "updated_at": string | null;
+          "created_at": string;
+          "updated_at": string;
         };
         Insert: {
           "id"?: number | null;
@@ -435,8 +435,8 @@ export interface Database {
           "purchase_id": string;
           "financier_id": number;
           "share_pct": number;
-          "created_at": string | null;
-          "updated_at": string | null;
+          "created_at": string;
+          "updated_at": string;
         };
         Insert: {
           "id"?: number | null;
@@ -451,6 +451,51 @@ export interface Database {
           "purchase_id"?: string | null;
           "financier_id"?: number | null;
           "share_pct"?: number | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Relationships: [];
+      };
+      "purchase_payment_legs": {
+        Row: {
+          "id": number;
+          "purchase_id": string;
+          "financier_id": number;
+          "payment_method": "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal";
+          "amount": number;
+          "currency": string;
+          "fx_rate_to_ars": number | null;
+          "amount_ars": number | null;
+          "paid_at": string | null;
+          "notes": string | null;
+          "created_at": string;
+          "updated_at": string;
+        };
+        Insert: {
+          "id"?: number | null;
+          "purchase_id": string;
+          "financier_id": number;
+          "payment_method"?: "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal" | null;
+          "amount": number;
+          "currency"?: string | null;
+          "fx_rate_to_ars"?: number | null;
+          "amount_ars"?: number | null;
+          "paid_at"?: string | null;
+          "notes"?: string | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Update: {
+          "id"?: number | null;
+          "purchase_id"?: string | null;
+          "financier_id"?: number | null;
+          "payment_method"?: "transferencia" | "efectivo_ars" | "efectivo_usd" | "crypto" | "tarjeta" | "cuotas_bancarizada" | "cuotas_macro" | "otro" | "mercado_pago" | "bitcoin" | "usdt" | "naranja" | "visa" | "mastercard" | "amex" | "cabal" | null;
+          "amount"?: number | null;
+          "currency"?: string | null;
+          "fx_rate_to_ars"?: number | null;
+          "amount_ars"?: number | null;
+          "paid_at"?: string | null;
+          "notes"?: string | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
         };
@@ -611,14 +656,14 @@ export interface Database {
           "created_at": string | null;
           "updated_at": string | null;
           "price_sold": number | null;
+          "proof_image_urls": string[] | null;
+          "color": string | null;
+          "battery_health": number | null;
           "sale_amount": number | null;
           "sale_currency": string | null;
           "sale_fx_rate": number | null;
           "sale_amount_ars": number | null;
           "cost_ars_snapshot": number | null;
-          "proof_image_urls": string[] | null;
-          "color": string | null;
-          "battery_health": number | null;
         };
         Insert: {
           "id"?: number | null;
@@ -636,14 +681,14 @@ export interface Database {
           "created_at"?: string | null;
           "updated_at"?: string | null;
           "price_sold"?: number | null;
+          "proof_image_urls"?: string[] | null;
+          "color"?: string | null;
+          "battery_health"?: number | null;
           "sale_amount"?: number | null;
           "sale_currency"?: string | null;
           "sale_fx_rate"?: number | null;
           "sale_amount_ars"?: number | null;
           "cost_ars_snapshot"?: number | null;
-          "proof_image_urls"?: string[] | null;
-          "color"?: string | null;
-          "battery_health"?: number | null;
         };
         Update: {
           "id"?: number | null;
@@ -661,14 +706,14 @@ export interface Database {
           "created_at"?: string | null;
           "updated_at"?: string | null;
           "price_sold"?: number | null;
+          "proof_image_urls"?: string[] | null;
+          "color"?: string | null;
+          "battery_health"?: number | null;
           "sale_amount"?: number | null;
           "sale_currency"?: string | null;
           "sale_fx_rate"?: number | null;
           "sale_amount_ars"?: number | null;
           "cost_ars_snapshot"?: number | null;
-          "proof_image_urls"?: string[] | null;
-          "color"?: string | null;
-          "battery_health"?: number | null;
         };
         Relationships: [];
       };
@@ -848,6 +893,28 @@ export interface Database {
         };
         Relationships: [];
       };
+      "v_financier_profit_daily": {
+        Row: {
+          "sale_day": string | null;
+          "financier_name": string | null;
+          "revenue_ars": number | null;
+          "cost_ars": number | null;
+          "profit_ars": number | null;
+          "equivalent_units_sold": number | null;
+        };
+        Relationships: [];
+      };
+      "v_financier_profit_monthly": {
+        Row: {
+          "sale_month": string | null;
+          "financier_name": string | null;
+          "revenue_ars": number | null;
+          "cost_ars": number | null;
+          "profit_ars": number | null;
+          "equivalent_units_sold": number | null;
+        };
+        Relationships: [];
+      };
       "v_funnel_daily": {
         Row: {
           "activity_date": string | null;
@@ -883,6 +950,26 @@ export interface Database {
           "image_url": string | null;
           "battery_health": number | null;
           "condition": string | null;
+        };
+        Relationships: [];
+      };
+      "v_realized_sales_daily": {
+        Row: {
+          "sale_day": string | null;
+          "units_sold": number | null;
+          "revenue_ars": number | null;
+          "cost_ars": number | null;
+          "profit_ars": number | null;
+        };
+        Relationships: [];
+      };
+      "v_realized_sales_monthly": {
+        Row: {
+          "sale_month": string | null;
+          "units_sold": number | null;
+          "revenue_ars": number | null;
+          "cost_ars": number | null;
+          "profit_ars": number | null;
         };
         Relationships: [];
       };
@@ -995,6 +1082,9 @@ export type ProductUpdate = Database["public"]["Tables"]["products"]["Update"];
 export type PurchaseFinancier = Database["public"]["Tables"]["purchase_financiers"]["Row"];
 export type PurchaseFinancierInsert = Database["public"]["Tables"]["purchase_financiers"]["Insert"];
 export type PurchaseFinancierUpdate = Database["public"]["Tables"]["purchase_financiers"]["Update"];
+export type PurchasePaymentLeg = Database["public"]["Tables"]["purchase_payment_legs"]["Row"];
+export type PurchasePaymentLegInsert = Database["public"]["Tables"]["purchase_payment_legs"]["Insert"];
+export type PurchasePaymentLegUpdate = Database["public"]["Tables"]["purchase_payment_legs"]["Update"];
 
 export type Purchase = Database["public"]["Tables"]["purchases"]["Row"];
 export type PurchaseInsert = Database["public"]["Tables"]["purchases"]["Insert"];
@@ -1024,8 +1114,12 @@ export type VConversationSignalDaily = Database["public"]["Views"]["v_conversati
 export type VCustomerContext = Database["public"]["Views"]["v_customer_context"]["Row"];
 export type VCustomerStageReached = Database["public"]["Views"]["v_customer_stage_reached"]["Row"];
 export type VCustomerTimelineEvents = Database["public"]["Views"]["v_customer_timeline_events"]["Row"];
+export type VFinancierProfitDaily = Database["public"]["Views"]["v_financier_profit_daily"]["Row"];
+export type VFinancierProfitMonthly = Database["public"]["Views"]["v_financier_profit_monthly"]["Row"];
 export type VFunnelDaily = Database["public"]["Views"]["v_funnel_daily"]["Row"];
 export type VProductCatalog = Database["public"]["Views"]["v_product_catalog"]["Row"];
+export type VRealizedSalesDaily = Database["public"]["Views"]["v_realized_sales_daily"]["Row"];
+export type VRealizedSalesMonthly = Database["public"]["Views"]["v_realized_sales_monthly"]["Row"];
 export type VRecentConversations = Database["public"]["Views"]["v_recent_conversations"]["Row"];
 export type VRecentPurchases = Database["public"]["Views"]["v_recent_purchases"]["Row"];
 export type VStockSummary = Database["public"]["Views"]["v_stock_summary"]["Row"];

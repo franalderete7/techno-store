@@ -1106,7 +1106,7 @@ export function StockTable() {
 
           {/* Form */}
           <div className="grid gap-3 sm:gap-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs sm:text-sm">IMEI1 *</Label>
                 <Input
@@ -1211,9 +1211,9 @@ export function StockTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-xs sm:text-sm">Cost</Label>
+                <Label className="text-xs sm:text-sm">Base Cost</Label>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -1223,7 +1223,7 @@ export function StockTable() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs sm:text-sm">Currency</Label>
+                <Label className="text-xs sm:text-sm">Cost Currency</Label>
                 <Select value={formData.cost_currency ?? "USD"} onValueChange={(v) => updateForm("cost_currency", v)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -1236,14 +1236,14 @@ export function StockTable() {
               </div>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Saving a cost here automatically syncs the matching product prices by `product_key`.
+              Record the supplier/base cost here, usually in USD. Saving it syncs the matching product prices by `product_key`.
             </p>
 
             <div className="rounded-lg border bg-muted/20 p-3">
               <div className="mb-3">
-                <p className="text-sm font-medium">Sale details</p>
+                <p className="text-sm font-medium">Customer sale</p>
                 <p className="text-xs text-muted-foreground">
-                  These fields drive realized revenue and profit. Use the real sale currency, not a guessed ARS conversion.
+                  Costs are usually tracked in USD above. Here, capture the real customer sale, which is usually in ARS.
                 </p>
               </div>
               {!ownershipTableReady && (
@@ -1253,7 +1253,7 @@ export function StockTable() {
               )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className="text-xs sm:text-sm">Sale Amount</Label>
+                  <Label className="text-xs sm:text-sm">Sale Amount (Original Currency)</Label>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -1262,7 +1262,7 @@ export function StockTable() {
                     placeholder="0.00"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Enter the actual sale amount in the chosen currency.
+                    Enter what the customer actually paid in the selected currency.
                   </p>
                 </div>
                 <div className="space-y-1.5">
@@ -1277,7 +1277,7 @@ export function StockTable() {
                     </SelectContent>
                   </Select>
                   <p className="text-[11px] text-muted-foreground">
-                    This decides how revenue is converted into ARS for the chart.
+                    Most sales will be ARS. Use USD only if the customer truly paid in dollars.
                   </p>
                 </div>
               </div>
@@ -1305,7 +1305,7 @@ export function StockTable() {
                   />
                   <p className="text-[11px] text-muted-foreground">
                     {selectedSaleCurrency === "USD"
-                      ? "Used to freeze ARS revenue and cost snapshots for this sale."
+                      ? "Used to freeze ARS revenue and cost snapshots when the customer paid in USD."
                       : "Only needed when the sale is in USD."}
                   </p>
                 </div>

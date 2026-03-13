@@ -70,8 +70,8 @@ export function getFinancierOptions(financiers: Financier[]) {
     code: seed.code,
     display_name: seed.display_name,
     active: true,
-    created_at: null,
-    updated_at: null,
+    created_at: "",
+    updated_at: "",
   }));
 }
 

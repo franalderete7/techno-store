@@ -13,10 +13,12 @@ import type { Product, PurchaseInsert as DbPurchaseInsert } from "@/types/databa
 import type {
   Financier,
   Purchase,
-  PurchaseInsert,
   PurchaseFinancier,
+  PurchasePaymentLeg,
+  PurchasePaymentLegInsert,
   StockUnit,
   StockUnitInsert,
+  PaymentCurrency,
   PaymentMethod,
   PaymentStatus,
 } from "@/types/stock";
@@ -25,6 +27,7 @@ import {
   buildOwnershipShares,
   formatOwnershipSummary,
   getFinancierOptions,
+  roundMoney,
   type OwnershipShareInput,
   validateOwnershipInputs,
 } from "@/lib/accounting";
@@ -90,6 +93,35 @@ function formatMoney(value: number | null | undefined, currency: string | null |
 const DEFAULT_PAYMENT_METHOD: PaymentMethod = "transferencia";
 const DEFAULT_PAYMENT_STATUS: PaymentStatus = "pending";
 const DEFAULT_CURRENCY = "USD";
+const PAYMENT_LEG_CURRENCY_OPTIONS: { value: PaymentCurrency; label: string }[] = [
+  { value: "USD", label: "USD" },
+  { value: "ARS", label: "ARS" },
+  { value: "USDT", label: "USDT" },
+  { value: "BTC", label: "BTC" },
+];
+
+type PurchasePaymentLegDraft = {
+  id: number | null;
+  financierId: number | null;
+  paymentMethod: PaymentMethod;
+  amount: string;
+  currency: PaymentCurrency;
+  fxRateToArs: string;
+  paidAt: string;
+  notes: string;
+};
+
+type NormalizedPurchasePaymentLeg = {
+  id: number | null;
+  financierId: number;
+  paymentMethod: PaymentMethod;
+  amount: number;
+  currency: PaymentCurrency;
+  fxRateToArs: number | null;
+  amountArs: number | null;
+  paidAt: string | null;
+  notes: string | null;
+};
 
 function normalizePaymentMethod(value: PaymentMethod | null | undefined): PaymentMethod {
   return value ?? DEFAULT_PAYMENT_METHOD;
@@ -99,8 +131,80 @@ function normalizePaymentStatus(value: PaymentStatus | null | undefined): Paymen
   return value ?? DEFAULT_PAYMENT_STATUS;
 }
 
+function normalizePaymentCurrency(value: string | null | undefined): PaymentCurrency {
+  switch (value?.toUpperCase()) {
+    case "ARS":
+      return "ARS";
+    case "USDT":
+      return "USDT";
+    case "BTC":
+      return "BTC";
+    default:
+      return "USD";
+  }
+}
+
 function formatPaymentMethodLabel(value: PaymentMethod | null | undefined) {
-  return normalizePaymentMethod(value).replace(/_/g, " ");
+  const normalized = normalizePaymentMethod(value);
+  const match = PAYMENT_METHOD_OPTIONS.find((option) => option.value === normalized);
+  return match?.label ?? normalized.replace(/_/g, " ");
+}
+
+function formatPaymentLegAmount(amount: number | null | undefined, currency: string | null | undefined) {
+  if (amount == null) return "—";
+  switch (normalizePaymentCurrency(currency)) {
+    case "ARS":
+      return `$${amount.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
+    case "USD":
+      return `US$${amount.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
+    case "USDT":
+      return `${amount.toLocaleString("es-AR", { maximumFractionDigits: 2 })} USDT`;
+    case "BTC":
+      return `${amount.toLocaleString("es-AR", { maximumFractionDigits: 8 })} BTC`;
+  }
+}
+
+function resolvePaymentLegAmountArs(
+  amount: number | null | undefined,
+  currency: PaymentCurrency,
+  fxRateToArs: number | null | undefined
+) {
+  if (amount == null || amount <= 0) return null;
+  if (currency === "ARS") return amount;
+  if (fxRateToArs == null || fxRateToArs <= 0) return null;
+  return roundMoney(amount * fxRateToArs);
+}
+
+function validatePaymentLegDrafts(rows: PurchasePaymentLegDraft[]) {
+  const normalized = rows
+    .map((row) => {
+      const amount = parseOptionalNumber(row.amount);
+      const fxRateToArs = parseOptionalNumber(row.fxRateToArs);
+      const currency = normalizePaymentCurrency(row.currency);
+
+      return {
+        id: row.id,
+        financierId: row.financierId,
+        paymentMethod: normalizePaymentMethod(row.paymentMethod),
+        amount,
+        currency,
+        fxRateToArs,
+        amountArs: resolvePaymentLegAmountArs(amount, currency, fxRateToArs),
+        paidAt: parseOptionalText(row.paidAt),
+        notes: parseOptionalText(row.notes),
+      };
+    })
+    .filter((row) => row.amount != null || row.financierId != null || row.notes != null);
+
+  return {
+    rows: normalized,
+    hasMissingFinancier: normalized.some((row) => row.financierId == null),
+    hasInvalidAmount: normalized.some((row) => row.amount == null || row.amount <= 0),
+    hasMissingFx: normalized.some(
+      (row) => row.currency !== "ARS" && (row.fxRateToArs == null || row.fxRateToArs <= 0)
+    ),
+    totalAmountArs: normalized.reduce((sum, row) => sum + (row.amountArs ?? 0), 0),
+  };
 }
 
 function handleOpenFromKeyboard(event: KeyboardEvent<HTMLElement>, onOpen: () => void) {
@@ -120,17 +224,20 @@ export function PurchasesTable() {
   const [products, setProducts] = useState<Product[]>([]);
   const [financiers, setFinanciers] = useState<Financier[]>([]);
   const [purchaseFinanciers, setPurchaseFinanciers] = useState<PurchaseFinancier[]>([]);
+  const [purchasePaymentLegs, setPurchasePaymentLegs] = useState<PurchasePaymentLeg[]>([]);
   const [unitCounts, setUnitCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [ownershipTableReady, setOwnershipTableReady] = useState(true);
+  const [paymentLegsTableReady, setPaymentLegsTableReady] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [deletePurchase, setDeletePurchase] = useState<Purchase | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [ownershipRows, setOwnershipRows] = useState<OwnershipShareInput[]>([{ financierId: null, sharePct: 100 }]);
+  const [paymentLegRows, setPaymentLegRows] = useState<PurchasePaymentLegDraft[]>([]);
 
   // Detail view
   const [detailPurchase, setDetailPurchase] = useState<Purchase | null>(null);
@@ -156,6 +263,15 @@ export function PurchasesTable() {
     });
     return byPurchaseId;
   }, [purchaseFinanciers]);
+  const paymentLegsByPurchaseId = useMemo(() => {
+    const byPurchaseId = new Map<string, PurchasePaymentLeg[]>();
+    purchasePaymentLegs.forEach((leg) => {
+      const current = byPurchaseId.get(leg.purchase_id) ?? [];
+      current.push(leg);
+      byPurchaseId.set(leg.purchase_id, current);
+    });
+    return byPurchaseId;
+  }, [purchasePaymentLegs]);
 
   const resolveLegacyFinancierId = (value: string | null | undefined) => {
     const trimmed = value?.trim();
@@ -186,12 +302,64 @@ export function PurchasesTable() {
     }));
   };
 
+  const buildPaymentLegDraft = (purchase?: Purchase | null): PurchasePaymentLegDraft[] => {
+    if (purchase) {
+      const existing = paymentLegsByPurchaseId.get(purchase.purchase_id) ?? [];
+      if (existing.length > 0) {
+        return existing.map((leg) => ({
+          id: leg.id,
+          financierId: leg.financier_id,
+          paymentMethod: normalizePaymentMethod(leg.payment_method),
+          amount: String(leg.amount),
+          currency: normalizePaymentCurrency(leg.currency),
+          fxRateToArs: leg.fx_rate_to_ars != null ? String(leg.fx_rate_to_ars) : "",
+          paidAt: leg.paid_at ?? purchase.date_purchase,
+          notes: leg.notes ?? "",
+        }));
+      }
+    }
+
+    const ownershipDraft = buildOwnershipDraft(purchase);
+    const defaultFinancierId = ownershipDraft.length === 1 ? ownershipDraft[0].financierId : null;
+
+    return [
+      {
+        id: null,
+        financierId: defaultFinancierId,
+        paymentMethod: normalizePaymentMethod(purchase?.payment_method),
+        amount: purchase?.total_cost != null ? String(purchase.total_cost) : "",
+        currency: normalizePaymentCurrency(purchase?.currency ?? DEFAULT_CURRENCY),
+        fxRateToArs: "",
+        paidAt: purchase?.date_purchase ?? new Date().toISOString().split("T")[0],
+        notes: "",
+      },
+    ];
+  };
+
   const getOwnershipSummary = (purchase: Purchase) =>
     formatOwnershipSummary(
       purchase,
       purchaseFinanciersByPurchaseId.get(purchase.purchase_id) ?? [],
       financierMap
     );
+
+  const getPaymentSummary = (purchase: Purchase) => {
+    const legs = paymentLegsByPurchaseId.get(purchase.purchase_id) ?? [];
+    if (legs.length === 0) return formatPaymentMethodLabel(purchase.payment_method);
+
+    if (legs.length === 1) {
+      const leg = legs[0];
+      return `${formatPaymentMethodLabel(leg.payment_method)} · ${formatPaymentLegAmount(leg.amount, leg.currency)}`;
+    }
+
+    const uniqueMethods = new Set(legs.map((leg) => formatPaymentMethodLabel(leg.payment_method)));
+    if (uniqueMethods.size === 1) {
+      const [method] = [...uniqueMethods];
+      return `${method} · ${legs.length} legs`;
+    }
+
+    return `Mixed · ${legs.length} legs`;
+  };
 
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return purchases;
@@ -200,19 +368,21 @@ export function PurchasesTable() {
       (p) =>
         p.purchase_id.toLowerCase().includes(q) ||
         p.supplier_name.toLowerCase().includes(q) ||
+        getPaymentSummary(p).toLowerCase().includes(q) ||
         getOwnershipSummary(p).toLowerCase().includes(q) ||
         (p.notes ?? "").toLowerCase().includes(q)
     );
-  }, [purchases, searchQuery, purchaseFinanciersByPurchaseId, financierMap]);
+  }, [purchases, searchQuery, purchaseFinanciersByPurchaseId, paymentLegsByPurchaseId, financierMap]);
 
   const fetchAll = async () => {
     setLoading(true);
-    const [purchRes, prodRes, countRes, financiersRes, purchaseFinanciersRes] = await Promise.all([
+    const [purchRes, prodRes, countRes, financiersRes, purchaseFinanciersRes, purchasePaymentLegsRes] = await Promise.all([
       supabase.from("purchases").select("*").order("date_purchase", { ascending: false }),
       supabase.from("products").select("*").order("product_name"),
       supabase.from("stock_units").select("purchase_id"),
       supabase.from("financiers").select("*").eq("active", true).order("display_name"),
       supabase.from("purchase_financiers").select("*").order("purchase_id").order("id"),
+      supabase.from("purchase_payment_legs").select("*").order("purchase_id").order("id"),
     ]);
     setPurchases((purchRes.data as Purchase[]) ?? []);
     setProducts((prodRes.data as Product[]) ?? []);
@@ -228,11 +398,19 @@ export function PurchasesTable() {
     const missingOwnershipTables =
       isMissingRelationError(financiersError, "financiers") ||
       isMissingRelationError(purchaseFinanciersError, "purchase_financiers");
+    const missingPaymentLegsTable = isMissingRelationError(
+      purchasePaymentLegsRes.error,
+      "purchase_payment_legs"
+    );
 
     setOwnershipTableReady(!missingOwnershipTables);
+    setPaymentLegsTableReady(!missingPaymentLegsTable);
     setFinanciers((financiersRes.data as Financier[]) ?? []);
     setPurchaseFinanciers(
       missingOwnershipTables ? [] : ((purchaseFinanciersRes.data as PurchaseFinancier[]) ?? [])
+    );
+    setPurchasePaymentLegs(
+      missingPaymentLegsTable ? [] : ((purchasePaymentLegsRes.data as PurchasePaymentLeg[]) ?? [])
     );
     setLoading(false);
   };
@@ -253,6 +431,7 @@ export function PurchasesTable() {
       created_by: "",
     });
     setOwnershipRows([{ financierId: null, sharePct: 100 }]);
+    setPaymentLegRows(buildPaymentLegDraft(null));
     setDialogOpen(true);
   };
 
@@ -270,6 +449,7 @@ export function PurchasesTable() {
       created_by: purchase.created_by ?? "",
     });
     setOwnershipRows(buildOwnershipDraft(purchase));
+    setPaymentLegRows(buildPaymentLegDraft(purchase));
     setDialogOpen(true);
   };
 
@@ -318,11 +498,49 @@ export function PurchasesTable() {
     });
   };
 
+  const addPaymentLegRow = () => {
+    setPaymentLegRows((prev) => [
+      ...prev,
+      {
+        id: null,
+        financierId: ownershipRows.length === 1 ? ownershipRows[0].financierId : null,
+        paymentMethod: DEFAULT_PAYMENT_METHOD,
+        amount: "",
+        currency: normalizePaymentCurrency(formData.currency ?? DEFAULT_CURRENCY),
+        fxRateToArs: "",
+        paidAt: formData.date_purchase ?? new Date().toISOString().split("T")[0],
+        notes: "",
+      },
+    ]);
+  };
+
+  const updatePaymentLegRow = (index: number, patch: Partial<PurchasePaymentLegDraft>) => {
+    setPaymentLegRows((prev) =>
+      prev.map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        const next = { ...row, ...patch };
+        if (patch.currency && normalizePaymentCurrency(patch.currency) === "ARS") {
+          next.fxRateToArs = "";
+        }
+        return next;
+      })
+    );
+  };
+
+  const removePaymentLegRow = (index: number) => {
+    setPaymentLegRows((prev) => {
+      if (prev.length === 1) return prev.filter((_, rowIndex) => rowIndex !== index);
+      return prev.filter((_, rowIndex) => rowIndex !== index);
+    });
+  };
+
   const handleSave = async () => {
     if (!formData.supplier_name?.trim()) {
       alert("Supplier is required.");
       return;
     }
+
+    const paymentStatus = normalizePaymentStatus(formData.payment_status as PaymentStatus);
 
     const ownershipValidation = validateOwnershipInputs(ownershipRows);
     if (ownershipValidation.rows.length === 0 || ownershipValidation.hasMissingFinancier) {
@@ -346,19 +564,43 @@ export function PurchasesTable() {
       return;
     }
 
+    const paymentLegValidation = validatePaymentLegDrafts(paymentLegRows);
+    if (paymentLegsTableReady && paymentStatus !== "pending" && paymentLegValidation.rows.length === 0) {
+      alert("Add at least one payment leg or set the purchase status to Pending.");
+      return;
+    }
+    if (paymentLegsTableReady && paymentLegValidation.hasMissingFinancier) {
+      alert("Every payment leg must be assigned to a financier.");
+      return;
+    }
+    if (paymentLegsTableReady && paymentLegValidation.hasInvalidAmount) {
+      alert("Every payment leg needs a valid amount greater than 0.");
+      return;
+    }
+    if (paymentLegsTableReady && paymentLegValidation.hasMissingFx) {
+      alert("Add an ARS FX rate for every non-ARS payment leg.");
+      return;
+    }
+
     const ownershipLabels = ownershipValidation.rows.map((row) => {
       const financier = financierMap.get(row.financierId ?? 0);
       return financier?.display_name ?? "Unknown financier";
     });
     const fundedBySummary =
       ownershipLabels.length === 1 ? ownershipLabels[0] : ownershipLabels.join(" · ");
+    const resolvedPaymentMethod =
+      paymentLegsTableReady && paymentLegValidation.rows.length > 0
+        ? new Set(paymentLegValidation.rows.map((row) => row.paymentMethod)).size === 1
+          ? paymentLegValidation.rows[0].paymentMethod
+          : "otro"
+        : (formData.payment_method as PaymentMethod) || DEFAULT_PAYMENT_METHOD;
 
     setSaving(true);
     const record: Record<string, unknown> = {
       date_purchase: formData.date_purchase || new Date().toISOString().split("T")[0],
       supplier_name: formData.supplier_name.trim(),
-      payment_method: formData.payment_method || "transferencia",
-      payment_status: formData.payment_status || "pending",
+      payment_method: resolvedPaymentMethod,
+      payment_status: paymentStatus,
       total_cost: formData.total_cost ? parseFloat(formData.total_cost) : null,
       currency: formData.currency || "USD",
       funded_by: fundedBySummary,
@@ -406,16 +648,46 @@ export function PurchasesTable() {
           .insert(ownershipInserts);
         if (insertOwnershipError) throw insertOwnershipError;
       }
+      if (savedPurchase && paymentLegsTableReady) {
+        const purchaseId = savedPurchase.purchase_id;
+        const { error: deletePaymentLegsError } = await supabase
+          .from("purchase_payment_legs")
+          .delete()
+          .eq("purchase_id", purchaseId);
+        if (deletePaymentLegsError) throw deletePaymentLegsError;
+
+        if (paymentLegValidation.rows.length > 0) {
+          const paymentLegInserts: PurchasePaymentLegInsert[] = paymentLegValidation.rows.map(
+            (row): PurchasePaymentLegInsert => ({
+              purchase_id: purchaseId,
+              financier_id: row.financierId as number,
+              payment_method: row.paymentMethod,
+              amount: row.amount as number,
+              currency: row.currency,
+              fx_rate_to_ars: row.fxRateToArs,
+              amount_ars: row.amountArs,
+              paid_at: row.paidAt,
+              notes: row.notes,
+            })
+          );
+          const { error: insertPaymentLegsError } = await supabase
+            .from("purchase_payment_legs")
+            .insert(paymentLegInserts);
+          if (insertPaymentLegsError) throw insertPaymentLegsError;
+        }
+      }
       setDialogOpen(false);
       setEditingPurchase(null);
       setOwnershipRows([{ financierId: null, sharePct: 100 }]);
+      setPaymentLegRows([]);
       fetchAll();
     } catch (err: unknown) {
       if (
         isMissingRelationError(err, "purchase_financiers") ||
-        isMissingRelationError(err, "financiers")
+        isMissingRelationError(err, "financiers") ||
+        isMissingRelationError(err, "purchase_payment_legs")
       ) {
-        alert("Database error: run supabase/serious_accounting_foundation.sql in Supabase first.");
+        alert("Database error: run supabase/serious_accounting_foundation.sql and supabase/purchase_payment_legs.sql in Supabase first.");
       } else if (isRowLevelSecurityError(err)) {
         alert("RLS blocked this purchase save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for purchases.");
       } else {
@@ -519,6 +791,14 @@ export function PurchasesTable() {
     () => validateOwnershipInputs(ownershipRows),
     [ownershipRows]
   );
+  const paymentLegDraftValidation = useMemo(
+    () => validatePaymentLegDrafts(paymentLegRows),
+    [paymentLegRows]
+  );
+  const detailPaymentLegs = useMemo(
+    () => (detailPurchase ? paymentLegsByPurchaseId.get(detailPurchase.purchase_id) ?? [] : []),
+    [detailPurchase, paymentLegsByPurchaseId]
+  );
 
   return (
     <div className="min-h-screen bg-background px-3 py-4 sm:px-6 sm:py-6">
@@ -581,7 +861,7 @@ export function PurchasesTable() {
                     <span className="font-medium text-foreground">
                       {formatMoney(p.total_cost, p.currency)}
                     </span>
-                    <span>{formatPaymentMethodLabel(p.payment_method)}</span>
+                    <span>{getPaymentSummary(p)}</span>
                     <span>Funded: {getOwnershipSummary(p)}</span>
                     <span>
                       <Badge variant="secondary" className="text-[10px]">
@@ -665,7 +945,7 @@ export function PurchasesTable() {
                       <TableCell className="font-mono text-xs">{p.purchase_id}</TableCell>
                       <TableCell>{formatPurchaseDate(p.date_purchase)}</TableCell>
                       <TableCell className="font-medium">{p.supplier_name}</TableCell>
-                      <TableCell className="text-xs capitalize">{formatPaymentMethodLabel(p.payment_method)}</TableCell>
+                      <TableCell className="text-xs">{getPaymentSummary(p)}</TableCell>
                       <TableCell><PaymentStatusBadge status={normalizePaymentStatus(p.payment_status)} /></TableCell>
                       <TableCell className="whitespace-nowrap">
                         {formatMoney(p.total_cost, p.currency)}
@@ -738,6 +1018,7 @@ export function PurchasesTable() {
             setDialogOpen(false);
             setEditingPurchase(null);
             setOwnershipRows([{ financierId: null, sharePct: 100 }]);
+            setPaymentLegRows([]);
           }
         }}
       >
@@ -770,18 +1051,20 @@ export function PurchasesTable() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Payment Method</Label>
-                <Select value={formData.payment_method ?? "transferencia"} onValueChange={(v) => updateForm("payment_method", v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_METHOD_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {!paymentLegsTableReady && (
+                <div className="space-y-2">
+                  <Label>Legacy Payment Method</Label>
+                  <Select value={formData.payment_method ?? "transferencia"} onValueChange={(v) => updateForm("payment_method", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_METHOD_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Payment Status</Label>
                 <Select value={formData.payment_status ?? "pending"} onValueChange={(v) => updateForm("payment_status", v)}>
@@ -793,11 +1076,8 @@ export function PurchasesTable() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Total Cost</Label>
+                <Label>Purchase Total</Label>
                 <Input
                   type="number"
                   value={formData.total_cost ?? ""}
@@ -806,7 +1086,7 @@ export function PurchasesTable() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Currency</Label>
+                <Label>Purchase Currency</Label>
                 <Select value={formData.currency ?? "USD"} onValueChange={(v) => updateForm("currency", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -816,6 +1096,9 @@ export function PurchasesTable() {
                 </Select>
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              This is the supplier/base purchase cost, usually in USD. Actual supplier payments can be mixed below.
+            </p>
 
             <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-3">
@@ -839,7 +1122,7 @@ export function PurchasesTable() {
 
               <div className="space-y-2">
                 {ownershipRows.map((row, index) => (
-                  <div key={`${index}-${row.financierId ?? "unset"}`} className="grid grid-cols-[minmax(0,1fr)_108px_40px] gap-2">
+                  <div key={`${index}-${row.financierId ?? "unset"}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_108px_40px]">
                     <Select
                       value={row.financierId != null ? String(row.financierId) : "__unset__"}
                       onValueChange={(value) =>
@@ -858,34 +1141,205 @@ export function PurchasesTable() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      value={String(row.sharePct)}
-                      onChange={(event) =>
-                        updateOwnershipRow(index, {
-                          sharePct: parseOptionalNumber(event.target.value) ?? 0,
-                        })
-                      }
-                      placeholder="%"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      disabled={ownershipRows.length === 1}
-                      onClick={() => removeOwnershipRow(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    <div className="grid grid-cols-[minmax(0,1fr)_40px] gap-2 sm:contents">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={String(row.sharePct)}
+                        onChange={(event) =>
+                          updateOwnershipRow(index, {
+                            sharePct: parseOptionalNumber(event.target.value) ?? 0,
+                          })
+                        }
+                        placeholder="%"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={ownershipRows.length === 1}
+                        onClick={() => removeOwnershipRow(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
 
               <p className={`text-xs ${Math.abs(ownershipDraftValidation.totalPct - 100) < 0.01 ? "text-muted-foreground" : "text-amber-600 dark:text-amber-300"}`}>
                 Total share: {ownershipDraftValidation.totalPct.toFixed(ownershipDraftValidation.totalPct % 1 === 0 ? 0 : 2)}%
+              </p>
+            </div>
+
+            <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Payment Legs</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Use one row per real supplier payment: USD cash, ARS transfer, USDT, BTC, etc.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addPaymentLegRow}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Add
+                </Button>
+              </div>
+
+              {!paymentLegsTableReady && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  Run <span className="font-mono">supabase/purchase_payment_legs.sql</span> to track mixed USD, ARS, and crypto purchase payments.
+                </div>
+              )}
+
+              {paymentLegRows.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No payment legs yet. Pending purchases can stay empty; paid or partial purchases should have at least one.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {paymentLegRows.map((row, index) => {
+                    const amountArsPreview = resolvePaymentLegAmountArs(
+                      parseOptionalNumber(row.amount),
+                      normalizePaymentCurrency(row.currency),
+                      parseOptionalNumber(row.fxRateToArs)
+                    );
+
+                    return (
+                      <div key={`${row.id ?? "new"}-${index}`} className="rounded-md border bg-background/70 p-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs sm:text-sm">Financier</Label>
+                            <Select
+                              value={row.financierId != null ? String(row.financierId) : "__unset__"}
+                              onValueChange={(value) =>
+                                updatePaymentLegRow(index, {
+                                  financierId: value === "__unset__" ? null : Number(value),
+                                })
+                              }
+                            >
+                              <SelectTrigger><SelectValue placeholder="Choose financier" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__unset__">Choose financier</SelectItem>
+                                {financierOptions.map((financier) => (
+                                  <SelectItem key={financier.id} value={String(financier.id)}>
+                                    {financier.display_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs sm:text-sm">Payment Method</Label>
+                            <Select
+                              value={row.paymentMethod}
+                              onValueChange={(value) =>
+                                updatePaymentLegRow(index, {
+                                  paymentMethod: value as PaymentMethod,
+                                })
+                              }
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {PAYMENT_METHOD_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs sm:text-sm">Amount</Label>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              value={row.amount}
+                              onChange={(event) => updatePaymentLegRow(index, { amount: event.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs sm:text-sm">Currency</Label>
+                            <Select
+                              value={row.currency}
+                              onValueChange={(value) =>
+                                updatePaymentLegRow(index, {
+                                  currency: value as PaymentCurrency,
+                                })
+                              }
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {PAYMENT_LEG_CURRENCY_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs sm:text-sm">FX to ARS</Label>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              value={row.fxRateToArs}
+                              onChange={(event) => updatePaymentLegRow(index, { fxRateToArs: event.target.value })}
+                              placeholder={row.currency === "ARS" ? "Not needed for ARS" : "0.00"}
+                              disabled={row.currency === "ARS"}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs sm:text-sm">Paid At</Label>
+                            <Input
+                              type="date"
+                              value={row.paidAt}
+                              onChange={(event) => updatePaymentLegRow(index, { paidAt: event.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs sm:text-sm">Notes</Label>
+                            <Input
+                              value={row.notes}
+                              onChange={(event) => updatePaymentLegRow(index, { notes: event.target.value })}
+                              placeholder="Optional"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            ARS snapshot:{" "}
+                            <span className="font-medium text-foreground">
+                              {amountArsPreview != null
+                                ? `$${amountArsPreview.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`
+                                : "—"}
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full sm:w-auto"
+                            onClick={() => removePaymentLegRow(index)}
+                          >
+                            <X className="mr-1 h-4 w-4" />
+                            Remove leg
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className={`text-xs ${paymentLegDraftValidation.rows.length === 0 || paymentLegDraftValidation.hasMissingFinancier || paymentLegDraftValidation.hasInvalidAmount || paymentLegDraftValidation.hasMissingFx ? "text-amber-600 dark:text-amber-300" : "text-muted-foreground"}`}>
+                ARS snapshot total: ${paymentLegDraftValidation.totalAmountArs.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
               </p>
             </div>
 
@@ -915,6 +1369,7 @@ export function PurchasesTable() {
                 setDialogOpen(false);
                 setEditingPurchase(null);
                 setOwnershipRows([{ financierId: null, sharePct: 100 }]);
+                setPaymentLegRows([]);
               }}
             >
               Cancel
@@ -950,7 +1405,7 @@ export function PurchasesTable() {
                   <PurchaseDetailField label="Units" value={loadingDetail ? "Loading..." : String(detailUnits.length)} />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <PurchaseDetailField label="Payment Method" value={formatPaymentMethodLabel(detailPurchase.payment_method)} />
+                  <PurchaseDetailField label="Payment Summary" value={getPaymentSummary(detailPurchase)} />
                   <PurchaseDetailField label="Payment Status" value={<PaymentStatusBadge status={normalizePaymentStatus(detailPurchase.payment_status)} />} />
                   <PurchaseDetailField label="Funded By" value={getOwnershipSummary(detailPurchase)} />
                 </div>
@@ -958,6 +1413,53 @@ export function PurchasesTable() {
                   <div className="rounded-lg border bg-muted/20 p-3">
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Notes</p>
                     <p className="mt-1 text-sm">{detailPurchase.notes}</p>
+                  </div>
+                ) : null}
+                {paymentLegsTableReady ? (
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="mb-3">
+                      <p className="text-sm font-medium">Payment legs</p>
+                      <p className="text-xs text-muted-foreground">
+                        Each row shows how the supplier was actually paid.
+                      </p>
+                    </div>
+                    {detailPaymentLegs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No payment legs saved yet.</p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {detailPaymentLegs.map((leg) => {
+                          const financier = financierMap.get(leg.financier_id);
+                          return (
+                            <div key={leg.id} className="rounded-md border bg-background/70 p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {financier?.display_name ?? `Financier #${leg.financier_id}`}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatPaymentMethodLabel(leg.payment_method)}
+                                  </p>
+                                </div>
+                                <Badge variant="secondary">{normalizePaymentCurrency(leg.currency)}</Badge>
+                              </div>
+                              <div className="mt-3 space-y-1 text-sm">
+                                <p>{formatPaymentLegAmount(leg.amount, leg.currency)}</p>
+                                <p className="text-muted-foreground">
+                                  ARS snapshot:{" "}
+                                  {leg.amount_ars != null
+                                    ? `$${leg.amount_ars.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`
+                                    : "—"}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  Paid at: {formatPurchaseDate(leg.paid_at)}
+                                </p>
+                                {leg.notes ? <p className="text-muted-foreground">{leg.notes}</p> : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </>
@@ -1035,7 +1537,7 @@ export function PurchasesTable() {
             <DialogTitle>Add Unit to {addUnitPurchase?.purchase_id}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>IMEI1 *</Label>
                 <Input
@@ -1088,9 +1590,9 @@ export function PurchasesTable() {
                 Save battery health here for used or like-new units. Product rows keep shared specs only.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Cost</Label>
+                <Label>Unit Cost</Label>
                 <Input
                   type="number"
                   value={unitForm.cost_unit ?? ""}
@@ -1099,7 +1601,7 @@ export function PurchasesTable() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Currency</Label>
+                <Label>Cost Currency</Label>
                 <Select value={unitForm.cost_currency ?? "USD"} onValueChange={(v) => updateUnitForm("cost_currency", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1110,7 +1612,7 @@ export function PurchasesTable() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              When you save a unit with cost, the linked product pricing is recalculated from that stock cost.
+              Record the supplier/base cost here, usually in USD. Saving it recalculates linked product pricing from this stock cost.
             </p>
             <div className="space-y-2">
               <Label>Notes</Label>

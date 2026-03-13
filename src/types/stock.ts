@@ -3,6 +3,9 @@ import type {
   Financier as FinancierRow,
   Purchase as PurchaseRow,
   PurchaseFinancier as PurchaseFinancierRow,
+  PurchasePaymentLeg as PurchasePaymentLegRow,
+  PurchasePaymentLegInsert as PurchasePaymentLegInsertRow,
+  PurchasePaymentLegUpdate as PurchasePaymentLegUpdateRow,
   PurchaseInsert as PurchaseInsertRow,
   StockUnit as StockUnitRow,
   StockUnitInsert as StockUnitInsertRow,
@@ -15,6 +18,7 @@ type DatabasePaymentMethod = Database["public"]["Enums"]["payment_method"];
 export type PaymentMethod = DatabasePaymentMethod;
 export type ErrorSeverity = Database["public"]["Enums"]["error_severity"];
 export type SaleCurrency = "ARS" | "USD";
+export type PaymentCurrency = "ARS" | "USD" | "USDT" | "BTC";
 
 export type StockUnit = StockUnitRow;
 export type StockUnitInsert = StockUnitInsertRow;
@@ -22,6 +26,9 @@ export type StockUnitUpdate = StockUnitUpdateRow;
 
 export type Financier = FinancierRow;
 export type PurchaseFinancier = PurchaseFinancierRow;
+export type PurchasePaymentLeg = PurchasePaymentLegRow;
+export type PurchasePaymentLegInsert = PurchasePaymentLegInsertRow;
+export type PurchasePaymentLegUpdate = PurchasePaymentLegUpdateRow;
 export type Purchase = Omit<PurchaseRow, "payment_method"> & { payment_method: PaymentMethod | null };
 export type PurchaseInsert = Omit<PurchaseInsertRow, "payment_method"> & {
   payment_method?: PaymentMethod | null;

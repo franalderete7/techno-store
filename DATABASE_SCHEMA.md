@@ -243,10 +243,10 @@ Purchase orders from suppliers.
 | purchase_id | text | NO | - | Unique purchase identifier (e.g. PUR-2026-00031) |
 | date_purchase | date | NO | CURRENT_DATE | Purchase date |
 | supplier_name | text | NO | - | Supplier name |
-| payment_method | payment_method | YES | 'transferencia' | How supplier was paid |
+| payment_method | payment_method | YES | 'transferencia' | Legacy/summary supplier payment method for backward compatibility; detailed mixed payments live in `purchase_payment_legs` |
 | payment_status | payment_status | YES | 'pending' | Payment status |
-| total_cost | numeric(12, 2) | YES | - | Total cost of purchase |
-| currency | text | YES | 'USD' | ARS or USD |
+| total_cost | numeric(12, 2) | YES | - | Base purchase total in supplier currency |
+| currency | text | YES | 'USD' | Base purchase currency, usually USD |
 | funded_by | text | YES | 'own' | Legacy ownership summary for quick display/backward compatibility |
 | notes | text | YES | - | Notes |
 | created_by | text | YES | - | Who created this record |
@@ -313,6 +313,40 @@ Ownership split per purchase. This is the source of truth for per-person profit 
 
 **Triggers:**
 - `trg_purchase_financiers_updated` – updates `updated_at` on row update
+
+---
+
+### purchase_payment_legs
+
+Actual supplier settlement legs per purchase. Use one row per real payment movement, such as USD cash, ARS transfer, USDT, or BTC. This is separate from ownership and allows mixed-currency settlement while keeping a simple base purchase total on `purchases`.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | bigserial | NO | - | Primary key |
+| purchase_id | text | NO | - | FK → purchases.purchase_id |
+| financier_id | bigint | NO | - | FK → financiers.id |
+| payment_method | payment_method | NO | 'transferencia' | Actual method used for this leg |
+| amount | numeric(12, 2) | NO | - | Amount in the original leg currency |
+| currency | text | NO | 'USD' | `ARS`, `USD`, `USDT`, or `BTC` |
+| fx_rate_to_ars | numeric(12, 2) | YES | - | FX rate used to freeze an ARS snapshot for non-ARS legs |
+| amount_ars | numeric(14, 2) | YES | - | Frozen ARS value of this payment leg |
+| paid_at | date | YES | - | Date this payment leg was made |
+| notes | text | YES | - | Optional leg-specific note |
+| created_at | timestamptz | YES | now() | Created timestamp |
+| updated_at | timestamptz | YES | now() | Updated timestamp |
+
+**Constraints:**
+- Primary key: `id`
+- Check: `amount > 0`
+- Check: `currency IN ('ARS', 'USD', 'USDT', 'BTC')`
+
+**Indexes:**
+- `idx_purchase_payment_legs_purchase_id` on `purchase_id`
+- `idx_purchase_payment_legs_financier_id` on `financier_id`
+- `idx_purchase_payment_legs_paid_at` on `paid_at DESC NULLS LAST`
+
+**Triggers:**
+- `trg_purchase_payment_legs_updated` – updates `updated_at` on row update
 
 ---
 
