@@ -16,7 +16,6 @@ export type StockStatus = Database["public"]["Enums"]["stock_status"];
 export type PaymentStatus = Database["public"]["Enums"]["payment_status"];
 type DatabasePaymentMethod = Database["public"]["Enums"]["payment_method"];
 export type PaymentMethod = DatabasePaymentMethod;
-export type ErrorSeverity = Database["public"]["Enums"]["error_severity"];
 export type SaleCurrency = "ARS" | "USD";
 export type PaymentCurrency = "ARS" | "USD" | "USDT" | "BTC";
 

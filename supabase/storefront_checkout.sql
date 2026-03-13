@@ -17,8 +17,6 @@ CREATE TABLE IF NOT EXISTS public.storefront_orders (
   items jsonb NOT NULL DEFAULT '[]'::jsonb,
   transfer_aliases text[] NOT NULL DEFAULT ARRAY['technostore.celu', 'tucelualmejorprecio'],
   notes text NULL,
-  contacted boolean NOT NULL DEFAULT false,
-  contacted_at timestamptz NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT storefront_orders_email_check
     CHECK (email ~* '^[^@\s]+@[^@\s]+\.[^@\s]{2,}$'),

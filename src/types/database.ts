@@ -647,6 +647,51 @@ export interface Database {
         };
         Relationships: [];
       };
+      "storefront_order_items": {
+        Row: {
+          "id": number;
+          "order_id": number;
+          "sort_order": number;
+          "product_id": number | null;
+          "product_key": string;
+          "product_name": string;
+          "image_url": string | null;
+          "unit_price_ars": number;
+          "quantity": number;
+          "line_total_ars": number;
+          "availability_code": string | null;
+          "created_at": string;
+        };
+        Insert: {
+          "id"?: number | null;
+          "order_id": number;
+          "sort_order"?: number | null;
+          "product_id"?: number | null;
+          "product_key": string;
+          "product_name": string;
+          "image_url"?: string | null;
+          "unit_price_ars": number;
+          "quantity": number;
+          "line_total_ars": number;
+          "availability_code"?: string | null;
+          "created_at"?: string | null;
+        };
+        Update: {
+          "id"?: number | null;
+          "order_id"?: number | null;
+          "sort_order"?: number | null;
+          "product_id"?: number | null;
+          "product_key"?: string | null;
+          "product_name"?: string | null;
+          "image_url"?: string | null;
+          "unit_price_ars"?: number | null;
+          "quantity"?: number | null;
+          "line_total_ars"?: number | null;
+          "availability_code"?: string | null;
+          "created_at"?: string | null;
+        };
+        Relationships: [];
+      };
       "storefront_orders": {
         Row: {
           "id": number;
@@ -941,6 +986,10 @@ export type StockUnitUpdate = Database["public"]["Tables"]["stock_units"]["Updat
 export type StoreSetting = Database["public"]["Tables"]["store_settings"]["Row"];
 export type StoreSettingInsert = Database["public"]["Tables"]["store_settings"]["Insert"];
 export type StoreSettingUpdate = Database["public"]["Tables"]["store_settings"]["Update"];
+
+export type StorefrontOrderItem = Database["public"]["Tables"]["storefront_order_items"]["Row"];
+export type StorefrontOrderItemInsert = Database["public"]["Tables"]["storefront_order_items"]["Insert"];
+export type StorefrontOrderItemUpdate = Database["public"]["Tables"]["storefront_order_items"]["Update"];
 
 export type StorefrontOrder = Database["public"]["Tables"]["storefront_orders"]["Row"];
 export type StorefrontOrderInsert = Database["public"]["Tables"]["storefront_orders"]["Insert"];

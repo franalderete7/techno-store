@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import type { Database, StorefrontOrderItemInsert } from "@/types/database";
 import {
   TRANSFER_ALIASES,
   buildStorefrontDeliveryNotes,
@@ -60,8 +60,9 @@ function formatCheckoutRouteError(error: unknown) {
   const message = getErrorMessage(error, "No se pudo guardar el pedido.").toLowerCase();
 
   if (
-    message.includes("storefront_orders") &&
+    (message.includes("storefront_orders") || message.includes("storefront_order_items")) &&
     (message.includes("does not exist") ||
+      message.includes("storefront_order_items") ||
       message.includes("address") ||
       message.includes("zip_code") ||
       message.includes("city") ||
@@ -71,7 +72,7 @@ function formatCheckoutRouteError(error: unknown) {
       message.includes("relation") ||
       message.includes("schema cache"))
   ) {
-    return "Falta actualizar la tabla de pedidos. Si `storefront_orders` ya existe, ejecutá `supabase/storefront_checkout_delivery_fields.sql`. Si todavía no existe, ejecutá `supabase/storefront_checkout.sql`.";
+    return "Falta actualizar la estructura de pedidos. Ejecutá `supabase/storefront_checkout.sql`, `supabase/storefront_checkout_delivery_fields.sql` y `supabase/storefront_order_items.sql` en Supabase.";
   }
 
   if (
@@ -230,6 +231,28 @@ export async function POST(request: Request) {
 
     if (insertError) {
       throw insertError;
+    }
+
+    const orderItemRows: StorefrontOrderItemInsert[] = orderItems.map((item, index) => ({
+      order_id: insertedOrder.id,
+      sort_order: index,
+      product_id: item.id,
+      product_key: item.product_key,
+      product_name: item.product_name,
+      image_url: item.image_url,
+      unit_price_ars: item.unit_price,
+      quantity: item.quantity,
+      line_total_ars: item.line_total,
+      availability_code: item.availability,
+    }));
+
+    const { error: orderItemsError } = await supabase
+      .from("storefront_order_items")
+      .insert(orderItemRows);
+
+    if (orderItemsError) {
+      await supabase.from("storefront_orders").delete().eq("id", insertedOrder.id);
+      throw orderItemsError;
     }
 
     return NextResponse.json({
