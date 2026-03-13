@@ -21,10 +21,17 @@ import {
   ReceiptText,
   ShoppingBag,
   TrendingUp,
+  TriangleAlert,
 } from "lucide-react";
 import type { Product } from "@/types/database";
-import type { Purchase, StockStatus, StockUnit } from "@/types/stock";
+import type { Financier, Purchase, PurchaseFinancier, StockStatus, StockUnit } from "@/types/stock";
 import { STOCK_STATUS_OPTIONS } from "@/types/stock";
+import {
+  buildRealizedUnitSale,
+  splitSaleByOwnership,
+  type FinancierSaleSlice,
+  type RealizedUnitSale,
+} from "@/lib/accounting";
 
 type Period = "daily" | "monthly";
 
@@ -32,6 +39,8 @@ interface SalesChartProps {
   units: StockUnit[];
   purchases: Purchase[];
   products: Product[];
+  financiers: Financier[];
+  purchaseFinanciers: PurchaseFinancier[];
   currency?: string;
 }
 
@@ -50,15 +59,6 @@ type ChartPoint = {
   units: number;
   revenue: number;
   profit: number;
-};
-
-type RealizedSale = {
-  fundedBy: string;
-  fundedByKey: string;
-  revenue: number;
-  cost: number;
-  profit: number;
-  dateSold: string;
 };
 
 type FunderSummary = {
@@ -85,37 +85,12 @@ const formatDayKey = (date: Date) =>
 const formatMonthKey = (date: Date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
 
-const getSaleDate = (unit: StockUnit) => unit.date_sold ?? "";
-
-const DEFAULT_USD_RATE = 1460;
-
-function normalizeFunderName(value: string | null | undefined) {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return {
-      label: "Unassigned",
-      key: "unassigned",
-    };
-  }
-
-  return {
-    label: trimmed,
-    key: trimmed.toLocaleLowerCase("es-AR"),
-  };
-}
-
-function getUnitCostArs(unit: StockUnit, product: Product | undefined) {
-  if (unit.cost_unit == null) return 0;
-  if ((unit.cost_currency ?? "USD").toUpperCase() === "ARS") return unit.cost_unit;
-
-  const usdRate = product?.usd_rate && product.usd_rate > 0 ? product.usd_rate : DEFAULT_USD_RATE;
-  return unit.cost_unit * usdRate;
-}
-
 export function SalesChart({
   units,
   purchases,
   products,
+  financiers,
+  purchaseFinanciers,
   currency = "ARS",
 }: SalesChartProps) {
   const [period, setPeriod] = useState<Period>("daily");
@@ -124,6 +99,19 @@ export function SalesChart({
     () => new Map(purchases.map((purchase) => [purchase.purchase_id, purchase])),
     [purchases]
   );
+  const financierMap = useMemo(
+    () => new Map(financiers.map((financier) => [financier.id, financier])),
+    [financiers]
+  );
+  const purchaseFinanciersByPurchaseId = useMemo(() => {
+    const byPurchaseId = new Map<string, PurchaseFinancier[]>();
+    purchaseFinanciers.forEach((share) => {
+      const current = byPurchaseId.get(share.purchase_id) ?? [];
+      current.push(share);
+      byPurchaseId.set(share.purchase_id, current);
+    });
+    return byPurchaseId;
+  }, [purchaseFinanciers]);
 
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.product_key, product])),
@@ -135,62 +123,64 @@ export function SalesChart({
     [units]
   );
 
-  const soldUnitsWithRealizedPrice = useMemo(
+  const realizedUnitSales = useMemo<(RealizedUnitSale & { purchaseId: string | null })[]>(
     () =>
-      units.filter(
-        (unit) =>
-          unit.status === "sold" &&
-          unit.price_sold != null &&
-          Number(unit.price_sold) > 0
-      ),
-    [units]
+      units.flatMap((unit) => {
+        const product = productMap.get(unit.product_key);
+        const realized = buildRealizedUnitSale(unit, product);
+        if (!realized) return [];
+
+        return [{ ...realized, purchaseId: unit.purchase_id }];
+      }),
+    [productMap, units]
   );
 
-  const soldUnitsMissingPriceCount = soldStatusCount - soldUnitsWithRealizedPrice.length;
+  const suspiciousLegacyRevenueCount = useMemo(
+    () => realizedUnitSales.filter((sale) => sale.suspiciousLegacyRevenue).length,
+    [realizedUnitSales]
+  );
 
-  const realizedSales = useMemo<RealizedSale[]>(() => {
-    return soldUnitsWithRealizedPrice.map((unit) => {
-      const purchase = unit.purchase_id ? purchaseMap.get(unit.purchase_id) : undefined;
-      const product = productMap.get(unit.product_key);
-      const funder = normalizeFunderName(purchase?.funded_by);
-      const revenue = unit.price_sold ?? 0;
-      const cost = getUnitCostArs(unit, product);
+  const soldUnitsMissingPriceCount = soldStatusCount - realizedUnitSales.length;
 
-      return {
-        fundedBy: funder.label,
-        fundedByKey: funder.key,
-        revenue,
-        cost,
-        profit: revenue - cost,
-        dateSold: getSaleDate(unit),
-      };
-    });
-  }, [productMap, purchaseMap, soldUnitsWithRealizedPrice]);
-
-  const realizedSalesWithDate = useMemo(
+  const realizedUnitSalesWithDate = useMemo(
     () =>
-      realizedSales.filter((sale) => {
+      realizedUnitSales.filter((sale) => {
         const soldDate = new Date(sale.dateSold);
         return !Number.isNaN(soldDate.getTime());
       }),
-    [realizedSales]
+    [realizedUnitSales]
   );
 
-  const soldUnitsMissingDateCount = realizedSales.length - realizedSalesWithDate.length;
+  const soldUnitsMissingDateCount = realizedUnitSales.length - realizedUnitSalesWithDate.length;
+
+  const financierSales = useMemo<FinancierSaleSlice[]>(
+    () =>
+      realizedUnitSales.flatMap((sale) =>
+        splitSaleByOwnership(
+          sale,
+          sale.purchaseId ? purchaseMap.get(sale.purchaseId) : undefined,
+          purchaseFinanciersByPurchaseId.get(sale.purchaseId ?? "") ?? [],
+          financierMap
+        )
+      ),
+    [financierMap, purchaseFinanciersByPurchaseId, purchaseMap, realizedUnitSales]
+  );
 
   const totals = useMemo(() => {
-    const revenue = realizedSales.reduce((sum, sale) => sum + sale.revenue, 0);
-    const count = realizedSales.length;
-    const profit = realizedSales.reduce((sum, sale) => sum + sale.profit, 0);
+    const revenue = realizedUnitSales.reduce((sum, sale) => sum + sale.revenueArs, 0);
+    const cost = realizedUnitSales.reduce((sum, sale) => sum + sale.costArs, 0);
+    const count = realizedUnitSales.length;
+    const profit = realizedUnitSales.reduce((sum, sale) => sum + sale.profitArs, 0);
 
     return {
       count: soldStatusCount,
       revenue,
+      cost,
       profit,
       avgTicket: count > 0 ? revenue / count : 0,
       sellThrough: units.length > 0 ? (soldStatusCount / units.length) * 100 : 0,
     };
-  }, [realizedSales, soldStatusCount, units.length]);
+  }, [realizedUnitSales, soldStatusCount, units.length]);
 
   const statusCards = useMemo<StatusCard[]>(() => {
     return STOCK_STATUS_OPTIONS.map((option) => {
@@ -248,19 +238,19 @@ export function SalesChart({
       }
     }
 
-    realizedSalesWithDate.forEach((sale) => {
+    realizedUnitSalesWithDate.forEach((sale) => {
       const soldDate = new Date(sale.dateSold);
       const key = period === "daily" ? formatDayKey(soldDate) : formatMonthKey(soldDate);
       const entry = buckets.get(key);
       if (!entry) return;
 
       entry.units += 1;
-      entry.revenue += sale.revenue;
-      entry.profit += sale.profit;
+      entry.revenue += sale.revenueArs;
+      entry.profit += sale.profitArs;
     });
 
     return Array.from(buckets.values());
-  }, [period, realizedSalesWithDate]);
+  }, [period, realizedUnitSalesWithDate]);
 
   const activeWindow = useMemo(() => {
     return chartData.reduce(
@@ -279,45 +269,45 @@ export function SalesChart({
     const currentDayKey = formatDayKey(now);
     const currentMonthKey = formatMonthKey(now);
 
-    return realizedSalesWithDate.reduce(
+    return realizedUnitSalesWithDate.reduce(
       (summary, sale) => {
         const soldDate = new Date(sale.dateSold);
 
         if (formatDayKey(soldDate) === currentDayKey) {
           summary.todayUnits += 1;
-          summary.todayRevenue += sale.revenue;
+          summary.todayRevenue += sale.revenueArs;
         }
 
         if (formatMonthKey(soldDate) === currentMonthKey) {
           summary.monthUnits += 1;
-          summary.monthRevenue += sale.revenue;
+          summary.monthRevenue += sale.revenueArs;
         }
 
         return summary;
       },
       { todayUnits: 0, todayRevenue: 0, monthUnits: 0, monthRevenue: 0 }
     );
-  }, [realizedSalesWithDate]);
+  }, [realizedUnitSalesWithDate]);
 
   const funderSummaries = useMemo<FunderSummary[]>(() => {
     const summaryMap = new Map<string, FunderSummary>();
 
-    realizedSales.forEach((sale) => {
-      const existing = summaryMap.get(sale.fundedByKey);
+    financierSales.forEach((sale) => {
+      const existing = summaryMap.get(sale.key);
       if (existing) {
-        existing.units += 1;
-        existing.revenue += sale.revenue;
-        existing.cost += sale.cost;
-        existing.profit += sale.profit;
+        existing.units += sale.sharePct / 100;
+        existing.revenue += sale.revenueArs;
+        existing.cost += sale.costArs;
+        existing.profit += sale.profitArs;
         return;
       }
 
-      summaryMap.set(sale.fundedByKey, {
-        fundedBy: sale.fundedBy,
-        units: 1,
-        revenue: sale.revenue,
-        cost: sale.cost,
-        profit: sale.profit,
+      summaryMap.set(sale.key, {
+        fundedBy: sale.label,
+        units: sale.sharePct / 100,
+        revenue: sale.revenueArs,
+        cost: sale.costArs,
+        profit: sale.profitArs,
       });
     });
 
@@ -326,7 +316,7 @@ export function SalesChart({
       if (b.revenue !== a.revenue) return b.revenue - a.revenue;
       return a.fundedBy.localeCompare(b.fundedBy, "es-AR");
     });
-  }, [realizedSales]);
+  }, [financierSales]);
 
   const maxFunderProfitAbs = useMemo(() => {
     return funderSummaries.reduce((max, funder) => {
@@ -368,9 +358,11 @@ export function SalesChart({
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
                 Daily and monthly sales are calculated from stock items marked as{" "}
                 <span className="font-medium text-foreground">Sold</span>. Inventory
-                status keeps the full current mix on the side, and realized profit is
-                assigned through <code className="mx-1 rounded bg-background/70 px-1 py-0.5">purchase_id</code>
-                to the purchase owner in <code className="mx-1 rounded bg-background/70 px-1 py-0.5">funded_by</code>.
+                status keeps the full current mix on the side, while realized revenue and
+                profit come from sale snapshots on each unit. Ownership is assigned through{" "}
+                <code className="mx-1 rounded bg-background/70 px-1 py-0.5">purchase_id</code>
+                and split with <code className="mx-1 rounded bg-background/70 px-1 py-0.5">purchase_financiers</code>
+                when a purchase is financed by more than one person.
               </p>
             </div>
           </div>
@@ -435,8 +427,15 @@ export function SalesChart({
         {soldUnitsMissingPriceCount > 0 && (
           <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
             {soldUnitsMissingPriceCount} sold item{soldUnitsMissingPriceCount === 1 ? "" : "s"} still
-            missing <code className="mx-1 rounded bg-background/70 px-1 py-0.5">price_sold</code>.
-            Realized profit only counts sold items with a saved sale price.
+            missing a valid sale snapshot. Realized profit only counts sold items with a
+            saved sale amount.
+          </div>
+        )}
+        {suspiciousLegacyRevenueCount > 0 && (
+          <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+            <TriangleAlert className="mr-2 inline h-4 w-4 align-text-bottom" />
+            {suspiciousLegacyRevenueCount} sold item{suspiciousLegacyRevenueCount === 1 ? "" : "s"} look like
+            USD sale prices saved in the old ARS-only field. Review those sales before trusting the profit totals.
           </div>
         )}
       </div>
@@ -470,21 +469,20 @@ export function SalesChart({
                 monthly sales automatically.
               </p>
             </div>
-          ) : realizedSales.length === 0 ? (
+          ) : realizedUnitSales.length === 0 ? (
             <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
               <BadgeDollarSign className="mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="text-sm font-medium">Sold items need a sale price</p>
+              <p className="text-sm font-medium">Sold items need a sale amount</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Realized profit only includes sold items with a saved{" "}
-                <span className="font-medium text-foreground">price_sold</span>.
+                Realized profit only includes sold items with a saved sale amount and currency snapshot.
               </p>
             </div>
-          ) : realizedSalesWithDate.length === 0 ? (
+          ) : realizedUnitSalesWithDate.length === 0 ? (
             <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
               <CalendarRange className="mb-3 h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-medium">Sold items need a valid sale date</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Realized profit already uses sold items with a sale price, but the trend chart still
+                Realized profit already uses sold items with a saved sale snapshot, but the trend chart still
                 needs <span className="font-medium text-foreground">date_sold</span> to place them in time.
               </p>
             </div>
@@ -637,10 +635,10 @@ export function SalesChart({
 
           <div className="rounded-2xl border bg-background/70 p-4">
             <div className="mb-4">
-              <p className="text-sm font-medium">Profit by funded by</p>
+              <p className="text-sm font-medium">Profit by financier</p>
               <p className="text-xs text-muted-foreground">
-                Sold units inherit ownership from the linked purchase. USD costs are converted
-                with the product USD rate to compare against sale price in ARS.
+                Sold units inherit ownership from the linked purchase, and split-financed
+                purchases distribute revenue, cost, and profit by ownership share.
               </p>
             </div>
 
@@ -662,7 +660,10 @@ export function SalesChart({
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{funder.fundedBy}</p>
                           <p className="text-xs text-muted-foreground">
-                            {funder.units} sold · Revenue {formatMoney(funder.revenue)}
+                            {funder.units.toLocaleString("es-AR", {
+                              minimumFractionDigits: Number.isInteger(funder.units) ? 0 : 2,
+                              maximumFractionDigits: 2,
+                            })} equivalent sold · Revenue {formatMoney(funder.revenue)}
                           </p>
                         </div>
                         <div className="text-right">
@@ -708,6 +709,11 @@ export function SalesChart({
                 icon={BadgeDollarSign}
               />
               <InsightRow
+                label="All-time cost"
+                value={formatMoney(totals.cost)}
+                icon={ReceiptText}
+              />
+              <InsightRow
                 label="All-time profit"
                 value={formatMoney(totals.profit)}
                 icon={TrendingUp}
@@ -731,7 +737,10 @@ export function SalesChart({
               />
               <InsightRow
                 label="Owned sold items"
-                value={`${funderSummaries.reduce((sum, item) => sum + item.units, 0)} sold`}
+                value={`${funderSummaries.reduce((sum, item) => sum + item.units, 0).toLocaleString("es-AR", {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 2,
+                })} equivalent sold`}
                 icon={ReceiptText}
               />
             </div>

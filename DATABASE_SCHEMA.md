@@ -14,6 +14,7 @@ The live Supabase project is the schema source of truth.
 - Generated schema types live in [database.ts](/Users/aldegol/Documents/Apps/techno-store/src/types/database.ts)
 - The typed Supabase client uses those generated types in [supabase.ts](/Users/aldegol/Documents/Apps/techno-store/src/lib/supabase.ts)
 - n8n should read store policy and CRM context from Supabase, not from hardcoded workflow text
+- n8n storefront links should use `STOREFRONT_BASE_URL=https://puntotechno.com`
 
 Recommended migration order for the lean CRM/inventory refactor:
 
@@ -197,7 +198,12 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 | date_received | date | YES | - | Date received into stock |
 | status | stock_status | NO | 'in_stock' | Current unit status |
 | date_sold | date | YES | - | Date sold |
-| price_sold | numeric(12, 2) | YES | - | Sale price in ARS |
+| price_sold | numeric(12, 2) | YES | - | Legacy mirrored sale price in ARS |
+| sale_amount | numeric(12, 2) | YES | - | Real sale amount in its original currency |
+| sale_currency | text | YES | - | `ARS` or `USD` |
+| sale_fx_rate | numeric(12, 2) | YES | - | FX rate used to freeze ARS revenue for USD sales |
+| sale_amount_ars | numeric(12, 2) | YES | - | Realized revenue snapshot in ARS |
+| cost_ars_snapshot | numeric(12, 2) | YES | - | Realized cost snapshot in ARS |
 | notes | text | YES | - | Notes |
 | proof_image_urls | text[] | YES | '{}' | URLs of proof images (IMEI photos) in Supabase Storage |
 | battery_health | integer | YES | - | Battery health of the individual stock unit |
@@ -241,7 +247,7 @@ Purchase orders from suppliers.
 | payment_status | payment_status | YES | 'pending' | Payment status |
 | total_cost | numeric(12, 2) | YES | - | Total cost of purchase |
 | currency | text | YES | 'USD' | ARS or USD |
-| funded_by | text | YES | 'own' | Capital source (e.g. own, partner name) |
+| funded_by | text | YES | 'own' | Legacy ownership summary for quick display/backward compatibility |
 | notes | text | YES | - | Notes |
 | created_by | text | YES | - | Who created this record |
 | created_at | timestamptz | YES | now() | Created timestamp |
@@ -257,6 +263,56 @@ Purchase orders from suppliers.
 
 **Triggers:**
 - `trg_purchases_updated` – updates `updated_at` on row update
+
+---
+
+### financiers
+
+Structured list of people or entities that can finance purchases.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | bigserial | NO | - | Primary key |
+| code | text | NO | - | Stable unique code |
+| display_name | text | NO | - | Human label shown in admin |
+| active | boolean | NO | true | Whether the financier is selectable |
+| created_at | timestamptz | YES | now() | Created timestamp |
+| updated_at | timestamptz | YES | now() | Updated timestamp |
+
+**Constraints:**
+- Primary key: `id`
+- Unique: `code`
+- Unique: `display_name`
+
+**Triggers:**
+- `trg_financiers_updated` – updates `updated_at` on row update
+
+---
+
+### purchase_financiers
+
+Ownership split per purchase. This is the source of truth for per-person profit attribution.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | bigserial | NO | - | Primary key |
+| purchase_id | text | NO | - | FK → purchases.purchase_id |
+| financier_id | bigint | NO | - | FK → financiers.id |
+| share_pct | numeric(5, 2) | NO | - | Ownership share percentage |
+| created_at | timestamptz | YES | now() | Created timestamp |
+| updated_at | timestamptz | YES | now() | Updated timestamp |
+
+**Constraints:**
+- Primary key: `id`
+- Unique: `(purchase_id, financier_id)`
+- Check: `share_pct > 0 AND share_pct <= 100`
+
+**Indexes:**
+- `idx_purchase_financiers_purchase_id` on `purchase_id`
+- `idx_purchase_financiers_financier_id` on `financier_id`
+
+**Triggers:**
+- `trg_purchase_financiers_updated` – updates `updated_at` on row update
 
 ---
 
@@ -332,6 +388,10 @@ These are the functions actively used by the app and automation after the lean-s
 |------|-------------|
 | `v_stock_summary` | Stock counts per product (in_stock, reserved, sold, total) joined with product info |
 | `v_recent_purchases` | Purchase orders with unit count |
+| `v_realized_sales_daily` | Daily realized revenue, cost, and profit from sold stock units |
+| `v_realized_sales_monthly` | Monthly realized revenue, cost, and profit from sold stock units |
+| `v_financier_profit_daily` | Daily realized revenue/cost/profit split by financier ownership |
+| `v_financier_profit_monthly` | Monthly realized revenue/cost/profit split by financier ownership |
 | `v_customer_context` | Full customer profile for bot context |
 | `v_recent_conversations` | Conversation history |
 | `v_product_catalog` | Customer-facing catalog with pricing/specs plus `color` and `battery_health` sourced from stock or archived fallback metadata |

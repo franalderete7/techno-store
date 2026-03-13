@@ -8,7 +8,7 @@ export type StorefrontDeliveryDetails = {
   deliveryInstructions?: string | null;
 };
 
-const FALLBACK_STOREFRONT_BASE_URL = "https://techno-store-two.vercel.app";
+const FALLBACK_STOREFRONT_BASE_URL = "https://puntotechno.com";
 
 export function getStorefrontBaseUrl() {
   const baseUrl =

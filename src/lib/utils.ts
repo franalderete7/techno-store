@@ -73,3 +73,28 @@ export function isRowLevelSecurityError(error: unknown): boolean {
     message.includes("violates row-level security policy")
   )
 }
+
+export function isMissingRelationError(error: unknown, relationName?: string): boolean {
+  const message = getErrorMessage(error, "").toLowerCase()
+  const relationPattern = relationName ? relationName.toLowerCase() : null
+  return (
+    message.includes("code 42p01") ||
+    message.includes("relation") && message.includes("does not exist") &&
+      (!relationPattern || message.includes(relationPattern))
+  )
+}
+
+export function isMissingColumnError(error: unknown, columnName?: string): boolean {
+  const message = getErrorMessage(error, "").toLowerCase()
+  const columnPattern = columnName ? columnName.toLowerCase() : null
+
+  if (message.includes("code 42703")) {
+    return !columnPattern || message.includes(columnPattern)
+  }
+
+  if (message.includes("schema cache") || message.includes("column")) {
+    return !columnPattern || message.includes(columnPattern)
+  }
+
+  return false
+}

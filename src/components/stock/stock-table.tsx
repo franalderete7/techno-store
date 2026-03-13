@@ -4,13 +4,31 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   getErrorMessage,
+  isMissingColumnError,
+  isMissingRelationError,
   isRowLevelSecurityError,
   parseOptionalNumber,
   parseOptionalText,
 } from "@/lib/utils";
 import type { Product } from "@/types/database";
-import type { StockUnit, StockUnitInsert, StockStatus, Purchase } from "@/types/stock";
+import type {
+  Financier,
+  Purchase,
+  PurchaseFinancier,
+  SaleCurrency,
+  StockStatus,
+  StockUnit,
+  StockUnitInsert,
+} from "@/types/stock";
 import { STOCK_STATUS_OPTIONS } from "@/types/stock";
+import {
+  DEFAULT_USD_RATE,
+  formatSaleDisplay,
+  getFinancierOptions,
+  normalizeSaleCurrency,
+  resolveCostAmountArs,
+  roundMoney,
+} from "@/lib/accounting";
 import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -154,11 +172,14 @@ export function StockTable() {
   const [units, setUnits] = useState<StockUnit[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [financiers, setFinanciers] = useState<Financier[]>([]);
+  const [purchaseFinanciers, setPurchaseFinanciers] = useState<PurchaseFinancier[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus | "all">("all");
   const [showChart, setShowChart] = useState(true);
+  const [ownershipTableReady, setOwnershipTableReady] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<StockUnit | null>(null);
@@ -180,6 +201,16 @@ export function StockTable() {
     () => new Map(purchases.map((purchase) => [purchase.purchase_id, purchase])),
     [purchases]
   );
+  const financierOptions = useMemo(() => getFinancierOptions(financiers), [financiers]);
+  const purchaseFinanciersByPurchaseId = useMemo(() => {
+    const map = new Map<string, PurchaseFinancier[]>();
+    purchaseFinanciers.forEach((share) => {
+      const current = map.get(share.purchase_id) ?? [];
+      current.push(share);
+      map.set(share.purchase_id, current);
+    });
+    return map;
+  }, [purchaseFinanciers]);
 
   const stats = useMemo(() => {
     const s = { total: units.length, in_stock: 0, reserved: 0, sold: 0 };
@@ -217,14 +248,24 @@ export function StockTable() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [stockRes, prodRes, purchRes] = await Promise.all([
+    const [stockRes, prodRes, purchRes, financiersRes, purchaseFinanciersRes] = await Promise.all([
       supabase.from("stock_units").select("*").order("created_at", { ascending: false }),
       supabase.from("products").select("*").order("product_name"),
       supabase.from("purchases").select("*").order("date_purchase", { ascending: false }),
+      supabase.from("financiers").select("*").eq("active", true).order("display_name"),
+      supabase.from("purchase_financiers").select("*").order("purchase_id").order("id"),
     ]);
     setUnits((stockRes.data as StockUnit[]) ?? []);
     setProducts((prodRes.data as Product[]) ?? []);
     setPurchases((purchRes.data as Purchase[]) ?? []);
+    const missingOwnershipTables =
+      isMissingRelationError(financiersRes.error, "financiers") ||
+      isMissingRelationError(purchaseFinanciersRes.error, "purchase_financiers");
+    setOwnershipTableReady(!missingOwnershipTables);
+    setFinanciers((financiersRes.data as Financier[]) ?? []);
+    setPurchaseFinanciers(
+      missingOwnershipTables ? [] : ((purchaseFinanciersRes.data as PurchaseFinancier[]) ?? [])
+    );
     setLoading(false);
   }, []);
 
@@ -249,7 +290,9 @@ export function StockTable() {
       supplier_name: "",
       cost_unit: "",
       cost_currency: "USD",
-      price_sold: "",
+      sale_amount: "",
+      sale_currency: "ARS",
+      sale_fx_rate: "",
       date_received: todayIsoDate(),
       date_sold: "",
       status: "in_stock",
@@ -272,7 +315,13 @@ export function StockTable() {
       supplier_name: unit.supplier_name ?? "",
       cost_unit: unit.cost_unit != null ? String(unit.cost_unit) : "",
       cost_currency: unit.cost_currency ?? "USD",
-      price_sold: unit.price_sold != null ? String(unit.price_sold) : "",
+      sale_amount: unit.sale_amount != null
+        ? String(unit.sale_amount)
+        : unit.price_sold != null
+          ? String(unit.price_sold)
+          : "",
+      sale_currency: normalizeSaleCurrency(unit.sale_currency),
+      sale_fx_rate: unit.sale_fx_rate != null ? String(unit.sale_fx_rate) : "",
       date_received: unit.date_received ?? "",
       date_sold: unit.date_sold ?? "",
       status: unit.status,
@@ -367,6 +416,59 @@ export function StockTable() {
     }
   };
 
+  const selectedFormProduct = useMemo(
+    () => productMap.get(formData.product_key ?? ""),
+    [formData.product_key, productMap]
+  );
+  const selectedSaleCurrency = normalizeSaleCurrency(formData.sale_currency);
+  const selectedSaleFxRate =
+    selectedSaleCurrency === "USD"
+      ? parseOptionalNumber(formData.sale_fx_rate) ??
+        (selectedFormProduct?.usd_rate && selectedFormProduct.usd_rate > 0
+          ? selectedFormProduct.usd_rate
+          : DEFAULT_USD_RATE)
+      : null;
+  const saleAmountPreview = parseOptionalNumber(formData.sale_amount);
+  const saleAmountArsPreview =
+    saleAmountPreview != null
+      ? selectedSaleCurrency === "USD"
+        ? roundMoney(saleAmountPreview * (selectedSaleFxRate ?? DEFAULT_USD_RATE))
+        : saleAmountPreview
+      : null;
+  const costAmountPreview = parseOptionalNumber(formData.cost_unit);
+  const costAmountArsPreview =
+    costAmountPreview != null
+      ? resolveCostAmountArs(
+          {
+            id: editingUnit?.id ?? 0,
+            imei1: formData.imei1 ?? "",
+            imei2: parseOptionalText(formData.imei2),
+            product_key: formData.product_key ?? "",
+            purchase_id: parseOptionalText(formData.purchase_id),
+            supplier_name: parseOptionalText(formData.supplier_name),
+            cost_unit: costAmountPreview,
+            cost_currency: parseOptionalText(formData.cost_currency) ?? "USD",
+            date_received: parseOptionalText(formData.date_received),
+            status: (formData.status as StockStatus) ?? "in_stock",
+            date_sold: parseOptionalText(formData.date_sold),
+            notes: parseOptionalText(formData.notes),
+            created_at: editingUnit?.created_at ?? null,
+            updated_at: editingUnit?.updated_at ?? null,
+            price_sold: editingUnit?.price_sold ?? null,
+            sale_amount: saleAmountPreview,
+            sale_currency: selectedSaleCurrency,
+            sale_fx_rate: selectedSaleFxRate,
+            sale_amount_ars: saleAmountArsPreview,
+            cost_ars_snapshot: editingUnit?.cost_ars_snapshot ?? null,
+            proof_image_urls: editingUnit?.proof_image_urls ?? null,
+            color: parseOptionalText(formData.color),
+            battery_health: parseOptionalNumber(formData.battery_health),
+          },
+          selectedFormProduct,
+          selectedSaleFxRate
+        )
+      : null;
+
   const handleSave = async () => {
     const imei1 = formData.imei1?.trim() ?? "";
     const imei2 = parseOptionalText(formData.imei2);
@@ -394,6 +496,71 @@ export function StockTable() {
     const isSold = status === "sold";
     const dateSold = isSold ? formData.date_sold || editingUnit?.date_sold || todayIsoDate() : null;
     const purchaseId = parseOptionalText(formData.purchase_id);
+    const saleAmount = isSold ? parseOptionalNumber(formData.sale_amount) : null;
+    const saleCurrency = normalizeSaleCurrency(formData.sale_currency);
+    const saleFxRate =
+      isSold && saleCurrency === "USD"
+        ? parseOptionalNumber(formData.sale_fx_rate) ??
+          (selectedFormProduct?.usd_rate && selectedFormProduct.usd_rate > 0
+            ? selectedFormProduct.usd_rate
+            : DEFAULT_USD_RATE)
+        : null;
+
+    if (isSold && !purchaseId) {
+      alert("Link sold units to a purchase so revenue and profit can be attributed to the right financier.");
+      setSaving(false);
+      return;
+    }
+    if (isSold && (saleAmount == null || saleAmount <= 0)) {
+      alert("Sale amount is required when the unit is marked as sold.");
+      setSaving(false);
+      return;
+    }
+    if (isSold && saleCurrency === "USD" && (!saleFxRate || saleFxRate <= 0)) {
+      alert("Add a valid FX rate for USD sales.");
+      setSaving(false);
+      return;
+    }
+
+    const saleAmountArs =
+      isSold && saleAmount != null
+        ? saleCurrency === "USD"
+          ? roundMoney(saleAmount * (saleFxRate ?? DEFAULT_USD_RATE))
+          : saleAmount
+        : null;
+    const costAmount = parseOptionalNumber(formData.cost_unit);
+    const costArsSnapshot =
+      isSold && costAmount != null
+        ? resolveCostAmountArs(
+            {
+              id: editingUnit?.id ?? 0,
+              imei1,
+              imei2,
+              product_key: productKey,
+              purchase_id: purchaseId,
+              supplier_name: purchaseId ? null : parseOptionalText(formData.supplier_name),
+              cost_unit: costAmount,
+              cost_currency: parseOptionalText(formData.cost_currency) ?? "USD",
+              date_received: parseOptionalText(formData.date_received),
+              status: status as StockStatus,
+              date_sold: parseOptionalText(dateSold),
+              notes: parseOptionalText(formData.notes),
+              created_at: editingUnit?.created_at ?? null,
+              updated_at: editingUnit?.updated_at ?? null,
+              price_sold: editingUnit?.price_sold ?? null,
+              sale_amount: saleAmount,
+              sale_currency: saleCurrency,
+              sale_fx_rate: saleFxRate,
+              sale_amount_ars: saleAmountArs,
+              cost_ars_snapshot: editingUnit?.cost_ars_snapshot ?? null,
+              proof_image_urls: editingUnit?.proof_image_urls ?? null,
+              color: parseOptionalText(formData.color),
+              battery_health: parseOptionalNumber(formData.battery_health),
+            },
+            selectedFormProduct,
+            saleFxRate
+          )
+        : null;
     const record: StockUnitInsert = {
       imei1,
       imei2,
@@ -402,9 +569,14 @@ export function StockTable() {
       battery_health: parseOptionalNumber(formData.battery_health),
       purchase_id: purchaseId,
       supplier_name: purchaseId ? null : parseOptionalText(formData.supplier_name),
-      cost_unit: parseOptionalNumber(formData.cost_unit),
+      cost_unit: costAmount,
       cost_currency: parseOptionalText(formData.cost_currency) ?? "USD",
-      price_sold: isSold ? parseOptionalNumber(formData.price_sold) : null,
+      price_sold: saleAmountArs,
+      sale_amount: saleAmount,
+      sale_currency: isSold ? saleCurrency : null,
+      sale_fx_rate: isSold ? saleFxRate : null,
+      sale_amount_ars: saleAmountArs,
+      cost_ars_snapshot: costArsSnapshot,
       date_received: parseOptionalText(formData.date_received),
       status: status as StockStatus,
       date_sold: parseOptionalText(dateSold),
@@ -467,10 +639,22 @@ export function StockTable() {
       ) {
         alert("Database error: run the normalize_inventory_schema.sql migration in Supabase first.");
       } else if (
-        (msg.includes("Could not find the 'proof_image_urls' column") || msg.includes("schema cache")) &&
-        msg.includes("proof_image_urls")
+        isMissingColumnError(err, "proof_image_urls")
       ) {
         alert("Database error: run the stock_proof_images.sql migration in Supabase first.");
+      } else if (
+        isMissingColumnError(err, "sale_amount") ||
+        isMissingColumnError(err, "sale_currency") ||
+        isMissingColumnError(err, "sale_fx_rate") ||
+        isMissingColumnError(err, "sale_amount_ars") ||
+        isMissingColumnError(err, "cost_ars_snapshot")
+      ) {
+        alert("Database error: run supabase/serious_accounting_foundation.sql in Supabase first.");
+      } else if (
+        isMissingRelationError(err, "purchase_financiers") ||
+        isMissingRelationError(err, "financiers")
+      ) {
+        alert("Database error: run supabase/serious_accounting_foundation.sql in Supabase first.");
       } else if (msg.includes("valid_imei1")) {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
@@ -513,6 +697,25 @@ export function StockTable() {
       if (key === "status" && value === "sold" && !next.date_sold) {
         next.date_sold = todayIsoDate();
       }
+      if (key === "sale_currency" && value === "USD" && !next.sale_fx_rate) {
+        const selectedProduct = products.find((product) => product.product_key === next.product_key);
+        next.sale_fx_rate = String(
+          selectedProduct?.usd_rate && selectedProduct.usd_rate > 0
+            ? selectedProduct.usd_rate
+            : DEFAULT_USD_RATE
+        );
+      }
+      if (key === "sale_currency" && value === "ARS") {
+        next.sale_fx_rate = "";
+      }
+      if (key === "product_key" && next.sale_currency === "USD" && !next.sale_fx_rate) {
+        const selectedProduct = products.find((product) => product.product_key === value);
+        next.sale_fx_rate = String(
+          selectedProduct?.usd_rate && selectedProduct.usd_rate > 0
+            ? selectedProduct.usd_rate
+            : DEFAULT_USD_RATE
+        );
+      }
       return next;
     });
   };
@@ -520,11 +723,6 @@ export function StockTable() {
   const fmtPrice = (val: number | null, cur: string | null | undefined) => {
     if (val == null) return "—";
     return `${cur === "ARS" ? "$" : "US$"}${val.toLocaleString("es-AR")}`;
-  };
-
-  const fmtArsPrice = (val: number | null) => {
-    if (val == null) return "—";
-    return `$${val.toLocaleString("es-AR")}`;
   };
 
   return (
@@ -575,7 +773,13 @@ export function StockTable() {
         {/* Sales Chart */}
         {showChart && (
           <div className="mb-4 sm:mb-6">
-            <SalesChart units={units} purchases={purchases} products={products} />
+            <SalesChart
+              units={units}
+              purchases={purchases}
+              products={products}
+              financiers={financierOptions}
+              purchaseFinanciers={ownershipTableReady ? purchaseFinanciers : []}
+            />
           </div>
         )}
 
@@ -642,9 +846,9 @@ export function StockTable() {
                       <span>Cost: {fmtPrice(unit.cost_unit, unit.cost_currency)}</span>
                       {unit.color && <span>Color: {unit.color}</span>}
                       {unit.battery_health != null && <span>Battery: {unit.battery_health}%</span>}
-                      {unit.price_sold != null && (
+                      {(unit.sale_amount != null || unit.price_sold != null) && (
                         <span className="text-emerald-400">
-                          Sold: {fmtArsPrice(unit.price_sold)}
+                          Sold: {formatSaleDisplay(unit)}
                         </span>
                       )}
                       {supplierName && <span>{supplierName}</span>}
@@ -676,7 +880,7 @@ export function StockTable() {
                     <TableHead className="sticky top-0 z-20 bg-background">Battery</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Status</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Cost</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background">Price Sold (ARS)</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-background">Sale</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Supplier</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Purchase</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-background">Received</TableHead>
@@ -703,9 +907,9 @@ export function StockTable() {
                           {fmtPrice(unit.cost_unit, unit.cost_currency)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap">
-                          {unit.price_sold != null ? (
+                          {(unit.sale_amount != null || unit.price_sold != null) ? (
                             <span className="text-emerald-400 font-medium">
-                              {fmtArsPrice(unit.price_sold)}
+                              {formatSaleDisplay(unit)}
                             </span>
                           ) : "—"}
                         </TableCell>
@@ -1039,23 +1243,45 @@ export function StockTable() {
               <div className="mb-3">
                 <p className="text-sm font-medium">Sale details</p>
                 <p className="text-xs text-muted-foreground">
-                  These fields drive the sales chart and should be set when the unit is sold.
+                  These fields drive realized revenue and profit. Use the real sale currency, not a guessed ARS conversion.
                 </p>
               </div>
+              {!ownershipTableReady && (
+                <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+                  Run <span className="font-mono">supabase/serious_accounting_foundation.sql</span> before saving sold units if you want correct sale currency, FX snapshots, and financier profit reporting.
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className="text-xs sm:text-sm">Price Sold (ARS)</Label>
+                  <Label className="text-xs sm:text-sm">Sale Amount</Label>
                   <Input
                     type="number"
                     inputMode="decimal"
-                    value={formData.price_sold ?? ""}
-                    onChange={(e) => updateForm("price_sold", e.target.value)}
-                    placeholder="ARS"
+                    value={formData.sale_amount ?? ""}
+                    onChange={(e) => updateForm("sale_amount", e.target.value)}
+                    placeholder="0.00"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Your schema stores <span className="font-medium text-foreground">price_sold</span> in ARS.
+                    Enter the actual sale amount in the chosen currency.
                   </p>
                 </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">Sale Currency</Label>
+                  <Select value={formData.sale_currency ?? "ARS"} onValueChange={(v) => updateForm("sale_currency", v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ARS">ARS</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    This decides how revenue is converted into ARS for the chart.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs sm:text-sm">Date Sold</Label>
                   <Input
@@ -1066,6 +1292,36 @@ export function StockTable() {
                   <p className="text-[11px] text-muted-foreground">
                     If status is Sold and this is empty, today is used.
                   </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs sm:text-sm">FX Rate</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    value={formData.sale_fx_rate ?? ""}
+                    onChange={(e) => updateForm("sale_fx_rate", e.target.value)}
+                    placeholder={selectedSaleCurrency === "USD" ? String(selectedFormProduct?.usd_rate ?? DEFAULT_USD_RATE) : "Not needed for ARS"}
+                    disabled={selectedSaleCurrency !== "USD"}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {selectedSaleCurrency === "USD"
+                      ? "Used to freeze ARS revenue and cost snapshots for this sale."
+                      : "Only needed when the sale is in USD."}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-md border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+                <div className="flex items-center justify-between gap-4">
+                  <span>Revenue snapshot (ARS)</span>
+                  <span className="font-medium text-foreground">
+                    {saleAmountArsPreview != null ? `$${saleAmountArsPreview.toLocaleString("es-AR", { maximumFractionDigits: 2 })}` : "—"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-4">
+                  <span>Cost snapshot (ARS)</span>
+                  <span className="font-medium text-foreground">
+                    {costAmountArsPreview != null ? `$${costAmountArsPreview.toLocaleString("es-AR", { maximumFractionDigits: 2 })}` : "—"}
+                  </span>
                 </div>
               </div>
             </div>

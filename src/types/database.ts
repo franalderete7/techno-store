@@ -303,6 +303,33 @@ export interface Database {
         };
         Relationships: [];
       };
+      "financiers": {
+        Row: {
+          "id": number;
+          "code": string;
+          "display_name": string;
+          "active": boolean;
+          "created_at": string | null;
+          "updated_at": string | null;
+        };
+        Insert: {
+          "id"?: number | null;
+          "code": string;
+          "display_name": string;
+          "active"?: boolean | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Update: {
+          "id"?: number | null;
+          "code"?: string | null;
+          "display_name"?: string | null;
+          "active"?: boolean | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Relationships: [];
+      };
       "products": {
         Row: {
           "id": number;
@@ -399,6 +426,33 @@ export interface Database {
           "image_url"?: string | null;
           "condition"?: string | null;
           "pricing_source_stock_unit_id"?: number | null;
+        };
+        Relationships: [];
+      };
+      "purchase_financiers": {
+        Row: {
+          "id": number;
+          "purchase_id": string;
+          "financier_id": number;
+          "share_pct": number;
+          "created_at": string | null;
+          "updated_at": string | null;
+        };
+        Insert: {
+          "id"?: number | null;
+          "purchase_id": string;
+          "financier_id": number;
+          "share_pct": number;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
+        };
+        Update: {
+          "id"?: number | null;
+          "purchase_id"?: string | null;
+          "financier_id"?: number | null;
+          "share_pct"?: number | null;
+          "created_at"?: string | null;
+          "updated_at"?: string | null;
         };
         Relationships: [];
       };
@@ -557,6 +611,11 @@ export interface Database {
           "created_at": string | null;
           "updated_at": string | null;
           "price_sold": number | null;
+          "sale_amount": number | null;
+          "sale_currency": string | null;
+          "sale_fx_rate": number | null;
+          "sale_amount_ars": number | null;
+          "cost_ars_snapshot": number | null;
           "proof_image_urls": string[] | null;
           "color": string | null;
           "battery_health": number | null;
@@ -577,6 +636,11 @@ export interface Database {
           "created_at"?: string | null;
           "updated_at"?: string | null;
           "price_sold"?: number | null;
+          "sale_amount"?: number | null;
+          "sale_currency"?: string | null;
+          "sale_fx_rate"?: number | null;
+          "sale_amount_ars"?: number | null;
+          "cost_ars_snapshot"?: number | null;
           "proof_image_urls"?: string[] | null;
           "color"?: string | null;
           "battery_health"?: number | null;
@@ -597,6 +661,11 @@ export interface Database {
           "created_at"?: string | null;
           "updated_at"?: string | null;
           "price_sold"?: number | null;
+          "sale_amount"?: number | null;
+          "sale_currency"?: string | null;
+          "sale_fx_rate"?: number | null;
+          "sale_amount_ars"?: number | null;
+          "cost_ars_snapshot"?: number | null;
           "proof_image_urls"?: string[] | null;
           "color"?: string | null;
           "battery_health"?: number | null;
@@ -915,9 +984,17 @@ export type Customer = Database["public"]["Tables"]["customers"]["Row"];
 export type CustomerInsert = Database["public"]["Tables"]["customers"]["Insert"];
 export type CustomerUpdate = Database["public"]["Tables"]["customers"]["Update"];
 
+export type Financier = Database["public"]["Tables"]["financiers"]["Row"];
+export type FinancierInsert = Database["public"]["Tables"]["financiers"]["Insert"];
+export type FinancierUpdate = Database["public"]["Tables"]["financiers"]["Update"];
+
 export type Product = Database["public"]["Tables"]["products"]["Row"];
 export type ProductInsert = Database["public"]["Tables"]["products"]["Insert"];
 export type ProductUpdate = Database["public"]["Tables"]["products"]["Update"];
+
+export type PurchaseFinancier = Database["public"]["Tables"]["purchase_financiers"]["Row"];
+export type PurchaseFinancierInsert = Database["public"]["Tables"]["purchase_financiers"]["Insert"];
+export type PurchaseFinancierUpdate = Database["public"]["Tables"]["purchase_financiers"]["Update"];
 
 export type Purchase = Database["public"]["Tables"]["purchases"]["Row"];
 export type PurchaseInsert = Database["public"]["Tables"]["purchases"]["Insert"];

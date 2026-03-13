@@ -4,15 +4,30 @@ import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type
 import { supabase } from "@/lib/supabase";
 import {
   getErrorMessage,
+  isMissingRelationError,
   isRowLevelSecurityError,
   parseOptionalNumber,
   parseOptionalText,
 } from "@/lib/utils";
 import type { Product, PurchaseInsert as DbPurchaseInsert } from "@/types/database";
 import type {
-  Purchase, PurchaseInsert, StockUnit, StockUnitInsert, PaymentMethod, PaymentStatus,
+  Financier,
+  Purchase,
+  PurchaseInsert,
+  PurchaseFinancier,
+  StockUnit,
+  StockUnitInsert,
+  PaymentMethod,
+  PaymentStatus,
 } from "@/types/stock";
 import { PAYMENT_METHOD_OPTIONS, PAYMENT_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/types/stock";
+import {
+  buildOwnershipShares,
+  formatOwnershipSummary,
+  getFinancierOptions,
+  type OwnershipShareInput,
+  validateOwnershipInputs,
+} from "@/lib/accounting";
 import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -30,7 +45,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Loader2, Search, Eye, PackagePlus } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search, Eye, PackagePlus, X } from "lucide-react";
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const colors: Record<PaymentStatus, string> = {
@@ -103,15 +118,19 @@ function stopRowEvent(event: MouseEvent<HTMLElement>) {
 export function PurchasesTable() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [financiers, setFinanciers] = useState<Financier[]>([]);
+  const [purchaseFinanciers, setPurchaseFinanciers] = useState<PurchaseFinancier[]>([]);
   const [unitCounts, setUnitCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [ownershipTableReady, setOwnershipTableReady] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [deletePurchase, setDeletePurchase] = useState<Purchase | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [ownershipRows, setOwnershipRows] = useState<OwnershipShareInput[]>([{ financierId: null, sharePct: 100 }]);
 
   // Detail view
   const [detailPurchase, setDetailPurchase] = useState<Purchase | null>(null);
@@ -123,6 +142,57 @@ export function PurchasesTable() {
   const [addUnitPurchase, setAddUnitPurchase] = useState<Purchase | null>(null);
   const [unitForm, setUnitForm] = useState<Record<string, string>>({});
 
+  const financierOptions = useMemo(() => getFinancierOptions(financiers), [financiers]);
+  const financierMap = useMemo(
+    () => new Map(financierOptions.map((financier) => [financier.id, financier])),
+    [financierOptions]
+  );
+  const purchaseFinanciersByPurchaseId = useMemo(() => {
+    const byPurchaseId = new Map<string, PurchaseFinancier[]>();
+    purchaseFinanciers.forEach((share) => {
+      const current = byPurchaseId.get(share.purchase_id) ?? [];
+      current.push(share);
+      byPurchaseId.set(share.purchase_id, current);
+    });
+    return byPurchaseId;
+  }, [purchaseFinanciers]);
+
+  const resolveLegacyFinancierId = (value: string | null | undefined) => {
+    const trimmed = value?.trim();
+    if (!trimmed) return null;
+
+    const normalized = trimmed.toLocaleLowerCase("es-AR");
+    const matched = financierOptions.find(
+      (financier) =>
+        financier.display_name.toLocaleLowerCase("es-AR") === normalized ||
+        financier.code.toLocaleLowerCase("es-AR") === normalized
+    );
+
+    return matched?.id ?? null;
+  };
+
+  const buildOwnershipDraft = (purchase?: Purchase | null): OwnershipShareInput[] => {
+    if (!purchase) return [{ financierId: null, sharePct: 100 }];
+
+    const shares = buildOwnershipShares(
+      purchase,
+      purchaseFinanciersByPurchaseId.get(purchase.purchase_id) ?? [],
+      financierMap
+    );
+
+    return shares.map((share) => ({
+      financierId: share.financierId ?? resolveLegacyFinancierId(share.label),
+      sharePct: share.sharePct,
+    }));
+  };
+
+  const getOwnershipSummary = (purchase: Purchase) =>
+    formatOwnershipSummary(
+      purchase,
+      purchaseFinanciersByPurchaseId.get(purchase.purchase_id) ?? [],
+      financierMap
+    );
+
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return purchases;
     const q = searchQuery.toLowerCase();
@@ -130,16 +200,19 @@ export function PurchasesTable() {
       (p) =>
         p.purchase_id.toLowerCase().includes(q) ||
         p.supplier_name.toLowerCase().includes(q) ||
+        getOwnershipSummary(p).toLowerCase().includes(q) ||
         (p.notes ?? "").toLowerCase().includes(q)
     );
-  }, [purchases, searchQuery]);
+  }, [purchases, searchQuery, purchaseFinanciersByPurchaseId, financierMap]);
 
   const fetchAll = async () => {
     setLoading(true);
-    const [purchRes, prodRes, countRes] = await Promise.all([
+    const [purchRes, prodRes, countRes, financiersRes, purchaseFinanciersRes] = await Promise.all([
       supabase.from("purchases").select("*").order("date_purchase", { ascending: false }),
       supabase.from("products").select("*").order("product_name"),
       supabase.from("stock_units").select("purchase_id"),
+      supabase.from("financiers").select("*").eq("active", true).order("display_name"),
+      supabase.from("purchase_financiers").select("*").order("purchase_id").order("id"),
     ]);
     setPurchases((purchRes.data as Purchase[]) ?? []);
     setProducts((prodRes.data as Product[]) ?? []);
@@ -149,6 +222,18 @@ export function PurchasesTable() {
       if (u.purchase_id) counts.set(u.purchase_id, (counts.get(u.purchase_id) ?? 0) + 1);
     });
     setUnitCounts(counts);
+
+    const financiersError = financiersRes.error;
+    const purchaseFinanciersError = purchaseFinanciersRes.error;
+    const missingOwnershipTables =
+      isMissingRelationError(financiersError, "financiers") ||
+      isMissingRelationError(purchaseFinanciersError, "purchase_financiers");
+
+    setOwnershipTableReady(!missingOwnershipTables);
+    setFinanciers((financiersRes.data as Financier[]) ?? []);
+    setPurchaseFinanciers(
+      missingOwnershipTables ? [] : ((purchaseFinanciersRes.data as PurchaseFinancier[]) ?? [])
+    );
     setLoading(false);
   };
 
@@ -167,6 +252,7 @@ export function PurchasesTable() {
       notes: "",
       created_by: "",
     });
+    setOwnershipRows([{ financierId: null, sharePct: 100 }]);
     setDialogOpen(true);
   };
 
@@ -183,6 +269,7 @@ export function PurchasesTable() {
       notes: purchase.notes ?? "",
       created_by: purchase.created_by ?? "",
     });
+    setOwnershipRows(buildOwnershipDraft(purchase));
     setDialogOpen(true);
   };
 
@@ -214,11 +301,58 @@ export function PurchasesTable() {
     setAddUnitOpen(true);
   };
 
+  const addOwnershipRow = () => {
+    setOwnershipRows((prev) => [...prev, { financierId: null, sharePct: 0 }]);
+  };
+
+  const updateOwnershipRow = (index: number, patch: Partial<OwnershipShareInput>) => {
+    setOwnershipRows((prev) =>
+      prev.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row))
+    );
+  };
+
+  const removeOwnershipRow = (index: number) => {
+    setOwnershipRows((prev) => {
+      if (prev.length === 1) return prev;
+      return prev.filter((_, rowIndex) => rowIndex !== index);
+    });
+  };
+
   const handleSave = async () => {
     if (!formData.supplier_name?.trim()) {
       alert("Supplier is required.");
       return;
     }
+
+    const ownershipValidation = validateOwnershipInputs(ownershipRows);
+    if (ownershipValidation.rows.length === 0 || ownershipValidation.hasMissingFinancier) {
+      alert("Choose at least one financier for this purchase.");
+      return;
+    }
+    if (ownershipValidation.hasDuplicates) {
+      alert("Each financier should appear only once per purchase.");
+      return;
+    }
+    if (ownershipValidation.hasNonPositiveShare) {
+      alert("Every financier share must be greater than 0.");
+      return;
+    }
+    if (Math.abs(ownershipValidation.totalPct - 100) > 0.01) {
+      alert("Financier shares must total exactly 100%.");
+      return;
+    }
+    if (!ownershipTableReady && ownershipValidation.rows.length > 1) {
+      alert("Run supabase/serious_accounting_foundation.sql first to save split financing.");
+      return;
+    }
+
+    const ownershipLabels = ownershipValidation.rows.map((row) => {
+      const financier = financierMap.get(row.financierId ?? 0);
+      return financier?.display_name ?? "Unknown financier";
+    });
+    const fundedBySummary =
+      ownershipLabels.length === 1 ? ownershipLabels[0] : ownershipLabels.join(" · ");
+
     setSaving(true);
     const record: Record<string, unknown> = {
       date_purchase: formData.date_purchase || new Date().toISOString().split("T")[0],
@@ -227,25 +361,62 @@ export function PurchasesTable() {
       payment_status: formData.payment_status || "pending",
       total_cost: formData.total_cost ? parseFloat(formData.total_cost) : null,
       currency: formData.currency || "USD",
-      funded_by: formData.funded_by?.trim() || null,
+      funded_by: fundedBySummary,
       notes: formData.notes?.trim() || null,
       created_by: formData.created_by?.trim() || null,
     };
 
     try {
+      let savedPurchase: Purchase | null = editingPurchase;
       if (editingPurchase) {
-        const { error } = await supabase.from("purchases").update(record).eq("id", editingPurchase.id);
+        const { data, error } = await supabase
+          .from("purchases")
+          .update(record)
+          .eq("id", editingPurchase.id)
+          .select("*")
+          .single();
         if (error) throw error;
+        savedPurchase = data as Purchase;
       } else {
         // purchase_id is auto-generated by the database trigger
-        const { error } = await supabase.from("purchases").insert(record as unknown as DbPurchaseInsert);
+        const { data, error } = await supabase
+          .from("purchases")
+          .insert(record as unknown as DbPurchaseInsert)
+          .select("*")
+          .single();
         if (error) throw error;
+        savedPurchase = data as Purchase;
+      }
+
+      if (savedPurchase && ownershipTableReady) {
+        const purchaseId = savedPurchase.purchase_id;
+        const { error: deleteOwnershipError } = await supabase
+          .from("purchase_financiers")
+          .delete()
+          .eq("purchase_id", purchaseId);
+        if (deleteOwnershipError) throw deleteOwnershipError;
+
+        const ownershipInserts = ownershipValidation.rows.map((row) => ({
+          purchase_id: purchaseId,
+          financier_id: row.financierId as number,
+          share_pct: row.sharePct,
+        }));
+        const { error: insertOwnershipError } = await supabase
+          .from("purchase_financiers")
+          .insert(ownershipInserts);
+        if (insertOwnershipError) throw insertOwnershipError;
       }
       setDialogOpen(false);
       setEditingPurchase(null);
+      setOwnershipRows([{ financierId: null, sharePct: 100 }]);
       fetchAll();
     } catch (err: unknown) {
-      if (isRowLevelSecurityError(err)) {
+      if (
+        isMissingRelationError(err, "purchase_financiers") ||
+        isMissingRelationError(err, "financiers")
+      ) {
+        alert("Database error: run supabase/serious_accounting_foundation.sql in Supabase first.");
+      } else if (isRowLevelSecurityError(err)) {
         alert("RLS blocked this purchase save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for purchases.");
       } else {
         alert(getErrorMessage(err, "Unexpected error saving purchase."));
@@ -257,6 +428,10 @@ export function PurchasesTable() {
 
   const handleDelete = async () => {
     if (!deletePurchase) return;
+    if ((unitCounts.get(deletePurchase.purchase_id) ?? 0) > 0) {
+      alert("This purchase still has linked stock units. Reassign or archive those units before deleting the purchase.");
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("purchases").delete().eq("id", deletePurchase.id);
     setSaving(false);
@@ -340,6 +515,10 @@ export function PurchasesTable() {
   const updateUnitForm = (key: string, value: string) => setUnitForm((prev) => ({ ...prev, [key]: value }));
 
   const productMap = useMemo(() => new Map(products.map((p) => [p.product_key, p])), [products]);
+  const ownershipDraftValidation = useMemo(
+    () => validateOwnershipInputs(ownershipRows),
+    [ownershipRows]
+  );
 
   return (
     <div className="min-h-screen bg-background px-3 py-4 sm:px-6 sm:py-6">
@@ -403,7 +582,7 @@ export function PurchasesTable() {
                       {formatMoney(p.total_cost, p.currency)}
                     </span>
                     <span>{formatPaymentMethodLabel(p.payment_method)}</span>
-                    {p.funded_by && <span>Funded: {p.funded_by}</span>}
+                    <span>Funded: {getOwnershipSummary(p)}</span>
                     <span>
                       <Badge variant="secondary" className="text-[10px]">
                         {unitCounts.get(p.purchase_id) ?? 0} units
@@ -491,7 +670,7 @@ export function PurchasesTable() {
                       <TableCell className="whitespace-nowrap">
                         {formatMoney(p.total_cost, p.currency)}
                       </TableCell>
-                      <TableCell className="text-sm">{p.funded_by ?? "—"}</TableCell>
+                      <TableCell className="max-w-[220px] text-sm">{getOwnershipSummary(p)}</TableCell>
                       <TableCell>
                         <Badge variant="secondary">{unitCounts.get(p.purchase_id) ?? 0}</Badge>
                       </TableCell>
@@ -552,7 +731,16 @@ export function PurchasesTable() {
       </div>
 
       {/* Add/Edit Purchase Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditingPurchase(null); } }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDialogOpen(false);
+            setEditingPurchase(null);
+            setOwnershipRows([{ financierId: null, sharePct: 100 }]);
+          }
+        }}
+      >
         <DialogContent className="max-h-[95vh] overflow-y-auto p-4 sm:max-w-xl sm:p-6">
           <DialogHeader>
             <DialogTitle>{editingPurchase ? "Edit Purchase" : "New Purchase"}</DialogTitle>
@@ -629,23 +817,85 @@ export function PurchasesTable() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Funded By</Label>
-                <Input
-                  value={formData.funded_by ?? ""}
-                  onChange={(e) => updateForm("funded_by", e.target.value)}
-                  placeholder="e.g. Aldo, Partner, Shared"
-                />
+            <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Financing Ownership</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Profit from all units in this purchase follows these ownership shares.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addOwnershipRow}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Add
+                </Button>
               </div>
+
+              {!ownershipTableReady && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  Run <span className="font-mono">supabase/serious_accounting_foundation.sql</span> to persist split financing professionally.
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label>Created By</Label>
-                <Input
-                  value={formData.created_by ?? ""}
-                  onChange={(e) => updateForm("created_by", e.target.value)}
-                  placeholder="Your name"
-                />
+                {ownershipRows.map((row, index) => (
+                  <div key={`${index}-${row.financierId ?? "unset"}`} className="grid grid-cols-[minmax(0,1fr)_108px_40px] gap-2">
+                    <Select
+                      value={row.financierId != null ? String(row.financierId) : "__unset__"}
+                      onValueChange={(value) =>
+                        updateOwnershipRow(index, {
+                          financierId: value === "__unset__" ? null : Number(value),
+                        })
+                      }
+                    >
+                      <SelectTrigger><SelectValue placeholder="Choose financier" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__unset__">Choose financier</SelectItem>
+                        {financierOptions.map((financier) => (
+                          <SelectItem key={financier.id} value={String(financier.id)}>
+                            {financier.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={String(row.sharePct)}
+                      onChange={(event) =>
+                        updateOwnershipRow(index, {
+                          sharePct: parseOptionalNumber(event.target.value) ?? 0,
+                        })
+                      }
+                      placeholder="%"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={ownershipRows.length === 1}
+                      onClick={() => removeOwnershipRow(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
+
+              <p className={`text-xs ${Math.abs(ownershipDraftValidation.totalPct - 100) < 0.01 ? "text-muted-foreground" : "text-amber-600 dark:text-amber-300"}`}>
+                Total share: {ownershipDraftValidation.totalPct.toFixed(ownershipDraftValidation.totalPct % 1 === 0 ? 0 : 2)}%
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Created By</Label>
+              <Input
+                value={formData.created_by ?? ""}
+                onChange={(e) => updateForm("created_by", e.target.value)}
+                placeholder="Your name"
+              />
             </div>
 
             <div className="space-y-2">
@@ -659,7 +909,16 @@ export function PurchasesTable() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingPurchase(null); }}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                setEditingPurchase(null);
+                setOwnershipRows([{ financierId: null, sharePct: 100 }]);
+              }}
+            >
+              Cancel
+            </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingPurchase ? "Save" : "Create"}
@@ -693,7 +952,7 @@ export function PurchasesTable() {
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   <PurchaseDetailField label="Payment Method" value={formatPaymentMethodLabel(detailPurchase.payment_method)} />
                   <PurchaseDetailField label="Payment Status" value={<PaymentStatusBadge status={normalizePaymentStatus(detailPurchase.payment_status)} />} />
-                  <PurchaseDetailField label="Funded By" value={detailPurchase.funded_by ?? "—"} />
+                  <PurchaseDetailField label="Funded By" value={getOwnershipSummary(detailPurchase)} />
                 </div>
                 {detailPurchase.notes ? (
                   <div className="rounded-lg border bg-muted/20 p-3">
@@ -878,7 +1137,7 @@ export function PurchasesTable() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Purchase</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete purchase {deletePurchase?.purchase_id}? Units linked to it will keep their data but lose the purchase reference.
+              Delete purchase {deletePurchase?.purchase_id}? Purchases with linked units should be kept for audit and profit attribution.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
