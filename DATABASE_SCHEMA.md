@@ -140,7 +140,7 @@ Product catalog with pricing, logistics, and delivery info. This is the **price 
 | bancarizada_interest | numeric(4, 2) | YES | 0.50 | Bancarizada interest % |
 | macro_total | numeric(12, 2) | YES | - | Macro total |
 | macro_cuota | numeric(12, 2) | YES | - | Macro cuota |
-| macro_interest | numeric(4, 2) | YES | 0.35 | Macro interest % |
+| macro_interest | numeric(4, 2) | YES | 0.40 | Macro interest % |
 | cuotas_qty | integer | YES | 6 | Number of installments |
 | in_stock | boolean | YES | true | Whether product is in stock |
 | delivery_type | text | YES | 'immediate' | Delivery type (immediate, scheduled, pickup) |

@@ -260,7 +260,7 @@ const QUICK_ADD_ADVANCED_COLUMNS = EDITABLE_COLUMNS.filter(
 const DEFAULT_VALUES: Partial<ProductInsert> = {
   logistics_usd: 10,
   bancarizada_interest: 0.5,
-  macro_interest: 0.35,
+  macro_interest: 0.4,
   cuotas_qty: 6,
   in_stock: false,
   delivery_type: "immediate",
@@ -511,7 +511,7 @@ function buildQuickAddPreview(
   const usdRate = Number(DEFAULT_VALUES.usd_rate ?? 1460);
   const cuotasQty = Number(DEFAULT_VALUES.cuotas_qty ?? 6);
   const bancarizadaInterest = Number(DEFAULT_VALUES.bancarizada_interest ?? 0.5);
-  const macroInterest = Number(DEFAULT_VALUES.macro_interest ?? 0.35);
+  const macroInterest = Number(DEFAULT_VALUES.macro_interest ?? 0.4);
   const marginBand = getPricingBand(costUsd);
 
   const totalCostUsd = roundUsdAmount(costUsd + logisticsUsd);

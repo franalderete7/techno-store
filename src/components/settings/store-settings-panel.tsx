@@ -142,7 +142,7 @@ const SETTING_DEFINITIONS: SettingDefinition[] = [
     key: "customer_cards_blocked",
     label: "Blocked Cards",
     section: "payments",
-    placeholder: "subcredito",
+    placeholder: "SuCredito",
     helpText: "Comma-separated blocked financing brands.",
   },
   {
@@ -241,8 +241,8 @@ const SETTING_DEFINITIONS: SettingDefinition[] = [
     section: "pricing",
     kind: "number",
     step: "0.01",
-    placeholder: "0.35",
-    helpText: "Use decimal form: 0.35 means 35%.",
+    placeholder: "0.40",
+    helpText: "Use decimal form: 0.40 means 40%.",
   },
   {
     key: "pricing_margin_band_1_max_cost_usd",
@@ -343,8 +343,8 @@ const SETTING_DEFINITIONS: SettingDefinition[] = [
     section: "legacy",
     kind: "number",
     step: "0.01",
-    placeholder: "0.35",
-    helpText: "Use decimal form: 0.35 means 35%.",
+    placeholder: "0.40",
+    helpText: "Use decimal form: 0.40 means 40%.",
   },
   {
     key: "iphone_delivery_days",
@@ -511,7 +511,7 @@ export function StoreSettingsPanel() {
             <p className="max-w-3xl text-sm text-muted-foreground">
               These values feed the storefront, pricing defaults, and WhatsApp workflows directly.
               Text values save exactly as written. Decimal percentages use values like{" "}
-              <span className="font-mono">0.35</span> for 35%.
+              <span className="font-mono">0.40</span> for 40%.
             </p>
           </div>
 
