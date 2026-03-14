@@ -49,8 +49,8 @@ export default async function AdminLoginPage() {
               <p className="font-medium text-white">Admin</p>
               <p className="mt-1">
                 {adminOnSubdomain
-                  ? "`/`, `/stock`, `/purchases`, `/crm`, `/login`."
-                  : "`/admin`, `/admin/stock`, `/admin/purchases`, `/admin/crm`."}
+                  ? "`/`, `/stock`, `/purchases`, `/crm`, `/settings`, `/login`."
+                  : "`/admin`, `/admin/stock`, `/admin/purchases`, `/admin/crm`, `/admin/settings`."}
               </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
