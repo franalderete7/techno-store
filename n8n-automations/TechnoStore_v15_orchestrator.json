@@ -830,7 +830,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $input.first().json;\nconst metadata = data.metadata || {};\n\nconst saveNode = $('Save Incoming Message').first();\nlet savedId = null;\nconst savedBody = saveNode.json;\nif (Array.isArray(savedBody) && savedBody.length > 0) {\n  savedId = savedBody[0]?.id;\n} else if (savedBody && savedBody.id) {\n  savedId = savedBody.id;\n}\n\nconst intent = String(metadata.intent || '').trim();\nif (!savedId || !intent) {\n  return [];\n}\n\nreturn [{\n  json: {\n    message_id: savedId,\n    intent\n  }\n}];\n"
+        "jsCode": "const data = $('Process AI Response').first().json;\nconst metadata = data.metadata || {};\nconst customerUpdate = $('Prep Customer Update').first().json || {};\nconst updates = customerUpdate.updates || {};\n\nconst toIntOrNull = (value) => {\n  const n = Number(value);\n  return Number.isFinite(n) ? n : null;\n};\n\nconst extractCustomerId = (raw) => {\n  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;\n  if (typeof raw === 'string') return toIntOrNull(raw);\n  if (Array.isArray(raw) && raw.length > 0) {\n    const first = raw[0];\n    if (typeof first === 'number' && Number.isFinite(first)) return first;\n    if (typeof first === 'string') return toIntOrNull(first);\n    if (first && typeof first === 'object') {\n      if (first.upsert_customer !== undefined && first.upsert_customer !== null) return toIntOrNull(first.upsert_customer);\n      if (first.customer_id !== undefined && first.customer_id !== null) return toIntOrNull(first.customer_id);\n      if (first.id !== undefined && first.id !== null) return toIntOrNull(first.id);\n    }\n  }\n  if (raw && typeof raw === 'object') {\n    if (raw.upsert_customer !== undefined && raw.upsert_customer !== null) return toIntOrNull(raw.upsert_customer);\n    if (raw.customer_id !== undefined && raw.customer_id !== null) return toIntOrNull(raw.customer_id);\n    if (raw.id !== undefined && raw.id !== null) return toIntOrNull(raw.id);\n  }\n  return null;\n};\n\nconst saveNode = $('Save Incoming Message').first();\nlet savedId = null;\nconst savedBody = saveNode.json;\nif (Array.isArray(savedBody) && savedBody.length > 0) {\n  savedId = savedBody[0]?.id;\n} else if (savedBody && savedBody.id) {\n  savedId = savedBody.id;\n}\n\nconst upsertNode = $('Upsert Customer').first();\nconst customerId = toIntOrNull(data.customer_id) ?? extractCustomerId(upsertNode.json);\nconst parsedMessageId = toIntOrNull(savedId);\nif (!Number.isFinite(parsedMessageId)) {\n  return [];\n}\n\nconst leadScore = toIntOrNull(updates.lead_score);\n\nreturn [{\n  json: {\n    message_id: parsedMessageId,\n    customer_id: Number.isFinite(customerId) ? customerId : null,\n    intent_detected: String(metadata.intent || '').trim() || null,\n    products_mentioned: Array.isArray(data.products_list) ? data.products_list : [],\n    applied_tags: Array.isArray(customerUpdate.conversation_applied_tags) ? customerUpdate.conversation_applied_tags : [],\n    payment_methods_detected: Array.isArray(data.payment_methods_detected) ? data.payment_methods_detected : [],\n    brands_detected: Array.isArray(data.brands_mentioned) ? data.brands_mentioned : [],\n    topics_detected: Array.isArray(data.topics_mentioned) ? data.topics_mentioned : [],\n    funnel_stage_after: String(updates.funnel_stage || data.current_funnel_stage || '').trim() || null,\n    triggered_human: data.needs_human === true,\n    conversation_summary: String(customerUpdate.conversation_summary || '').trim() || null,\n    conversation_insights: Array.isArray(customerUpdate.conversation_insights) ? customerUpdate.conversation_insights : [],\n    lead_score_after: Number.isFinite(leadScore) ? leadScore : null\n  }\n}];\n"
       },
       "id": "240ee610-0e44-4499-8592-361394f3258c",
       "name": "Backfill User Intent",
@@ -868,7 +868,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ intent_detected: $json.intent }) }}",
+        "jsonBody": "={{ JSON.stringify({ customer_id: $json.customer_id !== undefined && $json.customer_id !== null ? $json.customer_id : null, intent_detected: $json.intent_detected !== undefined && $json.intent_detected !== null ? $json.intent_detected : null, products_mentioned: $json.products_mentioned || [], applied_tags: $json.applied_tags || [], payment_methods_detected: $json.payment_methods_detected || [], brands_detected: $json.brands_detected || [], topics_detected: $json.topics_detected || [], funnel_stage_after: $json.funnel_stage_after !== undefined && $json.funnel_stage_after !== null ? $json.funnel_stage_after : null, triggered_human: $json.triggered_human === true, conversation_summary: $json.conversation_summary !== undefined && $json.conversation_summary !== null ? $json.conversation_summary : null, conversation_insights: $json.conversation_insights || [], lead_score_after: $json.lead_score_after !== undefined && $json.lead_score_after !== null ? $json.lead_score_after : null }) }}",
         "options": {
           "timeout": 5000
         }
@@ -922,7 +922,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ customer_id: $json.customer_id, intent_detected: $(\"Process AI Response\").first().json.metadata?.intent || null, products_mentioned: $(\"Process AI Response\").first().json.products_list || [], applied_tags: $(\"Prep Customer Update\").first().json.conversation_applied_tags || [], payment_methods_detected: $(\"Process AI Response\").first().json.payment_methods_detected || [], brands_detected: $(\"Process AI Response\").first().json.brands_mentioned || [], topics_detected: $(\"Process AI Response\").first().json.topics_mentioned || [], funnel_stage_after: $(\"Prep Customer Update\").first().json.updates?.funnel_stage || $(\"Process AI Response\").first().json.current_funnel_stage || null, triggered_human: $(\"Process AI Response\").first().json.needs_human === true, conversation_summary: $(\"Prep Customer Update\").first().json.conversation_summary || null, conversation_insights: $(\"Prep Customer Update\").first().json.conversation_insights || [], lead_score_after: $(\"Prep Customer Update\").first().json.updates?.lead_score || null }) }}",
+        "jsonBody": "={{ JSON.stringify({ customer_id: $json.customer_id !== undefined && $json.customer_id !== null ? $json.customer_id : null }) }}",
         "options": {
           "timeout": 10000
         }
@@ -1388,11 +1388,6 @@
             "node": "Prep Customer Update",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Backfill User Intent",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -1424,6 +1419,11 @@
         [
           {
             "node": "Increment Interaction",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Backfill User Intent",
             "type": "main",
             "index": 0
           }
