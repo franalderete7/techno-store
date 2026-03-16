@@ -704,6 +704,30 @@ export interface Database {
         };
         Relationships: [];
       };
+      "storefront_order_unit_assignments": {
+        Row: {
+          "id": number;
+          "order_item_id": number;
+          "stock_unit_id": number;
+          "assigned_at": string;
+          "assigned_by_user_id": string | null;
+        };
+        Insert: {
+          "id"?: number | null;
+          "order_item_id": number;
+          "stock_unit_id": number;
+          "assigned_at"?: string | null;
+          "assigned_by_user_id"?: string | null;
+        };
+        Update: {
+          "id"?: number | null;
+          "order_item_id"?: number | null;
+          "stock_unit_id"?: number | null;
+          "assigned_at"?: string | null;
+          "assigned_by_user_id"?: string | null;
+        };
+        Relationships: [];
+      };
       "storefront_orders": {
         Row: {
           "id": number;
@@ -733,6 +757,8 @@ export interface Database {
           "status": string | null;
           "whatsapp_handoff_token": string | null;
           "whatsapp_handoff_started_at": string | null;
+          "payment_confirmed_at": string | null;
+          "payment_confirmed_by_user_id": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -762,6 +788,8 @@ export interface Database {
           "status"?: string | null;
           "whatsapp_handoff_token"?: string | null;
           "whatsapp_handoff_started_at"?: string | null;
+          "payment_confirmed_at"?: string | null;
+          "payment_confirmed_by_user_id"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -791,6 +819,8 @@ export interface Database {
           "status"?: string | null;
           "whatsapp_handoff_token"?: string | null;
           "whatsapp_handoff_started_at"?: string | null;
+          "payment_confirmed_at"?: string | null;
+          "payment_confirmed_by_user_id"?: string | null;
         };
         Relationships: [];
       };
@@ -1032,6 +1062,10 @@ export type StoreSettingUpdate = Database["public"]["Tables"]["store_settings"][
 export type StorefrontOrderItem = Database["public"]["Tables"]["storefront_order_items"]["Row"];
 export type StorefrontOrderItemInsert = Database["public"]["Tables"]["storefront_order_items"]["Insert"];
 export type StorefrontOrderItemUpdate = Database["public"]["Tables"]["storefront_order_items"]["Update"];
+
+export type StorefrontOrderUnitAssignment = Database["public"]["Tables"]["storefront_order_unit_assignments"]["Row"];
+export type StorefrontOrderUnitAssignmentInsert = Database["public"]["Tables"]["storefront_order_unit_assignments"]["Insert"];
+export type StorefrontOrderUnitAssignmentUpdate = Database["public"]["Tables"]["storefront_order_unit_assignments"]["Update"];
 
 export type StorefrontOrder = Database["public"]["Tables"]["storefront_orders"]["Row"];
 export type StorefrontOrderInsert = Database["public"]["Tables"]["storefront_orders"]["Insert"];

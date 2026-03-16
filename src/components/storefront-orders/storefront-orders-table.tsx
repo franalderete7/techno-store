@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Eye, Loader2, MessageCircle, Package, Search, ShoppingBag } from "lucide-react";
+import { useEffect, useMemo, useState, type ElementType } from "react";
+import { CheckCircle2, Eye, Loader2, MessageCircle, Package, Search, ShoppingBag } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { requireAuthenticatedUser } from "@/lib/auth-user";
-import { getErrorMessage, isMissingColumnError, isMissingRelationError, isRowLevelSecurityError } from "@/lib/utils";
-import type { StorefrontOrder, StorefrontOrderItem, StorefrontOrderUpdate } from "@/types/database";
+import {
+  getErrorMessage,
+  isMissingColumnError,
+  isMissingRelationError,
+  isRowLevelSecurityError,
+} from "@/lib/utils";
+import type {
+  StockUnit,
+  StorefrontOrder,
+  StorefrontOrderItem,
+  StorefrontOrderUnitAssignment,
+  StorefrontOrderUpdate,
+} from "@/types/database";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +57,9 @@ type StorefrontOrderStatus = (typeof ORDER_STATUS_OPTIONS)[number]["value"];
 type StorefrontOrderStatusFilter = StorefrontOrderStatus | "all";
 
 type OrderItemView = {
-  key: string;
+  rowId: number | null;
+  productId: number | null;
+  productKey: string;
   name: string;
   quantity: number;
   unitPriceArs: number | null;
@@ -56,6 +69,7 @@ type OrderItemView = {
 };
 
 type StorefrontOrderSnapshotItem = {
+  id?: unknown;
   product_key?: unknown;
   product_name?: unknown;
   quantity?: unknown;
@@ -100,6 +114,12 @@ function getOrderStatusTone(status: string | null | undefined) {
   }
 }
 
+function getPaymentTone(isConfirmed: boolean) {
+  return isConfirmed
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+    : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
@@ -109,6 +129,16 @@ function formatDateTime(value: string | null | undefined) {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatShortDate(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
   });
 }
 
@@ -138,21 +168,23 @@ function getWhatsAppLink(phone: string | null | undefined) {
 function parseSnapshotItems(items: StorefrontOrder["items"]): OrderItemView[] {
   if (!Array.isArray(items)) return [];
 
-  return items
-    .map((item, index) => {
+  const parsed: Array<OrderItemView | null> = items.map((item, index) => {
       const snapshot = (item ?? {}) as StorefrontOrderSnapshotItem;
       const productKey = String(snapshot.product_key || "").trim();
       const productName = String(snapshot.product_name || "").trim();
       const quantity = Number(snapshot.quantity || 0);
       const unitPriceArs = Number(snapshot.unit_price_ars ?? snapshot.unit_price ?? NaN);
       const lineTotalArs = Number(snapshot.line_total_ars ?? snapshot.line_total ?? NaN);
-      const availability = String(snapshot.availability_code ?? snapshot.availability ?? "").trim() || null;
+      const availability =
+        String(snapshot.availability_code ?? snapshot.availability ?? "").trim() || null;
       const imageUrl = String(snapshot.image_url || "").trim() || null;
 
       if (!productKey && !productName) return null;
 
       return {
-        key: productKey || `snapshot-${index}`,
+        rowId: null,
+        productId: Number.isFinite(Number(snapshot.id)) ? Number(snapshot.id) : null,
+        productKey: productKey || `snapshot-${index}`,
         name: productName || productKey,
         quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
         unitPriceArs: Number.isFinite(unitPriceArs) ? unitPriceArs : null,
@@ -160,8 +192,9 @@ function parseSnapshotItems(items: StorefrontOrder["items"]): OrderItemView[] {
         availability,
         imageUrl,
       };
-    })
-    .filter((item): item is OrderItemView => item !== null);
+    });
+
+  return parsed.filter((item): item is OrderItemView => item !== null);
 }
 
 function buildItemViews(order: StorefrontOrder, itemRows: StorefrontOrderItem[]) {
@@ -169,7 +202,9 @@ function buildItemViews(order: StorefrontOrder, itemRows: StorefrontOrderItem[])
     return [...itemRows]
       .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
       .map((item, index) => ({
-        key: item.product_key || `item-${item.id}-${index}`,
+        rowId: item.id,
+        productId: item.product_id,
+        productKey: item.product_key || `item-${item.id}-${index}`,
         name: item.product_name || item.product_key,
         quantity: item.quantity,
         unitPriceArs: item.unit_price_ars,
@@ -196,11 +231,21 @@ function buildOrderSearchText(order: StorefrontOrder, itemViews: OrderItemView[]
     order.manychat_id,
     order.whatsapp_wa_id,
     itemViews.map((item) => item.name).join(" "),
-    itemViews.map((item) => item.key).join(" "),
+    itemViews.map((item) => item.productKey).join(" "),
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function buildUnitLabel(unit: StockUnit) {
+  const parts = [
+    `IMEI ${unit.imei1}`,
+    unit.color ? `· ${unit.color}` : "",
+    unit.battery_health != null ? `· Bat ${unit.battery_health}%` : "",
+    unit.status ? `· ${unit.status}` : "",
+  ];
+  return parts.filter(Boolean).join(" ");
 }
 
 function OrderStatCard({
@@ -212,7 +257,7 @@ function OrderStatCard({
   label: string;
   value: string;
   helper: string;
-  icon: React.ElementType;
+  icon: ElementType;
 }) {
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -230,9 +275,26 @@ function OrderStatCard({
   );
 }
 
+function DetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border bg-background/70 p-4">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-2 text-sm leading-6 text-foreground">{value || "—"}</p>
+    </div>
+  );
+}
+
 export function StorefrontOrdersTable() {
   const [orders, setOrders] = useState<StorefrontOrder[]>([]);
-  const [orderItemsByOrderId, setOrderItemsByOrderId] = useState<Map<number, StorefrontOrderItem[]>>(new Map());
+  const [orderItemsByOrderId, setOrderItemsByOrderId] = useState<Map<number, StorefrontOrderItem[]>>(
+    new Map()
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -240,6 +302,23 @@ export function StorefrontOrdersTable() {
   const [statusFilter, setStatusFilter] = useState<StorefrontOrderStatusFilter>("all");
   const [detailOrder, setDetailOrder] = useState<StorefrontOrder | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
+  const [confirmingOrderId, setConfirmingOrderId] = useState<number | null>(null);
+  const [loadingDetailMeta, setLoadingDetailMeta] = useState(false);
+  const [detailAssignmentRows, setDetailAssignmentRows] = useState<StorefrontOrderUnitAssignment[]>([]);
+  const [detailStockUnits, setDetailStockUnits] = useState<StockUnit[]>([]);
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<number, string>>({});
+  const [busyAssignmentItemId, setBusyAssignmentItemId] = useState<number | null>(null);
+
+  const updateOrderLocally = (orderId: number, patch: Partial<StorefrontOrder>) => {
+    setOrders((current) =>
+      current.map((currentOrder) =>
+        currentOrder.id === orderId ? { ...currentOrder, ...patch } : currentOrder
+      )
+    );
+    setDetailOrder((current) =>
+      current && current.id === orderId ? { ...current, ...patch } : current
+    );
+  };
 
   const loadOrders = async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) {
@@ -253,7 +332,7 @@ export function StorefrontOrdersTable() {
       const { data: orderRows, error: ordersError } = await supabase
         .from("storefront_orders")
         .select(
-          "id,first_name,last_name,email,payment_method,currency,subtotal,item_count,items,transfer_aliases,notes,created_at,address,zip_code,city,province,delivery_instructions,phone,phone_normalized,customer_id,manychat_id,whatsapp_wa_id,whatsapp_phone,source_channel,status,whatsapp_handoff_token,whatsapp_handoff_started_at"
+          "id,first_name,last_name,email,payment_method,currency,subtotal,item_count,items,transfer_aliases,notes,created_at,address,zip_code,city,province,delivery_instructions,phone,phone_normalized,customer_id,manychat_id,whatsapp_wa_id,whatsapp_phone,source_channel,status,whatsapp_handoff_token,whatsapp_handoff_started_at,payment_confirmed_at,payment_confirmed_by_user_id"
         )
         .order("created_at", { ascending: false })
         .limit(250);
@@ -318,6 +397,13 @@ export function StorefrontOrdersTable() {
         setError(
           "La tabla `storefront_orders` todavia no tiene el flujo de WhatsApp. Ejecuta `storefront_order_whatsapp_handoff.sql` en Supabase."
         );
+      } else if (
+        isMissingColumnError(loadError, "payment_confirmed_at") ||
+        isMissingColumnError(loadError, "payment_confirmed_by_user_id")
+      ) {
+        setError(
+          "Faltan columnas de confirmacion de pago. Ejecuta `storefront_order_fulfillment.sql` en Supabase."
+        );
       } else if (isRowLevelSecurityError(loadError)) {
         setError("Supabase esta bloqueando la lectura de pedidos web por RLS.");
       } else {
@@ -352,28 +438,29 @@ export function StorefrontOrdersTable() {
 
       if (!normalizedSearch) return true;
 
-      return buildOrderSearchText(order, orderItemViews.get(order.id) ?? []).includes(normalizedSearch);
+      return buildOrderSearchText(order, orderItemViews.get(order.id) ?? []).includes(
+        normalizedSearch
+      );
     });
   }, [orders, orderItemViews, searchQuery, statusFilter]);
 
   const stats = useMemo(() => {
-    const totalAmount = orders.reduce((sum, order) => sum + Number(order.subtotal || 0), 0);
-    const pendingWhatsApp = orders.filter(
-      (order) => normalizeOrderStatus(order.status) === "pending_whatsapp"
-    ).length;
-    const awaitingProof = orders.filter(
-      (order) => normalizeOrderStatus(order.status) === "awaiting_payment_proof"
-    ).length;
-    const completed = orders.filter(
-      (order) => normalizeOrderStatus(order.status) === "completed"
-    ).length;
+    const confirmedOrders = orders.filter((order) => Boolean(order.payment_confirmed_at));
+    const confirmedRevenue = confirmedOrders.reduce(
+      (sum, order) => sum + Number(order.subtotal || 0),
+      0
+    );
 
     return {
       totalOrders: orders.length,
-      pendingWhatsApp,
-      awaitingProof,
-      completed,
-      totalAmount,
+      pendingWhatsApp: orders.filter(
+        (order) => normalizeOrderStatus(order.status) === "pending_whatsapp"
+      ).length,
+      awaitingProof: orders.filter(
+        (order) => !order.payment_confirmed_at && normalizeOrderStatus(order.status) === "awaiting_payment_proof"
+      ).length,
+      confirmedOrders: confirmedOrders.length,
+      confirmedRevenue,
     };
   }, [orders]);
 
@@ -395,39 +482,18 @@ export function StorefrontOrdersTable() {
 
     try {
       await requireAuthenticatedUser();
-
       const { error: updateError } = await supabase
         .from("storefront_orders")
         .update(patch)
         .eq("id", order.id);
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
-      setOrders((current) =>
-        current.map((currentOrder) =>
-          currentOrder.id === order.id
-            ? {
-                ...currentOrder,
-                status: nextStatus,
-                whatsapp_handoff_started_at:
-                  patch.whatsapp_handoff_started_at ?? currentOrder.whatsapp_handoff_started_at,
-              }
-            : currentOrder
-        )
-      );
-
-      setDetailOrder((current) =>
-        current && current.id === order.id
-          ? {
-              ...current,
-              status: nextStatus,
-              whatsapp_handoff_started_at:
-                patch.whatsapp_handoff_started_at ?? current.whatsapp_handoff_started_at,
-            }
-          : current
-      );
+      updateOrderLocally(order.id, {
+        status: nextStatus,
+        whatsapp_handoff_started_at:
+          patch.whatsapp_handoff_started_at ?? order.whatsapp_handoff_started_at,
+      });
     } catch (updateError) {
       if (isRowLevelSecurityError(updateError)) {
         setError("Supabase esta bloqueando la actualizacion de pedidos web por RLS.");
@@ -439,10 +505,254 @@ export function StorefrontOrdersTable() {
     }
   };
 
-  const selectedOrderItems = detailOrder ? orderItemViews.get(detailOrder.id) ?? [] : [];
+  const handlePaymentConfirmation = async (order: StorefrontOrder, confirmed: boolean) => {
+    setConfirmingOrderId(order.id);
+    setError(null);
+
+    try {
+      const user = await requireAuthenticatedUser();
+      const previousStatus = normalizeOrderStatus(order.status);
+      const patch: StorefrontOrderUpdate = {
+        payment_confirmed_at: confirmed ? new Date().toISOString() : null,
+        payment_confirmed_by_user_id: confirmed ? user.id : null,
+        status: confirmed
+          ? previousStatus === "completed" || previousStatus === "cancelled"
+            ? previousStatus
+            : "ready_for_dispatch"
+          : previousStatus === "ready_for_dispatch"
+            ? "awaiting_payment_proof"
+            : previousStatus,
+      };
+
+      const { error: updateError } = await supabase
+        .from("storefront_orders")
+        .update(patch)
+        .eq("id", order.id);
+
+      if (updateError) throw updateError;
+
+      updateOrderLocally(order.id, {
+        payment_confirmed_at: patch.payment_confirmed_at ?? null,
+        payment_confirmed_by_user_id: patch.payment_confirmed_by_user_id ?? null,
+        status: patch.status ?? order.status,
+      });
+    } catch (confirmError) {
+      if (isMissingColumnError(confirmError, "payment_confirmed_at")) {
+        setError("Falta la columna de confirmacion de pago. Ejecuta `storefront_order_fulfillment.sql`.");
+      } else if (isRowLevelSecurityError(confirmError)) {
+        setError("Supabase esta bloqueando la confirmacion de pago por RLS.");
+      } else {
+        setError(getErrorMessage(confirmError, "No pude confirmar el comprobante."));
+      }
+    } finally {
+      setConfirmingOrderId(null);
+    }
+  };
+
+  const selectedOrderItemViews = detailOrder ? orderItemViews.get(detailOrder.id) ?? [] : [];
+  const selectedOrderItemRows = detailOrder ? orderItemsByOrderId.get(detailOrder.id) ?? [] : [];
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDetailMeta() {
+      if (!detailOrder) {
+        setDetailAssignmentRows([]);
+        setDetailStockUnits([]);
+        setAssignmentDrafts({});
+        return;
+      }
+
+      const itemRows = orderItemsByOrderId.get(detailOrder.id) ?? [];
+      const orderItemIds = itemRows.map((item) => item.id);
+      const productKeys = [...new Set(itemRows.map((item) => item.product_key).filter(Boolean))];
+
+      if (orderItemIds.length === 0 || productKeys.length === 0) {
+        setDetailAssignmentRows([]);
+        setDetailStockUnits([]);
+        setAssignmentDrafts({});
+        return;
+      }
+
+      setLoadingDetailMeta(true);
+
+      const [assignmentRes, stockRes] = await Promise.all([
+        supabase
+          .from("storefront_order_unit_assignments")
+          .select("id,order_item_id,stock_unit_id,assigned_at,assigned_by_user_id")
+          .in("order_item_id", orderItemIds)
+          .order("assigned_at", { ascending: false }),
+        supabase
+          .from("stock_units")
+          .select("*")
+          .in("product_key", productKeys)
+          .order("date_received", { ascending: false }),
+      ]);
+
+      if (cancelled) return;
+
+      if (assignmentRes.error || stockRes.error) {
+        const detailError = assignmentRes.error || stockRes.error;
+
+        if (
+          isMissingRelationError(detailError, "storefront_order_unit_assignments") ||
+          isMissingColumnError(detailError, "payment_confirmed_at")
+        ) {
+          setError(
+            "Falta la estructura de fulfillment web. Ejecuta `storefront_order_fulfillment.sql` en Supabase."
+          );
+        } else {
+          setError(getErrorMessage(detailError, "No pude cargar asignaciones de stock para este pedido."));
+        }
+
+        setDetailAssignmentRows([]);
+        setDetailStockUnits([]);
+      } else {
+        setDetailAssignmentRows((assignmentRes.data || []) as StorefrontOrderUnitAssignment[]);
+        setDetailStockUnits((stockRes.data || []) as StockUnit[]);
+      }
+
+      setLoadingDetailMeta(false);
+    }
+
+    void loadDetailMeta();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailOrder, orderItemsByOrderId]);
+
+  const stockUnitsById = useMemo(
+    () => new Map(detailStockUnits.map((unit) => [unit.id, unit])),
+    [detailStockUnits]
+  );
+
+  const assignmentsByOrderItemId = useMemo(() => {
+    const map = new Map<number, StorefrontOrderUnitAssignment[]>();
+    detailAssignmentRows.forEach((assignment) => {
+      const current = map.get(assignment.order_item_id) ?? [];
+      current.push(assignment);
+      map.set(assignment.order_item_id, current);
+    });
+    return map;
+  }, [detailAssignmentRows]);
+
+  const assignedOrderItemByStockUnitId = useMemo(() => {
+    const map = new Map<number, number>();
+    detailAssignmentRows.forEach((assignment) => {
+      map.set(assignment.stock_unit_id, assignment.order_item_id);
+    });
+    return map;
+  }, [detailAssignmentRows]);
+
   const selectedWhatsAppLink = detailOrder
     ? getWhatsAppLink(detailOrder.phone || detailOrder.whatsapp_phone)
     : null;
+
+  const handleAssignUnit = async (orderItem: OrderItemView) => {
+    if (!orderItem.rowId) return;
+
+    const selectedValue = assignmentDrafts[orderItem.rowId];
+    const stockUnitId = Number(selectedValue);
+    if (!Number.isFinite(stockUnitId) || stockUnitId <= 0) return;
+
+    setBusyAssignmentItemId(orderItem.rowId);
+    setError(null);
+
+    try {
+      const user = await requireAuthenticatedUser();
+
+      const { data, error: insertError } = await supabase
+        .from("storefront_order_unit_assignments")
+        .insert({
+          order_item_id: orderItem.rowId,
+          stock_unit_id: stockUnitId,
+          assigned_by_user_id: user.id,
+        })
+        .select("id,order_item_id,stock_unit_id,assigned_at,assigned_by_user_id")
+        .single();
+
+      if (insertError) throw insertError;
+
+      const unit = stockUnitsById.get(stockUnitId);
+      if (unit && unit.status === "in_stock") {
+        const { error: unitError } = await supabase
+          .from("stock_units")
+          .update({ status: "reserved" })
+          .eq("id", stockUnitId);
+
+        if (unitError) throw unitError;
+      }
+
+      setDetailAssignmentRows((current) => [data as StorefrontOrderUnitAssignment, ...current]);
+      setDetailStockUnits((current) =>
+        current.map((unit) =>
+          unit.id === stockUnitId && unit.status === "in_stock"
+            ? { ...unit, status: "reserved" }
+            : unit
+        )
+      );
+      setAssignmentDrafts((current) => {
+        const next = { ...current };
+        delete next[orderItem.rowId as number];
+        return next;
+      });
+    } catch (assignError) {
+      if (isMissingRelationError(assignError, "storefront_order_unit_assignments")) {
+        setError("Falta la tabla de asignacion de stock. Ejecuta `storefront_order_fulfillment.sql`.");
+      } else if (isRowLevelSecurityError(assignError)) {
+        setError("Supabase esta bloqueando la asignacion de stock por RLS.");
+      } else {
+        setError(getErrorMessage(assignError, "No pude vincular el equipo real al pedido."));
+      }
+    } finally {
+      setBusyAssignmentItemId(null);
+    }
+  };
+
+  const handleUnassignUnit = async (assignment: StorefrontOrderUnitAssignment) => {
+    setBusyAssignmentItemId(assignment.order_item_id);
+    setError(null);
+
+    try {
+      const unit = stockUnitsById.get(assignment.stock_unit_id);
+
+      const { error: deleteError } = await supabase
+        .from("storefront_order_unit_assignments")
+        .delete()
+        .eq("id", assignment.id);
+
+      if (deleteError) throw deleteError;
+
+      if (unit && unit.status === "reserved") {
+        const { error: unitError } = await supabase
+          .from("stock_units")
+          .update({ status: "in_stock" })
+          .eq("id", unit.id);
+
+        if (unitError) throw unitError;
+      }
+
+      setDetailAssignmentRows((current) =>
+        current.filter((currentAssignment) => currentAssignment.id !== assignment.id)
+      );
+      setDetailStockUnits((current) =>
+        current.map((currentUnit) =>
+          currentUnit.id === assignment.stock_unit_id && currentUnit.status === "reserved"
+            ? { ...currentUnit, status: "in_stock" }
+            : currentUnit
+        )
+      );
+    } catch (unassignError) {
+      if (isRowLevelSecurityError(unassignError)) {
+        setError("Supabase esta bloqueando la desvinculacion de stock por RLS.");
+      } else {
+        setError(getErrorMessage(unassignError, "No pude quitar la asignacion del equipo."));
+      }
+    } finally {
+      setBusyAssignmentItemId(null);
+    }
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6">
@@ -451,8 +761,8 @@ export function StorefrontOrdersTable() {
           <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">Storefront</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Pedidos web</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-            Cada pedido queda ligado al checkout del storefront y, cuando el cliente continua por
-            WhatsApp, termina vinculado con el contacto del CRM.
+            Cobro confirmado por humano y asignacion real de equipos desde stock, sin mezclar
+            pedidos pendientes con facturacion valida.
           </p>
         </div>
         <Button
@@ -481,14 +791,14 @@ export function StorefrontOrdersTable() {
         <OrderStatCard
           label="Esperando comprobante"
           value={stats.awaitingProof.toString()}
-          helper="Ya entraron al bot y falta el pago."
+          helper="Entraron al bot, pero falta confirmacion humana."
           icon={Package}
         />
         <OrderStatCard
-          label="Facturacion"
-          value={formatMoney(stats.totalAmount)}
-          helper={`${stats.completed} pedidos ya marcados como completados.`}
-          icon={Package}
+          label="Facturacion confirmada"
+          value={formatMoney(stats.confirmedRevenue)}
+          helper={`${stats.confirmedOrders} pedidos con comprobante validado.`}
+          icon={CheckCircle2}
         />
       </div>
 
@@ -566,6 +876,7 @@ export function StorefrontOrdersTable() {
                   const extraItems = Math.max(itemViews.length - 2, 0);
                   const hasCrmLink = Boolean(order.customer_id || order.manychat_id || order.whatsapp_wa_id);
                   const isUpdating = updatingOrderId === order.id;
+                  const isConfirmed = Boolean(order.payment_confirmed_at);
 
                   return (
                     <TableRow key={order.id}>
@@ -602,16 +913,16 @@ export function StorefrontOrdersTable() {
                             {order.item_count} unidad(es)
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {itemViews.map((item) => item.key).slice(0, 2).join(" · ")}
+                            {itemViews.map((item) => item.productKey).slice(0, 2).join(" · ")}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="align-top">
                         <div className="space-y-1">
                           <div className="font-medium">{formatMoney(order.subtotal, order.currency)}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {String(order.payment_method || "transferencia").replace(/_/g, " ")}
-                          </div>
+                          <Badge className={getPaymentTone(isConfirmed)}>
+                            {isConfirmed ? "Pago confirmado" : "Sin confirmar"}
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell className="align-top">
@@ -667,151 +978,322 @@ export function StorefrontOrdersTable() {
       </div>
 
       <Dialog open={detailOrder !== null} onOpenChange={(open) => !open && setDetailOrder(null)}>
-        <DialogContent className="max-h-[88vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="max-h-[88vh] max-w-5xl overflow-y-auto">
           {detailOrder ? (
             <>
               <DialogHeader>
-                <DialogTitle>
-                  Pedido web #{detailOrder.id} · {getOrderFullName(detailOrder)}
-                </DialogTitle>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <DialogTitle>
+                      Pedido web #{detailOrder.id} · {getOrderFullName(detailOrder)}
+                    </DialogTitle>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {detailOrder.email} · {detailOrder.phone || detailOrder.whatsapp_phone || "Sin telefono"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className={getOrderStatusTone(detailOrder.status)}>
+                      {getOrderStatusLabel(detailOrder.status)}
+                    </Badge>
+                    <Badge className={getPaymentTone(Boolean(detailOrder.payment_confirmed_at))}>
+                      {detailOrder.payment_confirmed_at ? "Pago confirmado" : "Pago sin confirmar"}
+                    </Badge>
+                  </div>
+                </div>
               </DialogHeader>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Cliente</p>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <p><span className="font-medium">Nombre:</span> {getOrderFullName(detailOrder)}</p>
-                    <p><span className="font-medium">Email:</span> {detailOrder.email}</p>
-                    <p><span className="font-medium">Telefono:</span> {detailOrder.phone || detailOrder.whatsapp_phone || "—"}</p>
-                    <p><span className="font-medium">Creado:</span> {formatDateTime(detailOrder.created_at)}</p>
-                    <p><span className="font-medium">Canal:</span> {detailOrder.source_channel || "storefront_web"}</p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Identidad CRM</p>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <p><span className="font-medium">Customer ID:</span> {detailOrder.customer_id ?? "—"}</p>
-                    <p><span className="font-medium">ManyChat ID:</span> {detailOrder.manychat_id || "—"}</p>
-                    <p><span className="font-medium">WhatsApp WA ID:</span> {detailOrder.whatsapp_wa_id || "—"}</p>
-                    <p><span className="font-medium">WhatsApp guardado:</span> {detailOrder.whatsapp_phone || "—"}</p>
-                    <p><span className="font-medium">Handoff iniciado:</span> {formatDateTime(detailOrder.whatsapp_handoff_started_at)}</p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border bg-muted/20 p-4 md:col-span-2">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Estado y cobro</p>
-                      <p className="mt-1 text-lg font-semibold">{formatMoney(detailOrder.subtotal, detailOrder.currency)}</p>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
+                <section className="space-y-4">
+                  <div className="rounded-3xl border bg-muted/20 p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Cobro y validacion humana
+                        </p>
+                        <p className="mt-2 text-3xl font-semibold">
+                          {formatMoney(detailOrder.subtotal, detailOrder.currency)}
+                        </p>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Metodo: {String(detailOrder.payment_method || "transferencia").replace(/_/g, " ")}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:w-[260px]">
+                        <Button
+                          onClick={() =>
+                            void handlePaymentConfirmation(detailOrder, !detailOrder.payment_confirmed_at)
+                          }
+                          disabled={confirmingOrderId === detailOrder.id}
+                        >
+                          {confirmingOrderId === detailOrder.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                          )}
+                          {detailOrder.payment_confirmed_at ? "Desconfirmar pago" : "Confirmar comprobante"}
+                        </Button>
+                        <Select
+                          value={normalizeOrderStatus(detailOrder.status)}
+                          onValueChange={(value) =>
+                            void handleStatusChange(detailOrder, value as StorefrontOrderStatus)
+                          }
+                          disabled={updatingOrderId === detailOrder.id}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ORDER_STATUS_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-2 sm:w-[280px]">
-                      <Badge className={getOrderStatusTone(detailOrder.status)}>
-                        {getOrderStatusLabel(detailOrder.status)}
-                      </Badge>
-                      <Select
-                        value={normalizeOrderStatus(detailOrder.status)}
-                        onValueChange={(value) =>
-                          void handleStatusChange(detailOrder, value as StorefrontOrderStatus)
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <DetailField
+                        label="Confirmado por humano"
+                        value={
+                          detailOrder.payment_confirmed_at
+                            ? `${formatDateTime(detailOrder.payment_confirmed_at)} · ${detailOrder.payment_confirmed_by_user_id || "sin user id"}`
+                            : "Todavia no"
                         }
-                        disabled={updatingOrderId === detailOrder.id}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ORDER_STATUS_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
+                      <DetailField
+                        label="Handoff WhatsApp"
+                        value={
+                          detailOrder.whatsapp_handoff_started_at
+                            ? formatDateTime(detailOrder.whatsapp_handoff_started_at)
+                            : "Todavia no"
+                        }
+                      />
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="space-y-2 text-sm">
-                      <p><span className="font-medium">Metodo:</span> {detailOrder.payment_method}</p>
-                      <p><span className="font-medium">Moneda:</span> {detailOrder.currency}</p>
-                      <p><span className="font-medium">Aliases:</span> {(detailOrder.transfer_aliases ?? []).join(" · ") || "—"}</p>
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <p><span className="font-medium">Direccion:</span> {detailOrder.address || "—"}</p>
-                      <p><span className="font-medium">Ciudad:</span> {[detailOrder.city, detailOrder.province].filter(Boolean).join(", ") || "—"}</p>
-                      <p><span className="font-medium">CP:</span> {detailOrder.zip_code || "—"}</p>
-                    </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <DetailField label="Cliente" value={getOrderFullName(detailOrder)} />
+                    <DetailField label="Email" value={detailOrder.email} />
+                    <DetailField
+                      label="Telefono"
+                      value={detailOrder.phone || detailOrder.whatsapp_phone || "Sin telefono"}
+                    />
+                    <DetailField
+                      label="Ubicacion"
+                      value={[detailOrder.city, detailOrder.province].filter(Boolean).join(", ") || "Sin ciudad"}
+                    />
+                    <DetailField
+                      label="Direccion"
+                      value={detailOrder.address || "Sin direccion"}
+                    />
+                    <DetailField
+                      label="CP"
+                      value={detailOrder.zip_code || "Sin codigo postal"}
+                    />
                   </div>
 
                   {detailOrder.delivery_instructions ? (
-                    <div className="mt-4 rounded-xl border bg-background p-3 text-sm">
-                      <p className="font-medium">Indicaciones</p>
-                      <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
+                    <div className="rounded-3xl border bg-background/80 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Indicaciones</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
                         {detailOrder.delivery_instructions}
                       </p>
                     </div>
                   ) : null}
 
                   {detailOrder.notes ? (
-                    <div className="mt-4 rounded-xl border bg-background p-3 text-sm">
-                      <p className="font-medium">Notas guardadas</p>
-                      <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{detailOrder.notes}</p>
+                    <div className="rounded-3xl border bg-background/80 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Notas guardadas</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                        {detailOrder.notes}
+                      </p>
                     </div>
                   ) : null}
-                </div>
+                </section>
 
-                <div className="rounded-2xl border bg-muted/20 p-4 md:col-span-2">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Items</p>
-                  {selectedOrderItems.length === 0 ? (
-                    <p className="mt-3 text-sm text-muted-foreground">No hay items normalizados para este pedido.</p>
-                  ) : (
-                    <div className="mt-3 overflow-x-auto rounded-xl border bg-background">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Producto</TableHead>
-                            <TableHead>product_key</TableHead>
-                            <TableHead>Cantidad</TableHead>
-                            <TableHead>Unitario</TableHead>
-                            <TableHead>Total</TableHead>
-                            <TableHead>Disponibilidad</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {selectedOrderItems.map((item) => (
-                            <TableRow key={`${detailOrder.id}-${item.key}`}>
-                              <TableCell className="font-medium">{item.name}</TableCell>
-                              <TableCell className="text-sm text-muted-foreground">{item.key}</TableCell>
-                              <TableCell>{item.quantity}</TableCell>
-                              <TableCell>{formatMoney(item.unitPriceArs)}</TableCell>
-                              <TableCell>{formatMoney(item.lineTotalArs)}</TableCell>
-                              <TableCell>{item.availability || "—"}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                <aside className="space-y-4">
+                  <div className="rounded-3xl border bg-background/80 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Vinculo CRM</p>
+                    <div className="mt-3 space-y-2 text-sm">
+                      <p><span className="font-medium">Customer ID:</span> {detailOrder.customer_id ?? "—"}</p>
+                      <p><span className="font-medium">ManyChat ID:</span> {detailOrder.manychat_id || "—"}</p>
+                      <p><span className="font-medium">WhatsApp WA ID:</span> {detailOrder.whatsapp_wa_id || "—"}</p>
+                      <p><span className="font-medium">WhatsApp guardado:</span> {detailOrder.whatsapp_phone || "—"}</p>
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
 
-              <DialogFooter className="gap-2 sm:justify-between">
-                <div className="text-xs text-muted-foreground">
-                  Token de handoff guardado: {detailOrder.whatsapp_handoff_token ? "si" : "no"}
-                </div>
-                <div className="flex gap-2">
+                  <div className="rounded-3xl border bg-background/80 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Pedido</p>
+                    <div className="mt-3 space-y-2 text-sm">
+                      <p><span className="font-medium">Creado:</span> {formatDateTime(detailOrder.created_at)}</p>
+                      <p><span className="font-medium">Canal:</span> {detailOrder.source_channel || "storefront_web"}</p>
+                      <p><span className="font-medium">Aliases:</span> {(detailOrder.transfer_aliases ?? []).join(" · ") || "—"}</p>
+                      <p><span className="font-medium">Token handoff:</span> {detailOrder.whatsapp_handoff_token ? "Guardado" : "No"}</p>
+                    </div>
+                  </div>
+
                   {selectedWhatsAppLink ? (
-                    <Button asChild variant="outline">
+                    <Button asChild variant="outline" className="w-full justify-center">
                       <a href={selectedWhatsAppLink} target="_blank" rel="noreferrer">
                         <MessageCircle className="h-4 w-4" />
                         Abrir WhatsApp
                       </a>
                     </Button>
                   ) : null}
-                  <Button variant="outline" onClick={() => setDetailOrder(null)}>
-                    Cerrar
-                  </Button>
+                </aside>
+              </div>
+
+              <div className="rounded-3xl border bg-card p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Fulfillment real</p>
+                    <h3 className="mt-1 text-lg font-semibold">Items y equipos asignados</h3>
+                  </div>
+                  {loadingDetailMeta ? (
+                    <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Cargando stock compatible...
+                    </div>
+                  ) : null}
                 </div>
+
+                <div className="mt-4 space-y-4">
+                  {selectedOrderItemViews.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed bg-background/70 p-4 text-sm text-muted-foreground">
+                      No hay items normalizados para este pedido.
+                    </div>
+                  ) : (
+                    selectedOrderItemViews.map((item) => {
+                      const itemAssignments =
+                        item.rowId != null ? assignmentsByOrderItemId.get(item.rowId) ?? [] : [];
+                      const assignedUnits: Array<{
+                        assignment: StorefrontOrderUnitAssignment;
+                        unit: StockUnit;
+                      }> = itemAssignments
+                        .map((assignment) => ({
+                          assignment,
+                          unit: stockUnitsById.get(assignment.stock_unit_id) ?? null,
+                        }))
+                        .filter(
+                          (
+                            entry
+                          ): entry is {
+                            assignment: StorefrontOrderUnitAssignment;
+                            unit: StockUnit;
+                          } => entry.unit !== null
+                        );
+                      const availableUnits = detailStockUnits.filter((unit) => {
+                        if (unit.product_key !== item.productKey) return false;
+                        const assignedOrderItemId = assignedOrderItemByStockUnitId.get(unit.id);
+                        if (assignedOrderItemId && assignedOrderItemId !== item.rowId) return false;
+                        return unit.status === "in_stock" || unit.status === "reserved";
+                      });
+                      const assignmentComplete = assignedUnits.length >= item.quantity;
+
+                      return (
+                        <div key={`${detailOrder.id}-${item.productKey}-${item.rowId ?? "snapshot"}`} className="rounded-3xl border bg-background/80 p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-base font-semibold">{item.name}</p>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {item.productKey} · {item.quantity} unidad(es) · {formatMoney(item.lineTotalArs)}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Badge variant="outline">{item.availability || "sin disponibilidad"}</Badge>
+                                <Badge className={assignmentComplete ? getPaymentTone(true) : getPaymentTone(false)}>
+                                  {assignmentComplete
+                                    ? "Asignacion completa"
+                                    : `Faltan ${Math.max(item.quantity - assignedUnits.length, 0)}`}
+                                </Badge>
+                              </div>
+                            </div>
+
+                            {item.rowId ? (
+                              <div className="flex w-full flex-col gap-2 lg:max-w-sm">
+                                <Select
+                                  value={assignmentDrafts[item.rowId] || undefined}
+                                  onValueChange={(value) =>
+                                    setAssignmentDrafts((current) => ({
+                                      ...current,
+                                      [item.rowId as number]: value,
+                                    }))
+                                  }
+                                  disabled={busyAssignmentItemId === item.rowId || assignmentComplete}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Elegi un equipo real del stock" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {availableUnits.map((unit) => (
+                                      <SelectItem key={unit.id} value={String(unit.id)}>
+                                        {buildUnitLabel(unit)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  variant="outline"
+                                  onClick={() => void handleAssignUnit(item)}
+                                  disabled={
+                                    busyAssignmentItemId === item.rowId ||
+                                    assignmentComplete ||
+                                    !assignmentDrafts[item.rowId]
+                                  }
+                                >
+                                  {busyAssignmentItemId === item.rowId ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : null}
+                                  Vincular equipo
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="rounded-2xl border border-dashed px-4 py-3 text-sm text-muted-foreground">
+                                Este item no tiene fila normalizada en `storefront_order_items`, asi que no se puede asignar stock todavia.
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-4 space-y-2">
+                            {assignedUnits.length > 0 ? (
+                              assignedUnits.map(({ assignment, unit }) => (
+                                <div
+                                  key={assignment.id}
+                                  className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-medium">{buildUnitLabel(unit)}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Asignado {formatDateTime(assignment.assigned_at)} · recibido {formatShortDate(unit.date_received)}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void handleUnassignUnit(assignment)}
+                                    disabled={busyAssignmentItemId === assignment.order_item_id}
+                                  >
+                                    Quitar
+                                  </Button>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-2xl border border-dashed bg-card p-3 text-sm text-muted-foreground">
+                                Todavia no hay equipos vinculados a este item.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 sm:justify-end">
+                <Button variant="outline" onClick={() => setDetailOrder(null)}>
+                  Cerrar
+                </Button>
               </DialogFooter>
             </>
           ) : null}
