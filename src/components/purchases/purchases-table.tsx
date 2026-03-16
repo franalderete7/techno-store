@@ -24,6 +24,11 @@ import type {
 } from "@/types/stock";
 import { PAYMENT_METHOD_OPTIONS, PAYMENT_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/types/stock";
 import {
+  applyProductVariantToStockDraft,
+  formatCatalogVariantLabel,
+  validateStockVariantAgainstProduct,
+} from "@/lib/product-variants";
+import {
   buildOwnershipShares,
   formatOwnershipSummary,
   getFinancierOptions,
@@ -31,6 +36,7 @@ import {
   type OwnershipShareInput,
   validateOwnershipInputs,
 } from "@/lib/accounting";
+import { PurchaseBulkStockDialog } from "@/components/purchases/purchase-bulk-stock-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -48,7 +54,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Loader2, Search, Eye, PackagePlus, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search, Eye, PackagePlus, Upload, X } from "lucide-react";
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const colors: Record<PaymentStatus, string> = {
@@ -248,6 +254,7 @@ export function PurchasesTable() {
   const [addUnitOpen, setAddUnitOpen] = useState(false);
   const [addUnitPurchase, setAddUnitPurchase] = useState<Purchase | null>(null);
   const [unitForm, setUnitForm] = useState<Record<string, string>>({});
+  const [bulkImportPurchase, setBulkImportPurchase] = useState<Purchase | null>(null);
 
   const financierOptions = useMemo(() => getFinancierOptions(financiers), [financiers]);
   const financierMap = useMemo(
@@ -477,6 +484,21 @@ export function PurchasesTable() {
     setAddUnitOpen(true);
   };
 
+  const openBulkImport = (purchase: Purchase) => {
+    setBulkImportPurchase(purchase);
+  };
+
+  const handleBulkImported = async (importedCount: number) => {
+    setBulkImportPurchase(null);
+    await fetchAll();
+    if (detailPurchase && bulkImportPurchase && detailPurchase.purchase_id === bulkImportPurchase.purchase_id) {
+      await openDetail(bulkImportPurchase);
+    }
+    if (importedCount > 0) {
+      alert(`Imported ${importedCount} stock unit${importedCount === 1 ? "" : "s"} into the purchase.`);
+    }
+  };
+
   const addOwnershipRow = () => {
     setOwnershipRows((prev) => [...prev, { financierId: null, sharePct: 0 }]);
   };
@@ -556,7 +578,7 @@ export function PurchasesTable() {
       return;
     }
     if (!ownershipTableReady && ownershipValidation.rows.length > 1) {
-      alert("Run supabase/serious_accounting_foundation.sql first to save split financing.");
+      alert("The database is missing financier ownership tables. Sync the accounting schema in Supabase first.");
       return;
     }
 
@@ -668,9 +690,9 @@ export function PurchasesTable() {
         isMissingRelationError(err, "financiers") ||
         isMissingRelationError(err, "purchase_payment_legs")
       ) {
-        alert("Database error: run supabase/serious_accounting_foundation.sql and supabase/purchase_payment_legs.sql in Supabase first.");
+        alert("Database schema is missing purchase ownership or payment-leg tables. Sync the accounting schema in Supabase first.");
       } else if (isRowLevelSecurityError(err)) {
-        alert("RLS blocked this purchase save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for purchases.");
+        alert("RLS blocked this purchase save. Allow writes to purchases in Supabase first.");
       } else {
         alert(getErrorMessage(err, "Unexpected error saving purchase."));
       }
@@ -700,6 +722,7 @@ export function PurchasesTable() {
     const imei1 = unitForm.imei1?.trim() ?? "";
     const imei2 = parseOptionalText(unitForm.imei2);
     const productKey = parseOptionalText(unitForm.product_key);
+    const selectedProduct = productMap.get(productKey ?? "");
 
     if (!imei1 || !productKey || !addUnitPurchase) {
       alert("IMEI1 and Product are required.");
@@ -711,6 +734,14 @@ export function PurchasesTable() {
     }
     if (imei2 && !/^\d{15}$/.test(imei2)) {
       alert("IMEI2 must be exactly 15 digits.");
+      return;
+    }
+    const catalogVariantError = validateStockVariantAgainstProduct(selectedProduct, {
+      color: unitForm.color,
+      batteryHealth: unitForm.battery_health,
+    });
+    if (catalogVariantError) {
+      alert(catalogVariantError);
       return;
     }
     setSaving(true);
@@ -744,18 +775,18 @@ export function PurchasesTable() {
         (msg.includes("Could not find the 'color' column") || msg.includes("schema cache")) &&
         msg.includes("color")
       ) {
-        alert("Database error: run the stock_units_color.sql migration in Supabase first.");
+        alert("Database schema is missing stock color support. Sync the inventory schema in Supabase first.");
       } else if (
         (msg.includes("Could not find the 'battery_health' column") || msg.includes("schema cache")) &&
         msg.includes("battery_health")
       ) {
-        alert("Database error: run the normalize_inventory_schema.sql migration in Supabase first.");
+        alert("Database schema is missing stock battery health support. Sync the inventory schema in Supabase first.");
       } else if (msg.includes("valid_imei1")) {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
       } else if (isRowLevelSecurityError(err)) {
-        alert("RLS blocked this stock save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for stock_units.");
+        alert("RLS blocked this stock save. Allow writes to stock_units in Supabase first.");
       } else {
         alert(msg);
       }
@@ -765,7 +796,23 @@ export function PurchasesTable() {
   };
 
   const updateForm = (key: string, value: string) => setFormData((prev) => ({ ...prev, [key]: value }));
-  const updateUnitForm = (key: string, value: string) => setUnitForm((prev) => ({ ...prev, [key]: value }));
+  const updateUnitForm = (key: string, value: string) =>
+    setUnitForm((prev) => {
+      const next = { ...prev, [key]: value };
+
+      if (key === "product_key") {
+        const selectedProduct = products.find((product) => product.product_key === value);
+        const withProductDefaults = applyProductVariantToStockDraft(selectedProduct, {
+          color: parseOptionalText(next.color),
+          battery_health: parseOptionalNumber(next.battery_health),
+        });
+        next.color = withProductDefaults.color ?? "";
+        next.battery_health =
+          withProductDefaults.battery_health != null ? String(withProductDefaults.battery_health) : "";
+      }
+
+      return next;
+    });
 
   const productMap = useMemo(() => new Map(products.map((p) => [p.product_key, p])), [products]);
   const ownershipDraftValidation = useMemo(
@@ -879,6 +926,17 @@ export function PurchasesTable() {
                       className="h-8"
                       onClick={(event) => {
                         stopRowEvent(event);
+                        openBulkImport(p);
+                      }}
+                    >
+                      <Upload className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={(event) => {
+                        stopRowEvent(event);
                         openEdit(p);
                       }}
                     >
@@ -959,6 +1017,17 @@ export function PurchasesTable() {
                             }}
                           >
                             <PackagePlus className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Bulk import units"
+                            onClick={(event) => {
+                              stopRowEvent(event);
+                              openBulkImport(p);
+                            }}
+                          >
+                            <Upload className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -1084,7 +1153,7 @@ export function PurchasesTable() {
 
               {!ownershipTableReady && (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                  Run <span className="font-mono">supabase/serious_accounting_foundation.sql</span> to persist split financing professionally.
+                  The database is missing financier ownership tables, so split financing cannot be saved yet.
                 </div>
               )}
 
@@ -1158,7 +1227,7 @@ export function PurchasesTable() {
 
               {!paymentLegsTableReady && (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                  Run <span className="font-mono">supabase/purchase_payment_legs.sql</span> to track mixed USD, ARS, and crypto purchase payments.
+                  The database is missing purchase payment-leg tables, so mixed supplier payments cannot be saved yet.
                 </div>
               )}
 
@@ -1493,6 +1562,10 @@ export function PurchasesTable() {
               <PackagePlus className="mr-2 h-4 w-4" />
               Add Unit
             </Button>
+            <Button variant="outline" onClick={() => detailPurchase && openBulkImport(detailPurchase)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Bulk Import
+            </Button>
             <Button variant="outline" onClick={() => setDetailPurchase(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
@@ -1531,7 +1604,7 @@ export function PurchasesTable() {
                 <SelectTrigger><SelectValue placeholder="Select product..." /></SelectTrigger>
                 <SelectContent className="max-h-60">
                   {products.map((p) => (
-                    <SelectItem key={p.product_key} value={p.product_key}>{p.product_name}</SelectItem>
+                    <SelectItem key={p.product_key} value={p.product_key}>{formatCatalogVariantLabel(p)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1555,7 +1628,7 @@ export function PurchasesTable() {
                 placeholder="92"
               />
               <p className="text-xs text-muted-foreground">
-                Save battery health here for used or like-new units. Product rows keep shared specs only.
+                If the selected product already fixes a battery health, this field should match it.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1622,6 +1695,18 @@ export function PurchasesTable() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <PurchaseBulkStockDialog
+        open={!!bulkImportPurchase}
+        onOpenChange={(open) => {
+          if (!open) setBulkImportPurchase(null);
+        }}
+        purchase={bulkImportPurchase}
+        products={products}
+        onImported={(count) => {
+          void handleBulkImported(count);
+        }}
+      />
     </div>
   );
 }

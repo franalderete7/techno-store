@@ -319,6 +319,8 @@ export interface Database {
           "image_url": string | null;
           "condition": string;
           "pricing_source_stock_unit_id": number | null;
+          "color": string | null;
+          "battery_health": number | null;
         };
         Insert: {
           "id"?: number | null;
@@ -351,6 +353,8 @@ export interface Database {
           "image_url"?: string | null;
           "condition"?: string | null;
           "pricing_source_stock_unit_id"?: number | null;
+          "color"?: string | null;
+          "battery_health"?: number | null;
         };
         Update: {
           "id"?: number | null;
@@ -383,6 +387,8 @@ export interface Database {
           "image_url"?: string | null;
           "condition"?: string | null;
           "pricing_source_stock_unit_id"?: number | null;
+          "color"?: string | null;
+          "battery_health"?: number | null;
         };
         Relationships: [];
       };

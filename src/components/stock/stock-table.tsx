@@ -22,6 +22,11 @@ import type {
 } from "@/types/stock";
 import { STOCK_STATUS_OPTIONS } from "@/types/stock";
 import {
+  applyProductVariantToStockDraft,
+  formatCatalogVariantLabel,
+  validateStockVariantAgainstProduct,
+} from "@/lib/product-variants";
+import {
   DEFAULT_USD_RATE,
   buildRealizedUnitSale,
   getFinancierOptions,
@@ -233,6 +238,11 @@ export function StockTable() {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
+  const [soldLookupOpen, setSoldLookupOpen] = useState(false);
+  const [soldLookupImage, setSoldLookupImage] = useState<{ preview: string; base64: string } | null>(null);
+  const [soldLookupScanning, setSoldLookupScanning] = useState(false);
+  const [soldLookupResult, setSoldLookupResult] = useState<string | null>(null);
+  const soldLookupInputRef = useRef<HTMLInputElement>(null);
 
   const productMap = useMemo(
     () => new Map(products.map((p) => [p.product_key, p])),
@@ -388,6 +398,87 @@ export function StockTable() {
     setScanResult(null);
   };
 
+  const resetSoldLookup = () => {
+    setSoldLookupImage(null);
+    setSoldLookupScanning(false);
+    setSoldLookupResult(null);
+  };
+
+  const openSoldLookup = () => {
+    resetSoldLookup();
+    setSoldLookupOpen(true);
+  };
+
+  const handleAddSoldLookupImage = async (file: File) => {
+    try {
+      const base64 = await compressImage(file);
+      setSoldLookupImage({ preview: base64, base64 });
+      setSoldLookupResult(null);
+    } catch {
+      setSoldLookupResult("Error: Could not process image. Try another photo.");
+    }
+  };
+
+  const openFoundUnitForSale = (
+    unit: StockUnit,
+    proofImage?: { preview: string; base64: string } | null
+  ) => {
+    openEdit(unit);
+    setFormData((current) => ({
+      ...current,
+      status: current.status === "sold" ? current.status : "sold",
+      date_sold: current.date_sold || todayIsoDate(),
+    }));
+    if (proofImage) {
+      setScanImages([proofImage]);
+      setScanResult("This lookup photo will be saved as an extra proof image when you save.");
+    }
+  };
+
+  const handleSoldLookupScan = async () => {
+    if (!soldLookupImage) return;
+    setSoldLookupScanning(true);
+    setSoldLookupResult(null);
+
+    try {
+      const response = await fetch("/api/groq/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: [soldLookupImage.base64] }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setSoldLookupResult(`Error: ${data.error || "Failed to analyze"}`);
+        return;
+      }
+
+      const imeiCandidates = [parseOptionalText(data.imei1), parseOptionalText(data.imei2)].filter(
+        (value): value is string => Boolean(value)
+      );
+      const matchedUnit = units.find(
+        (unit) => imeiCandidates.includes(unit.imei1) || (unit.imei2 ? imeiCandidates.includes(unit.imei2) : false)
+      );
+
+      if (!matchedUnit) {
+        setSoldLookupResult(
+          imeiCandidates.length > 0
+            ? `No stock unit found for IMEI ${imeiCandidates.join(" / ")}.`
+            : "No IMEI detected in the photo."
+        );
+        return;
+      }
+
+      setSoldLookupOpen(false);
+      openFoundUnitForSale(matchedUnit, soldLookupImage);
+      resetSoldLookup();
+    } catch {
+      setSoldLookupResult("Error: Failed to connect to AI service.");
+    } finally {
+      setSoldLookupScanning(false);
+    }
+  };
+
   const handleAiScan = async () => {
     if (scanImages.length === 0) return;
     setScanning(true);
@@ -432,7 +523,19 @@ export function StockTable() {
         if (data.imei1) updated.imei1 = data.imei1;
         if (data.imei2) updated.imei2 = data.imei2;
         if (data.color) updated.color = data.color;
+        if (data.battery_health != null) updated.battery_health = String(data.battery_health);
         if (matchedProduct) updated.product_key = matchedProduct.product_key;
+        const withProductDefaults = matchedProduct
+          ? applyProductVariantToStockDraft(matchedProduct, {
+              color: parseOptionalText(updated.color),
+              battery_health: parseOptionalNumber(updated.battery_health),
+            })
+          : null;
+        if (withProductDefaults) {
+          updated.color = withProductDefaults.color ?? "";
+          updated.battery_health =
+            withProductDefaults.battery_health != null ? String(withProductDefaults.battery_health) : "";
+        }
         return updated;
       });
 
@@ -444,6 +547,7 @@ export function StockTable() {
       if (data.ram_gb) parts.push(`RAM: ${data.ram_gb}GB`);
       if (data.storage_gb) parts.push(`Storage: ${data.storage_gb}GB`);
       if (data.color) parts.push(`Color: ${data.color}`);
+      if (data.battery_health != null) parts.push(`Battery: ${data.battery_health}%`);
       const baseResult = parts.length > 0 ? parts.join(" | ") : "Could not detect info from images.";
       const noProductMsg =
         (data.brand || data.model) && !matchedProduct
@@ -548,6 +652,15 @@ export function StockTable() {
       return;
     }
 
+    const catalogVariantError = validateStockVariantAgainstProduct(selectedFormProduct, {
+      color: formData.color,
+      batteryHealth: formData.battery_health,
+    });
+    if (catalogVariantError) {
+      alert(catalogVariantError);
+      return;
+    }
+
     setSaving(true);
     const status = formData.status || "in_stock";
     const isSold = status === "sold";
@@ -649,8 +762,9 @@ export function StockTable() {
       if (scanImages.length > 0) {
         const productSlug = sanitizeForFilename(productKey);
         const urls: string[] = [];
+        const proofIndexOffset = editingUnit ? previousProofUrls.length : 0;
         for (let i = 0; i < scanImages.length; i++) {
-          const filename = `${imei1}_${productSlug}_proof_${i + 1}.jpg`;
+          const filename = `${imei1}_${productSlug}_proof_${proofIndexOffset + i + 1}.jpg`;
           const file = await dataUrlToFile(scanImages[i].base64, filename);
           const path = `${imei1}/${filename}`;
           const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
@@ -659,7 +773,10 @@ export function StockTable() {
           urls.push(data.publicUrl);
         }
         uploadedProofUrls = urls;
-        proofUrls = urls;
+        proofUrls =
+          editingUnit && previousProofUrls.length > 0
+            ? [...previousProofUrls, ...urls]
+            : urls;
       }
       record.proof_image_urls = proofUrls;
 
@@ -687,16 +804,16 @@ export function StockTable() {
         (msg.includes("Could not find the 'color' column") || msg.includes("schema cache")) &&
         msg.includes("color")
       ) {
-        alert("Database error: run the stock_units_color.sql migration in Supabase first.");
+        alert("Database schema is missing stock color support. Sync the inventory schema in Supabase first.");
       } else if (
         (msg.includes("Could not find the 'battery_health' column") || msg.includes("schema cache")) &&
         msg.includes("battery_health")
       ) {
-        alert("Database error: run the normalize_inventory_schema.sql migration in Supabase first.");
+        alert("Database schema is missing stock battery health support. Sync the inventory schema in Supabase first.");
       } else if (
         isMissingColumnError(err, "proof_image_urls")
       ) {
-        alert("Database error: run the stock_proof_images.sql migration in Supabase first.");
+        alert("Database schema is missing stock proof image support. Sync the inventory schema in Supabase first.");
       } else if (
         isMissingColumnError(err, "sale_amount") ||
         isMissingColumnError(err, "sale_currency") ||
@@ -704,20 +821,20 @@ export function StockTable() {
         isMissingColumnError(err, "sale_amount_ars") ||
         isMissingColumnError(err, "cost_ars_snapshot")
       ) {
-        alert("Database error: run supabase/serious_accounting_foundation.sql in Supabase first.");
+        alert("Database schema is missing the accounting sale snapshot fields. Sync the accounting schema in Supabase first.");
       } else if (
         isMissingRelationError(err, "purchase_financiers") ||
         isMissingRelationError(err, "financiers")
       ) {
-        alert("Database error: run supabase/serious_accounting_foundation.sql in Supabase first.");
+        alert("Database schema is missing financier ownership tables. Sync the accounting schema in Supabase first.");
       } else if (msg.includes("valid_imei1")) {
         alert("Invalid IMEI1: must be exactly 15 digits.");
       } else if (msg.includes("duplicate key") || msg.includes("unique")) {
         alert("IMEI1 already exists in stock.");
       } else if (isRowLevelSecurityError(err)) {
-        alert("RLS blocked this stock save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for stock_units.");
+        alert("RLS blocked this stock save. Allow writes to stock_units in Supabase first.");
       } else if (msg.includes("Bucket not found") || msg.includes("storage")) {
-        alert("Storage error: Run the stock_proof_images.sql migration in Supabase first.");
+        alert("Storage error: the proof image bucket or storage policy is missing in Supabase.");
       } else {
         alert(msg);
       }
@@ -770,6 +887,22 @@ export function StockTable() {
             ? selectedProduct.usd_rate
             : DEFAULT_USD_RATE
         );
+        const withProductDefaults = applyProductVariantToStockDraft(selectedProduct, {
+          color: parseOptionalText(next.color),
+          battery_health: parseOptionalNumber(next.battery_health),
+        });
+        next.color = withProductDefaults.color ?? "";
+        next.battery_health =
+          withProductDefaults.battery_health != null ? String(withProductDefaults.battery_health) : "";
+      } else if (key === "product_key") {
+        const selectedProduct = products.find((product) => product.product_key === value);
+        const withProductDefaults = applyProductVariantToStockDraft(selectedProduct, {
+          color: parseOptionalText(next.color),
+          battery_health: parseOptionalNumber(next.battery_health),
+        });
+        next.color = withProductDefaults.color ?? "";
+        next.battery_health =
+          withProductDefaults.battery_health != null ? String(withProductDefaults.battery_health) : "";
       }
       return next;
     });
@@ -790,6 +923,11 @@ export function StockTable() {
             >
               <ShoppingBag className="mr-1.5 h-4 w-4" />
               {showChart ? "Hide Analytics" : "Show Analytics"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={openSoldLookup} className="gap-1.5">
+              <Camera className="h-4 w-4" />
+              <span className="hidden sm:inline">Find by IMEI</span>
+              <span className="sm:hidden">Find</span>
             </Button>
             <Button onClick={openAdd} size="sm" className="gap-1.5">
               <Plus className="h-4 w-4" />
@@ -1186,6 +1324,45 @@ export function StockTable() {
             </div>
           )}
 
+          {/* Pending proof images to append on save */}
+          {editingUnit && scanImages.length > 0 && (
+            <div className="space-y-1.5 rounded-lg border bg-emerald-500/5 p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-xs sm:text-sm">New proof image ready to save</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={resetScan}
+                >
+                  Clear
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {scanImages.map((img, index) => (
+                  <div key={`${img.preview}-${index}`} className="relative overflow-hidden rounded-lg border">
+                    <img
+                      src={img.preview}
+                      alt={`Pending proof ${index + 1}`}
+                      className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(index)}
+                      className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Saving this sale will append the lookup image to the unit proof history.
+              </p>
+            </div>
+          )}
+
           {/* Existing proof images (when editing) */}
           {editingUnit && editingUnit.proof_image_urls && editingUnit.proof_image_urls.length > 0 && (
             <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3 sm:p-4">
@@ -1249,7 +1426,7 @@ export function StockTable() {
                 <SelectContent className="max-h-60">
                   {products.map((p) => (
                     <SelectItem key={p.product_key} value={p.product_key}>
-                      {p.product_name}
+                      {formatCatalogVariantLabel(p)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1269,7 +1446,7 @@ export function StockTable() {
                 placeholder="Black, White, Titanium..."
               />
               <p className="text-[11px] text-muted-foreground">
-                AI fills this automatically when the color is visible in the uploaded images.
+                If the selected product already fixes a catalog color, this field should match it.
               </p>
             </div>
 
@@ -1285,7 +1462,7 @@ export function StockTable() {
                 placeholder="92"
               />
               <p className="text-[11px] text-muted-foreground">
-                Unit-level value. Use this for used or like-new devices instead of the product row.
+                If the selected product already fixes a battery health, this field should match it.
               </p>
             </div>
 
@@ -1357,7 +1534,7 @@ export function StockTable() {
               </div>
               {!ownershipTableReady && (
                 <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-                  Run <span className="font-mono">supabase/serious_accounting_foundation.sql</span> before saving sold units if you want correct sale currency, FX snapshots, and financier profit reporting.
+                  The database is missing financier/accounting tables, so sale snapshots and profit attribution may be incomplete.
                 </div>
               )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1489,6 +1666,99 @@ export function StockTable() {
             <Button className="w-full sm:w-auto" onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingUnit ? "Save" : "Add Unit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={soldLookupOpen}
+        onOpenChange={(open) => {
+          setSoldLookupOpen(open);
+          if (!open) {
+            resetSoldLookup();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Find Stock by IMEI Photo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Upload a photo of the IMEI sticker or box. If the IMEI matches a saved stock unit,
+              the sale form opens already marked as sold.
+            </p>
+
+            <input
+              ref={soldLookupInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void handleAddSoldLookupImage(file);
+                }
+                event.target.value = "";
+              }}
+            />
+
+            {soldLookupImage ? (
+              <div className="space-y-3">
+                <div className="overflow-hidden rounded-lg border bg-muted">
+                  <img
+                    src={soldLookupImage.preview}
+                    alt="IMEI lookup preview"
+                    className="h-64 w-full object-cover"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={() => soldLookupInputRef.current?.click()}>
+                    Replace photo
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={resetSoldLookup}>
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => soldLookupInputRef.current?.click()}
+                className="flex h-56 w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/20 transition-colors hover:border-primary/50 hover:bg-muted/40"
+              >
+                <div className="rounded-full bg-primary/10 p-3">
+                  <Camera className="h-6 w-6 text-primary" />
+                </div>
+                <div className="space-y-1 text-center">
+                  <p className="text-sm font-medium">Upload IMEI photo</p>
+                  <p className="text-xs text-muted-foreground">
+                    Best results: one clear photo with the IMEI label fully visible.
+                  </p>
+                </div>
+              </button>
+            )}
+
+            {soldLookupResult ? (
+              <div
+                className={`rounded-md px-3 py-2 text-sm ${
+                  soldLookupResult.startsWith("Error")
+                    ? "bg-destructive/10 text-destructive"
+                    : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                }`}
+              >
+                {soldLookupResult}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSoldLookupOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSoldLookupScan} disabled={!soldLookupImage || soldLookupScanning}>
+              {soldLookupScanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Analyze IMEI
             </Button>
           </DialogFooter>
         </DialogContent>

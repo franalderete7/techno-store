@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2026-03-10
+**Last updated:** 2026-03-16
 
 ## Overview
 
@@ -16,18 +16,14 @@ The live Supabase project is the schema source of truth.
 - n8n should read store policy and CRM context from Supabase, not from hardcoded workflow text
 - n8n storefront links should use `STOREFRONT_BASE_URL=https://puntotechno.com`
 
-Recommended migration order for the lean CRM/inventory refactor:
+Current checked-in catalog migration:
 
-1. [stickers_and_customer_tags.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/stickers_and_customer_tags.sql)
-2. [seed_stickers_examples.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/seed_stickers_examples.sql)
-3. [v16_whatsapp_identity.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/v16_whatsapp_identity.sql)
-4. [crm_funnel_taxonomy.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/crm_funnel_taxonomy.sql)
-5. [remove_tiendanube_integration.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/remove_tiendanube_integration.sql) – archives and removes the deprecated Tienda Nube metadata from `products`
-6. [conversation_timeline_insights.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/conversation_timeline_insights.sql)
-7. `npm run db:types:pull`
-8. deploy updated app + n8n workflow
+1. [catalog_variant_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/catalog_variant_fields.sql) – adds `products.color` and `products.battery_health`, validates stock-unit/catalog variant alignment, and makes `v_product_catalog` read those storefront fields directly from `products`
+2. [store_settings_pricing_sync.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/store_settings_pricing_sync.sql) – recalculates product financing and pricing snapshots whenever pricing-related `store_settings` keys change
+3. `npm run db:types:pull`
+4. deploy updated app + v15 workflow
 
-The repo no longer includes the older one-off migration files that were used during the earlier cleanup. The files above are the current checked-in Supabase SQL that matter for the WhatsApp-first CRM flow.
+The live Supabase project still contains additional inventory/accounting objects used by the app, but those older one-off SQL files are not currently checked into this repo.
 
 ## Public Objects
 
@@ -36,6 +32,9 @@ Current public tables:
 - `conversations`
 - `crm_tag_definitions`
 - `customers`
+- `financiers`
+- `purchase_financiers`
+- `purchase_payment_legs`
 - `products`
 - `purchases`
 - `stock_units`
@@ -71,11 +70,15 @@ Keep shared catalog facts in `products`:
 - `category`
 - `ram_gb`
 - `storage_gb`
+- `color`
+- `battery_health`
 - `network`
 - `condition`
 - `image_url`
 - delivery fields
 - pricing fields
+
+In this app, `products.color` and `products.battery_health` are the storefront promise. Leave them `NULL` when the storefront offer is generic and does not guarantee an exact color/battery.
 
 Keep per-physical-unit facts in `stock_units`:
 
@@ -92,6 +95,8 @@ Keep per-physical-unit facts in `stock_units`:
 - `date_sold`
 - `proof_image_urls`
 - `notes`
+
+In this app, `stock_units.color` and `stock_units.battery_health` are the actual observed facts of the physical device. When a linked product specifies color and/or battery, the stock unit must match.
 
 Keep per-turn CRM analytics in `conversations`:
 
@@ -150,6 +155,8 @@ Product catalog with pricing, logistics, and delivery info. This is the **price 
 | updated_at | timestamptz | YES | now() | Updated timestamp |
 | ram_gb | integer | YES | - | RAM in GB |
 | storage_gb | integer | YES | - | Storage in GB |
+| color | text | YES | - | Customer-facing guaranteed color for this product variant |
+| battery_health | integer | YES | - | Customer-facing guaranteed battery health for this product variant |
 | network | text | YES | - | Network type |
 | image_url | text | YES | - | Image URL (managed separately) |
 | condition | text | NO | 'new' | Product condition: new, like_new, used, or refurbished |
@@ -172,7 +179,7 @@ Product catalog with pricing, logistics, and delivery info. This is the **price 
 
 ### stock_units
 
-Physical inventory — 1 row = 1 phone unit identified by IMEI1. The Stock page AI scan can auto-fill the unit color when it is clearly visible in the uploaded images.
+Physical inventory — 1 row = 1 phone unit identified by IMEI1. The Stock page AI scan can auto-fill unit fields from uploaded images. If the linked product fixes a catalog color and/or battery health, this row must match.
 
 Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sale_items` tables are retired and the old reservation/sale link columns were removed from `stock_units`.
 
@@ -219,6 +226,7 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 - `trg_stock_units_updated` – updates `updated_at` on row update
 - `trg_stock_units_sale_fields` – auto-fills `date_sold` when a unit is marked as sold
 - `trg_sync_products_from_stock_units` – syncs `products.in_stock` and reprices the matching product when a stock cost changes
+- `trg_validate_stock_unit_catalog_variant` – rejects stock rows whose color/battery do not match the linked product variant
 
 **Pricing sync rule:** the last saved stock cost for a `product_key` becomes the product's pricing source and is tracked in `products.pricing_source_stock_unit_id`. If that stock unit is removed, the product falls back to the latest remaining stock unit with a valid cost.
 
@@ -374,6 +382,8 @@ These are the functions actively used by the app and automation after the lean-s
 | `sync_product_in_stock_flag(p_product_key)` | void | Updates `products.in_stock` from current stock units |
 | `apply_product_pricing_from_stock_cost(p_product_key, p_cost_unit, p_cost_currency, p_source_stock_unit_id)` | void | Recalculates derived product pricing fields from a stock cost |
 | `sync_product_from_latest_stock_cost(p_product_key)` | void | Rebuilds product pricing from the latest remaining stock unit with cost |
+| `sync_products_from_store_settings_pricing()` | void | Rebuilds product financing fields from pricing-related `store_settings` defaults |
+| `validate_stock_unit_catalog_variant()` | trigger | Ensures `stock_units.color` / `battery_health` match the linked product variant when the product specifies them |
 | `get_stock_count(p_product_key)` | integer | Returns count of in_stock units for a product |
 | `increment_interaction(p_manychat_id)` | integer | Atomically increments customer interaction count |
 
@@ -388,7 +398,7 @@ These are the functions actively used by the app and automation after the lean-s
 | `v_financier_profit_monthly` | Monthly realized revenue/cost/profit split by financier ownership |
 | `v_customer_context` | Full customer profile for bot context |
 | `v_recent_conversations` | Conversation history |
-| `v_product_catalog` | Customer-facing catalog with pricing/specs plus `color` and `battery_health` sourced from stock or archived fallback metadata |
+| `v_product_catalog` | Customer-facing catalog with pricing/specs plus guaranteed `color` and `battery_health` read directly from `products` |
 | `v_store_context` | Flattened store policy/settings used by the automation prompt |
 
 ## Storage Buckets

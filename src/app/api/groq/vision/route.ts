@@ -37,6 +37,7 @@ Look for:
 - Model name (e.g. "iPhone 16 Pro Max", "Galaxy S25 Ultra", "Redmi Note 13 Pro")
 - RAM and storage capacity
 - Phone or box color (only if clearly visible or readable)
+- Battery health percentage if it is clearly visible (for example in iPhone settings)
 - Network type (4G/5G)
 
 Return ONLY valid JSON (no markdown, no backticks, no explanation):
@@ -48,6 +49,7 @@ Return ONLY valid JSON (no markdown, no backticks, no explanation):
   "ram_gb": number or null,
   "storage_gb": number or null,
   "color": "phone color like black/white/titanium blue or null",
+  "battery_health": number or null,
   "network": "4G or 5G or null",
   "condition": "new or used or null"
 }

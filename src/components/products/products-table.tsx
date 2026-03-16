@@ -3,7 +3,21 @@
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getErrorMessage, isRowLevelSecurityError, parseOptionalText } from "@/lib/utils";
-import type { Product, ProductInsert, ProductUpdate, VProductCatalog } from "@/types/database";
+import type { Product, ProductInsert, ProductUpdate, StoreSetting } from "@/types/database";
+import {
+  PRODUCT_CONDITION_OPTIONS,
+  buildProductKeyFromCatalog,
+  normalizeBatteryHealthValue,
+  normalizeProductColorValue,
+  normalizeProductCondition,
+  requiresProductBatteryHealth,
+  validateProductCatalogVariant,
+} from "@/lib/product-variants";
+import {
+  DEFAULT_PRICING_DEFAULTS,
+  buildPricingDefaultsFromStoreSettings,
+  type PricingDefaults,
+} from "@/lib/pricing-defaults";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -105,14 +119,8 @@ const ALWAYS_VISIBLE_COLUMNS = TABLE_COLUMNS.filter((column) => column.alwaysVis
 
 const STORAGE_KEY = "techno-store-visible-columns-v3";
 
-const PRICING_BANDS = [
-  { maxCostUsd: 200, marginPct: 0.3, label: "USD 0 - 200" },
-  { maxCostUsd: 400, marginPct: 0.25, label: "USD 201 - 400" },
-  { maxCostUsd: 800, marginPct: 0.2, label: "USD 401 - 800" },
-  { maxCostUsd: Number.POSITIVE_INFINITY, marginPct: 0.15, label: "USD 801+" },
-] as const;
-
-type ProductDisplay = Product & Pick<VProductCatalog, "color" | "battery_health">;
+type ProductDisplay = Product;
+type ProductFormValue = string | number | boolean;
 
 const EXPORT_COLUMNS: Array<{ key: keyof ProductDisplay; label: string }> = [
   { key: "product_key", label: "Product Key" },
@@ -248,13 +256,15 @@ const EDITABLE_COLUMNS = [
   { key: "usd_rate", label: "USD Rate", type: "number" as const },
   { key: "ram_gb", label: "RAM GB", type: "number" as const },
   { key: "storage_gb", label: "Storage GB", type: "number" as const },
+  { key: "color", label: "Color", type: "text" as const },
   { key: "network", label: "Network", type: "text" as const },
+  { key: "battery_health", label: "Battery Health", type: "number" as const },
   { key: "condition", label: "Condition", type: "text" as const },
   { key: "image_url", label: "Image URL", type: "text" as const },
 ];
 
 const QUICK_ADD_ADVANCED_COLUMNS = EDITABLE_COLUMNS.filter(
-  ({ key }) => !["product_name", "image_url"].includes(key)
+  ({ key }) => !["product_name", "image_url", "color", "battery_health", "condition"].includes(key)
 );
 
 const DEFAULT_VALUES: Partial<ProductInsert> = {
@@ -267,19 +277,12 @@ const DEFAULT_VALUES: Partial<ProductInsert> = {
   delivery_days: 0,
   usd_rate: 1460,
   condition: "new",
+  color: null,
+  battery_health: null,
 };
 
-const PRODUCT_CONDITION_OPTIONS = [
-  { value: "new", label: "New" },
-  { value: "like_new", label: "Like New" },
-  { value: "used", label: "Used" },
-  { value: "refurbished", label: "Refurbished" },
-] as const;
-
-const PRODUCT_CONDITION_SET = new Set(PRODUCT_CONDITION_OPTIONS.map((option) => option.value));
-
 function buildProductUpdatePayload(
-  formData: Record<string, string | number | boolean>
+  formData: Record<string, ProductFormValue>
 ): { payload: ProductUpdate | null; error?: string } {
   const update: Record<string, string | number | boolean | null> = {};
 
@@ -299,19 +302,28 @@ function buildProductUpdatePayload(
   const productKey = parseOptionalText(update.product_key);
   const category = parseOptionalText(update.category);
   const productName = parseOptionalText(update.product_name);
-  const condition = parseOptionalText(update.condition);
+  const condition = normalizeProductCondition(update.condition);
+  const color = normalizeProductColorValue(update.color);
+  const batteryHealth = normalizeBatteryHealthValue(update.battery_health);
 
   if (!productKey) return { payload: null, error: "Product Key is required." };
   if (!category) return { payload: null, error: "Category is required." };
   if (!productName) return { payload: null, error: "Product Name is required." };
-  if (!condition || !PRODUCT_CONDITION_SET.has(condition as (typeof PRODUCT_CONDITION_OPTIONS)[number]["value"])) {
-    return { payload: null, error: "Condition must be New, Like New, Used, or Refurbished." };
+  const variantError = validateProductCatalogVariant({
+    condition,
+    color,
+    batteryHealth,
+  });
+  if (variantError) {
+    return { payload: null, error: variantError };
   }
 
   update.product_key = productKey;
   update.category = category;
   update.product_name = productName;
   update.condition = condition;
+  update.color = color;
+  update.battery_health = batteryHealth;
 
   return { payload: update as ProductUpdate };
 }
@@ -322,13 +334,20 @@ function buildProductInsertPayload(
   const productKey = parseOptionalText(insert.product_key);
   const category = parseOptionalText(insert.category);
   const productName = parseOptionalText(insert.product_name);
-  const condition = parseOptionalText(insert.condition) ?? "new";
+  const condition = normalizeProductCondition(insert.condition) ?? "new";
+  const color = normalizeProductColorValue(insert.color);
+  const batteryHealth = normalizeBatteryHealthValue(insert.battery_health);
 
   if (!productKey) return { payload: null, error: "Product Key is required." };
   if (!category) return { payload: null, error: "Category is required." };
   if (!productName) return { payload: null, error: "Product Name is required." };
-  if (!PRODUCT_CONDITION_SET.has(condition as (typeof PRODUCT_CONDITION_OPTIONS)[number]["value"])) {
-    return { payload: null, error: "Condition must be New, Like New, Used, or Refurbished." };
+  const variantError = validateProductCatalogVariant({
+    condition,
+    color,
+    batteryHealth,
+  });
+  if (variantError) {
+    return { payload: null, error: variantError };
   }
   if (insert.price_usd == null) return { payload: null, error: "Price USD is required." };
   if (insert.price_ars == null) return { payload: null, error: "Price ARS is required." };
@@ -340,7 +359,9 @@ function buildProductInsertPayload(
       category,
       product_name: productName,
       delivery_type: parseOptionalText(insert.delivery_type) ?? "immediate",
+      color,
       network: parseOptionalText(insert.network),
+      battery_health: batteryHealth,
       image_url: parseOptionalText(insert.image_url),
       condition,
     },
@@ -351,7 +372,7 @@ function getProductErrorMessage(error: unknown, action: "adding" | "updating" | 
   const message = getErrorMessage(error, `Unexpected error ${action} product.`);
 
   if (isRowLevelSecurityError(error)) {
-    return "RLS blocked this product save. Run supabase/disable_all_public_rls.sql in Supabase or add an allow policy for products."
+    return "RLS blocked this product save. Allow writes to products in Supabase first."
   }
 
   if (message.includes("products_product_key_key") || message.includes("duplicate key")) {
@@ -362,6 +383,14 @@ function getProductErrorMessage(error: unknown, action: "adding" | "updating" | 
     return "Condition must be New, Like New, Used, or Refurbished."
   }
 
+  if (message.includes("chk_products_battery_health")) {
+    return "Battery Health must be between 0 and 100."
+  }
+
+  if (message.includes("chk_products_catalog_variant")) {
+    return "Used, Like New, and Refurbished products need battery health. New products must leave it empty."
+  }
+
   if (message.includes("null value in column")) {
     if (message.includes("\"product_key\"")) return "Product Key is required."
     if (message.includes("\"category\"")) return "Category is required."
@@ -369,6 +398,7 @@ function getProductErrorMessage(error: unknown, action: "adding" | "updating" | 
     if (message.includes("\"price_usd\"")) return "Price USD is required."
     if (message.includes("\"price_ars\"")) return "Price ARS is required."
     if (message.includes("\"condition\"")) return "Condition is required."
+    if (message.includes("\"battery_health\"")) return "Battery Health is required for non-new products."
   }
 
   return message
@@ -435,18 +465,6 @@ function roundArsAmount(value: number): number {
   return Math.round(value);
 }
 
-function slugifyProductName(name: string): string {
-  const slug = name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .replace(/_+/g, "_");
-
-  return slug || "product";
-}
-
 function inferCategoryFromName(name: string): string {
   const normalized = name
     .normalize("NFD")
@@ -468,51 +486,33 @@ function inferCategoryFromName(name: string): string {
   return "GENERAL";
 }
 
-function buildUniqueProductKey(name: string, products: ProductDisplay[]): string {
-  const baseKey = slugifyProductName(name);
-  const existingKeys = new Set(products.map((product) => product.product_key.toLowerCase()));
-
-  if (!existingKeys.has(baseKey)) return baseKey;
-
-  let suffix = 2;
-  let candidate = `${baseKey}_${suffix}`;
-
-  while (existingKeys.has(candidate)) {
-    suffix += 1;
-    candidate = `${baseKey}_${suffix}`;
-  }
-
-  return candidate;
-}
-
-function getPricingBand(costUsd: number) {
-  return (
-    PRICING_BANDS.find((band) => costUsd <= band.maxCostUsd) ??
-    PRICING_BANDS[PRICING_BANDS.length - 1]
-  );
-}
-
 type QuickAddPreview = {
   marginBandLabel: string;
   insert: ProductInsert;
 };
 
 function buildQuickAddPreview(
-  productName: string,
-  rawCostUsd: string | number | boolean | undefined,
-  products: ProductDisplay[]
+  formData: Record<string, ProductFormValue>,
+  products: ProductDisplay[],
+  pricingDefaults: PricingDefaults
 ): QuickAddPreview | null {
-  const trimmedName = productName.trim();
-  const costUsd = parseNumericValue(rawCostUsd);
+  const trimmedName = String(formData.product_name ?? "").trim();
+  const costUsd = parseNumericValue(formData.cost_usd);
+  const condition = normalizeProductCondition(formData.condition) ?? "new";
+  const color = normalizeProductColorValue(formData.color);
+  const batteryHealth =
+    condition === "new" ? null : normalizeBatteryHealthValue(formData.battery_health);
 
   if (!trimmedName || costUsd === null || costUsd <= 0) return null;
 
-  const logisticsUsd = Number(DEFAULT_VALUES.logistics_usd ?? 10);
-  const usdRate = Number(DEFAULT_VALUES.usd_rate ?? 1460);
-  const cuotasQty = Number(DEFAULT_VALUES.cuotas_qty ?? 6);
-  const bancarizadaInterest = Number(DEFAULT_VALUES.bancarizada_interest ?? 0.5);
-  const macroInterest = Number(DEFAULT_VALUES.macro_interest ?? 0.4);
-  const marginBand = getPricingBand(costUsd);
+  const logisticsUsd = pricingDefaults.logisticsUsd;
+  const usdRate = pricingDefaults.usdRate;
+  const cuotasQty = pricingDefaults.cuotasQty;
+  const bancarizadaInterest = pricingDefaults.bancarizadaInterest;
+  const macroInterest = pricingDefaults.macroInterest;
+  const marginBand =
+    pricingDefaults.marginBands.find((band) => costUsd <= band.maxCostUsd) ??
+    pricingDefaults.marginBands[pricingDefaults.marginBands.length - 1];
 
   const totalCostUsd = roundUsdAmount(costUsd + logisticsUsd);
   const priceUsd = roundUsdAmount(totalCostUsd * (1 + marginBand.marginPct));
@@ -523,7 +523,12 @@ function buildQuickAddPreview(
   return {
     marginBandLabel: marginBand.label,
     insert: {
-      product_key: buildUniqueProductKey(trimmedName, products),
+      product_key: buildProductKeyFromCatalog({
+        productName: trimmedName,
+        color,
+        batteryHealth,
+        existingKeys: products.map((product) => product.product_key),
+      }),
       category: inferCategoryFromName(trimmedName),
       product_name: trimmedName,
       cost_usd: roundUsdAmount(costUsd),
@@ -546,16 +551,18 @@ function buildQuickAddPreview(
       usd_rate: usdRate,
       ram_gb: null,
       storage_gb: null,
+      color,
       network: null,
+      battery_health: batteryHealth,
       image_url: null,
-      condition: String(DEFAULT_VALUES.condition ?? "new"),
+      condition,
     },
   };
 }
 
 function buildQuickAddInsertWithOverrides(
   preview: QuickAddPreview | null,
-  formData: Record<string, string | number | boolean>
+  formData: Record<string, ProductFormValue>
 ): ProductInsert | null {
   if (!preview) return null;
 
@@ -697,12 +704,13 @@ function matchesProductSearch(product: ProductDisplay, query: string): boolean {
 
 export function ProductsTable() {
   const [products, setProducts] = useState<ProductDisplay[]>([]);
+  const [pricingDefaults, setPricingDefaults] = useState<PricingDefaults>(DEFAULT_PRICING_DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [editProduct, setEditProduct] = useState<ProductDisplay | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [deleteProduct, setDeleteProduct] = useState<ProductDisplay | null>(null);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState<Record<string, string | number | boolean>>({});
+  const [formData, setFormData] = useState<Record<string, ProductFormValue>>({});
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null);
   const [editImageFile, setEditImageFile] = useState<File | null>(null);
@@ -736,11 +744,14 @@ export function ProductsTable() {
     sortColumn && filteredProducts.length > 0
       ? sortProducts(filteredProducts, sortColumn, sortDirection)
       : filteredProducts;
-  const quickAddPreview = buildQuickAddPreview(
-    String(formData.product_name ?? ""),
-    formData.cost_usd,
-    products
-  );
+  const quickAddCondition = normalizeProductCondition(formData.condition) ?? "new";
+  const quickAddBatteryRequired = requiresProductBatteryHealth(quickAddCondition);
+  const quickAddVariantError = validateProductCatalogVariant({
+    condition: quickAddCondition,
+    color: formData.color,
+    batteryHealth: quickAddCondition === "new" ? null : formData.battery_health,
+  });
+  const quickAddPreview = buildQuickAddPreview(formData, products, pricingDefaults);
   const resolvedQuickAddInsert = buildQuickAddInsertWithOverrides(quickAddPreview, formData);
 
   useEffect(() => {
@@ -819,28 +830,46 @@ export function ProductsTable() {
 
   const fetchProducts = async () => {
     setLoading(true);
-    const [productsRes, catalogRes] = await Promise.all([
+    const [productsRes, settingsRes] = await Promise.all([
       supabase.from("products").select("*").order("id", { ascending: true }),
-      supabase.from("v_product_catalog").select("product_key,color,battery_health"),
+      supabase
+        .from("store_settings")
+        .select("key,value")
+        .in("key", [
+          "pricing_default_usd_rate",
+          "usd_to_ars",
+          "pricing_default_logistics_usd",
+          "logistics_usd",
+          "pricing_default_cuotas_qty",
+          "cuotas_qty",
+          "pricing_bancarizada_interest",
+          "bancarizada_interest",
+          "pricing_macro_interest",
+          "macro_interest",
+          "pricing_margin_band_1_max_cost_usd",
+          "pricing_margin_band_1_margin_pct",
+          "pricing_margin_band_2_max_cost_usd",
+          "pricing_margin_band_2_margin_pct",
+          "pricing_margin_band_3_max_cost_usd",
+          "pricing_margin_band_3_margin_pct",
+          "pricing_margin_band_4_max_cost_usd",
+          "pricing_margin_band_4_margin_pct",
+        ]),
     ]);
 
     if (productsRes.error) {
       console.error("Error fetching products:", productsRes.error);
       setProducts([]);
     } else {
-      const catalogByKey = new Map(
-        (catalogRes.data ?? []).map((row) => [row.product_key, row])
-      );
+      setProducts((productsRes.data ?? []) as ProductDisplay[]);
+    }
 
-      setProducts(
-        (productsRes.data ?? []).map((product) => {
-          const catalog = catalogByKey.get(product.product_key);
-          return {
-            ...product,
-            color: catalog?.color ?? null,
-            battery_health: catalog?.battery_health ?? null,
-          };
-        })
+    if (settingsRes.error) {
+      console.error("Error fetching pricing defaults:", settingsRes.error);
+      setPricingDefaults(DEFAULT_PRICING_DEFAULTS);
+    } else {
+      setPricingDefaults(
+        buildPricingDefaultsFromStoreSettings((settingsRes.data ?? []) as Array<Pick<StoreSetting, "key" | "value">>)
       );
     }
     setLoading(false);
@@ -852,7 +881,7 @@ export function ProductsTable() {
 
   const openEdit = (product: ProductDisplay) => {
     setEditProduct(product);
-    const data: Record<string, string | number | boolean> = {};
+    const data: Record<string, ProductFormValue> = {};
     EDITABLE_COLUMNS.forEach(({ key }) => {
       data[key] = toFormValue(product, key);
     });
@@ -869,6 +898,9 @@ export function ProductsTable() {
     setFormData({
       product_name: "",
       cost_usd: "",
+      condition: "new",
+      color: "",
+      battery_health: "",
     });
     setSelectedImageFile(null);
     setShowAdvancedDefaults(false);
@@ -1048,8 +1080,16 @@ export function ProductsTable() {
     fetchProducts();
   };
 
-  const updateForm = (key: string, value: string | number | boolean) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
+  const updateForm = (key: string, value: ProductFormValue) => {
+    setFormData((prev) => {
+      const next = { ...prev, [key]: value };
+
+      if (key === "condition" && value === "new") {
+        next.battery_health = "";
+      }
+
+      return next;
+    });
   };
 
   const displayColumns = TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.key));
@@ -1057,6 +1097,20 @@ export function ProductsTable() {
     typeof formData.image_url === "string" && !editImageMarkedForRemoval
       ? formData.image_url.trim()
       : "";
+  const editCondition = normalizeProductCondition(formData.condition) ?? "new";
+  const editBatteryRequired = requiresProductBatteryHealth(editCondition);
+  const editVariantError = validateProductCatalogVariant({
+    condition: editCondition,
+    color: formData.color,
+    batteryHealth: editBatteryRequired ? formData.battery_health : null,
+  });
+  const editGeneratedProductKey = buildProductKeyFromCatalog({
+    productName: String(formData.product_name ?? ""),
+    color: normalizeProductColorValue(formData.color),
+    batteryHealth: editBatteryRequired ? normalizeBatteryHealthValue(formData.battery_health) : null,
+    existingKeys: products.map((product) => product.product_key),
+    currentKey: editProduct?.product_key ?? null,
+  });
   const quickAddSummaryItems = resolvedQuickAddInsert
     ? [
         { label: "Product Key", value: resolvedQuickAddInsert.product_key },
@@ -1089,6 +1143,12 @@ export function ProductsTable() {
           label: "Condition",
           value: String(resolvedQuickAddInsert.condition ?? "new"),
         },
+        ...(resolvedQuickAddInsert.color
+          ? [{ label: "Color", value: resolvedQuickAddInsert.color }]
+          : []),
+        ...(resolvedQuickAddInsert.battery_health != null
+          ? [{ label: "Battery", value: `${resolvedQuickAddInsert.battery_health}%` }]
+          : []),
       ]
     : [];
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -1484,6 +1544,32 @@ export function ProductsTable() {
                         </div>
                       </div>
                     </div>
+                  ) : key === "product_key" ? (
+                    <div className="space-y-2">
+                      <Input
+                        id={key}
+                        type="text"
+                        value={typeof formData[key] === "boolean" ? "" : String(formData[key] ?? "")}
+                        onChange={(event) => updateForm(key, event.target.value)}
+                        placeholder={label}
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground">
+                          Generated from product name, catalog color, and battery when applicable.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => updateForm("product_key", editGeneratedProductKey)}
+                        >
+                          Regenerate
+                        </Button>
+                      </div>
+                      <p className="break-all font-mono text-xs text-muted-foreground">
+                        Suggested key: {editGeneratedProductKey || "Waiting for product name"}
+                      </p>
+                    </div>
                   ) : type === "text" && key === "delivery_type" ? (
                     <Select
                       value={String(formData[key] ?? "")}
@@ -1514,6 +1600,49 @@ export function ProductsTable() {
                         ))}
                       </SelectContent>
                     </Select>
+                  ) : key === "battery_health" ? (
+                    editBatteryRequired ? (
+                      <div className="space-y-2">
+                        <Input
+                          id={key}
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={
+                            typeof formData[key] === "boolean"
+                              ? ""
+                              : String(formData[key] ?? "")
+                          }
+                          onChange={(event) =>
+                            updateForm(
+                              key,
+                              event.target.value === "" ? "" : parseFloat(event.target.value)
+                            )
+                          }
+                          placeholder="93"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Required for used, like-new, and refurbished products.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex h-10 items-center rounded-md border border-dashed px-3 text-sm text-muted-foreground">
+                        New products keep this empty
+                      </div>
+                    )
+                  ) : key === "color" ? (
+                    <div className="space-y-2">
+                      <Input
+                        id={key}
+                        type="text"
+                        value={typeof formData[key] === "boolean" ? "" : String(formData[key] ?? "")}
+                        onChange={(event) => updateForm(key, event.target.value)}
+                        placeholder={label}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Fill this only when the storefront offer guarantees one exact color.
+                      </p>
+                    </div>
                   ) : (
                     <Input
                       id={key}
@@ -1537,12 +1666,17 @@ export function ProductsTable() {
                 </div>
               ))}
             </div>
+            {editVariantError ? (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                {editVariantError}
+              </p>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditProduct(null)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveEdit} disabled={saving}>
+            <Button onClick={handleSaveEdit} disabled={saving || Boolean(editVariantError)}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Save
             </Button>
@@ -1591,14 +1725,81 @@ export function ProductsTable() {
                   }
                   placeholder="499"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Margin is assigned automatically from the cost band chart. Product-level specs stay
-                  here, while unit-level details like
-                  <span className="font-medium text-foreground"> color</span> and
-                  <span className="font-medium text-foreground"> battery health</span> belong in
-                  Stock.
-                </p>
               </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="add-condition">Condition</Label>
+                <Select
+                  value={quickAddCondition}
+                  onValueChange={(value) => updateForm("condition", value)}
+                >
+                  <SelectTrigger id="add-condition">
+                    <SelectValue placeholder="Select condition..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRODUCT_CONDITION_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-color">Color</Label>
+                <Input
+                  id="add-color"
+                  value={String(formData.color ?? "")}
+                  onChange={(event) => updateForm("color", event.target.value)}
+                  placeholder="Dorado, Negro, Azul T..."
+                />
+              </div>
+              {quickAddBatteryRequired ? (
+                <div className="space-y-2">
+                  <Label htmlFor="add-battery-health">Battery Health *</Label>
+                  <Input
+                    id="add-battery-health"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={typeof formData.battery_health === "boolean" ? "" : String(formData.battery_health ?? "")}
+                    onChange={(event) =>
+                      updateForm(
+                        "battery_health",
+                        event.target.value === "" ? "" : parseFloat(event.target.value)
+                      )
+                    }
+                    placeholder="93"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Battery Health</Label>
+                  <div className="flex h-10 items-center rounded-md border border-dashed px-3 text-sm text-muted-foreground">
+                    New products keep this empty
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Catalog Rules</p>
+              <p className="mt-1 text-sm">
+                `product_key` is generated from the product name plus catalog color and battery when
+                those are part of the customer-facing variant.
+              </p>
+              <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
+                Generated key: {quickAddPreview?.insert.product_key ?? "Waiting for product name and cost"}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                New products leave battery empty. Used / like-new / refurbished products require a
+                battery health value so the key and storefront variant stay exact.
+              </p>
+              {quickAddVariantError ? (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-300">{quickAddVariantError}</p>
+              ) : null}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
@@ -1691,6 +1892,12 @@ export function ProductsTable() {
                           setFormData((current) => ({
                             product_name: current.product_name ?? "",
                             cost_usd: current.cost_usd ?? "",
+                            condition: current.condition ?? "new",
+                            color: current.color ?? "",
+                            battery_health:
+                              current.condition && current.condition !== "new"
+                                ? current.battery_health ?? ""
+                                : "",
                           }))
                         }
                       >
@@ -1769,7 +1976,7 @@ export function ProductsTable() {
             ) : (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 Enter a product name and a valid USD cost to generate the category, product key,
-                selling price, installment totals, and the default new-product data automatically.
+                selling price, installment totals, and the storefront variant fields automatically.
               </div>
             )}
           </div>
@@ -1777,7 +1984,10 @@ export function ProductsTable() {
             <Button variant="outline" onClick={() => setAddOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveAdd} disabled={saving}>
+            <Button
+              onClick={handleSaveAdd}
+              disabled={saving || !resolvedQuickAddInsert || Boolean(quickAddVariantError)}
+            >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Add
             </Button>
