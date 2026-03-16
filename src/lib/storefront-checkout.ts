@@ -1,6 +1,8 @@
 export const TRANSFER_ALIASES = ["technostore.celu", "tucelualmejorprecio"] as const;
+const FALLBACK_STOREFRONT_WHATSAPP_NUMBER = "543875319940";
 
 export type StorefrontDeliveryDetails = {
+  phone?: string | null;
   address: string;
   zipCode: string;
   city: string;
@@ -24,8 +26,29 @@ export function buildStorefrontProductUrl(productKey: string) {
   return `${getStorefrontBaseUrl()}/productos/${encodeURIComponent(normalizedKey)}`;
 }
 
+export function getStorefrontWhatsAppNumber() {
+  return String(
+    process.env.NEXT_PUBLIC_STOREFRONT_WHATSAPP_NUMBER ||
+      FALLBACK_STOREFRONT_WHATSAPP_NUMBER
+  ).replace(/\D+/g, "");
+}
+
+export function buildStorefrontWhatsAppUrl(message?: string | null) {
+  const normalizedMessage =
+    String(message || "Hola TechnoStore, vengo de la tienda online.").trim();
+
+  return `https://wa.me/${getStorefrontWhatsAppNumber()}?text=${encodeURIComponent(
+    normalizedMessage
+  )}`;
+}
+
 export function isValidCheckoutEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(String(value || "").trim());
+}
+
+export function isValidCheckoutPhone(value: string) {
+  const digits = String(value || "").replace(/\D+/g, "");
+  return digits.length >= 8 && digits.length <= 15;
 }
 
 export function isValidCheckoutName(value: string) {
@@ -52,6 +75,7 @@ export function isValidCheckoutZipCode(value: string) {
 export function buildStorefrontDeliveryNotes(details: StorefrontDeliveryDetails) {
   const lines = [
     "Datos de entrega:",
+    `WhatsApp: ${String(details.phone || "").trim()}`,
     `Dirección: ${String(details.address || "").trim()}`,
     `CP: ${String(details.zipCode || "").trim()}`,
     `Ciudad: ${String(details.city || "").trim()}`,

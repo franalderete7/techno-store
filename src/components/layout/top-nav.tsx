@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Funnel, Package, Settings2, ShoppingCart, Warehouse } from "lucide-react";
+import { Funnel, Package, Settings2, ShoppingBag, ShoppingCart, Warehouse } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "", label: "Products", icon: Package },
+  { href: "/orders", label: "Orders", icon: ShoppingBag },
   { href: "/stock", label: "Stock", icon: Warehouse },
   { href: "/purchases", label: "Purchases", icon: ShoppingCart },
   { href: "/crm", label: "CRM", icon: Funnel },

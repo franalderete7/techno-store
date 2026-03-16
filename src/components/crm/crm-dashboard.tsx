@@ -1,16 +1,24 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bot,
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
   Search,
   Sparkles,
   Tag,
   UserRound,
 } from "lucide-react";
+import {
+  humanizeCrmTagKey,
+  inferCrmTagGroup,
+  normalizeCrmColorHex,
+} from "@/lib/crm-tags";
 import { supabase } from "@/lib/supabase";
-import type { Conversation, VCustomerContext } from "@/types/database";
+import type { Conversation, CrmTagDefinition, VCustomerContext } from "@/types/database";
 
 const STAGE_LABELS: Record<string, string> = {
   new: "Nuevo",
@@ -46,19 +54,7 @@ const compactPreview = (value: string | null | undefined, limit = 240) =>
     .slice(0, limit);
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-const inferTagGroup = (tagKey: string | null | undefined) => {
-  const value = String(tagKey || "");
-  if (value.startsWith("pay_")) return "payment";
-  if (value.startsWith("topic_")) return "topic";
-  if (value.startsWith("brand_")) return "brand";
-  if (value.startsWith("stage_")) return "stage";
-  if (value.startsWith("intent_")) return "intent";
-  if (value.startsWith("prov_") || value.startsWith("loc_") || value.startsWith("phone_")) {
-    return "location";
-  }
-  return "tag";
-};
+const DEFAULT_VISIBLE_EVENTS = 4;
 
 const getTagTone = (group: string | null | undefined) => {
   switch (group) {
@@ -100,10 +96,22 @@ const formatTime = (value: string | null | undefined) => {
   });
 };
 
+const getCustomTagStyle = (colorHex: string | null | undefined): CSSProperties | undefined => {
+  const normalized = normalizeCrmColorHex(colorHex);
+  if (!normalized) return undefined;
+
+  return {
+    borderColor: `${normalized}55`,
+    backgroundColor: `${normalized}18`,
+    color: normalized,
+  };
+};
+
 type EventChip = {
   key: string;
   label: string;
   group: string;
+  colorHex: string | null;
 };
 
 type ConversationEvent = {
@@ -247,7 +255,15 @@ const buildDailySummary = (card: ConversationCard) => {
   return parts.join(". ").slice(0, 420);
 };
 
-function EventBubble({ event }: { event: ConversationEvent }) {
+function EventBubble({
+  event,
+  expanded,
+  onToggle,
+}: {
+  event: ConversationEvent;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const isUser = event.role === "user";
   const signalCount =
     event.tags.length +
@@ -255,6 +271,13 @@ function EventBubble({ event }: { event: ConversationEvent }) {
     event.products.length +
     event.brands.length +
     event.topics.length;
+  const hasExtraDetail =
+    (event.summary && event.summary !== event.preview) ||
+    event.insights.length > 0 ||
+    event.tags.length > 0 ||
+    event.products.length > 0 ||
+    event.payments.length > 0 ||
+    event.topics.length > 0;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -278,75 +301,102 @@ function EventBubble({ event }: { event: ConversationEvent }) {
 
         {event.preview ? <p className="text-sm leading-6 text-foreground">{event.preview}</p> : null}
 
-        {event.summary && event.summary !== event.preview ? (
-          <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground">
-            {event.summary}
-          </div>
+        {hasExtraDetail ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="mt-3 inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/30 hover:text-foreground"
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="h-3.5 w-3.5" />
+                Ocultar detalles
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3.5 w-3.5" />
+                Ver detalles
+              </>
+            )}
+          </button>
         ) : null}
 
-        {event.insights.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {event.insights.map((insight) => (
-              <span
-                key={`${event.id}-insight-${insight}`}
-                className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
-              >
-                {insight}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        {expanded ? (
+          <>
+            {event.summary && event.summary !== event.preview ? (
+              <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground">
+                {event.summary}
+              </div>
+            ) : null}
 
-        {event.tags.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {event.tags.map((tag) => (
-              <span
-                key={`${event.id}-${tag.key}`}
-                className={`rounded-full border px-2 py-1 text-[11px] font-medium ${getTagTone(tag.group)}`}
-              >
-                {tag.label}
-              </span>
-            ))}
-          </div>
-        ) : null}
+            {event.insights.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {event.insights.map((insight) => (
+                  <span
+                    key={`${event.id}-insight-${insight}`}
+                    className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
+                  >
+                    {insight}
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
-        {event.products.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {event.products.map((product) => (
-              <span
-                key={`${event.id}-product-${product}`}
-                className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-700 dark:text-orange-300"
-              >
-                {product}
-              </span>
-            ))}
-          </div>
-        ) : null}
+            {event.tags.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {event.tags.map((tag) => (
+                  <span
+                    key={`${event.id}-${tag.key}`}
+                    className={`rounded-full border px-2 py-1 text-[11px] font-medium ${
+                      tag.colorHex ? "" : getTagTone(tag.group)
+                    }`}
+                    style={getCustomTagStyle(tag.colorHex)}
+                  >
+                    {tag.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
-        {event.payments.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {event.payments.map((payment) => (
-              <span
-                key={`${event.id}-payment-${payment}`}
-                className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300"
-              >
-                {normalizeSignal(payment)}
-              </span>
-            ))}
-          </div>
-        ) : null}
+            {event.products.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {event.products.map((product) => (
+                  <span
+                    key={`${event.id}-product-${product}`}
+                    className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-700 dark:text-orange-300"
+                  >
+                    {product}
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
-        {event.topics.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {event.topics.map((topic) => (
-              <span
-                key={`${event.id}-topic-${topic}`}
-                className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-700 dark:text-fuchsia-300"
-              >
-                {normalizeSignal(topic)}
-              </span>
-            ))}
-          </div>
+            {event.payments.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {event.payments.map((payment) => (
+                  <span
+                    key={`${event.id}-payment-${payment}`}
+                    className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300"
+                  >
+                    {normalizeSignal(payment)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {event.topics.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {event.topics.map((topic) => (
+                  <span
+                    key={`${event.id}-topic-${topic}`}
+                    className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-700 dark:text-fuchsia-300"
+                  >
+                    {normalizeSignal(topic)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
     </div>
@@ -358,8 +408,12 @@ export function CrmDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
   const [search, setSearch] = useState("");
+  const [expandedCards, setExpandedCards] = useState<Record<number, boolean>>({});
+  const [expandedEvents, setExpandedEvents] = useState<Record<number, boolean>>({});
+  const [showAllEventsByCard, setShowAllEventsByCard] = useState<Record<number, boolean>>({});
   const [customerRows, setCustomerRows] = useState<VCustomerContext[]>([]);
   const [conversationRows, setConversationRows] = useState<Conversation[]>([]);
+  const [tagDefinitionRows, setTagDefinitionRows] = useState<CrmTagDefinition[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,7 +422,7 @@ export function CrmDashboard() {
       setLoading(true);
       setError(null);
 
-      const [customerRes, conversationRes] = await Promise.all([
+      const [customerRes, conversationRes, tagDefinitionRes] = await Promise.all([
         supabase
           .from("v_customer_context")
           .select(
@@ -383,18 +437,26 @@ export function CrmDashboard() {
           )
           .order("created_at", { ascending: false })
           .limit(12000),
+        supabase
+          .from("crm_tag_definitions")
+          .select("*")
+          .order("tag_group", { ascending: true })
+          .order("sort_order", { ascending: true })
+          .order("tag_key", { ascending: true }),
       ]);
 
       if (cancelled) return;
 
-      const firstError = customerRes.error || conversationRes.error;
+      const firstError = customerRes.error || conversationRes.error || tagDefinitionRes.error;
       if (firstError) {
         setError(firstError.message);
         setCustomerRows([]);
         setConversationRows([]);
+        setTagDefinitionRows([]);
       } else {
         setCustomerRows((customerRes.data || []) as VCustomerContext[]);
         setConversationRows((conversationRes.data || []) as Conversation[]);
+        setTagDefinitionRows((tagDefinitionRes.data || []) as CrmTagDefinition[]);
       }
 
       setLoading(false);
@@ -409,6 +471,11 @@ export function CrmDashboard() {
   const customerById = useMemo(
     () => new Map(customerRows.map((row) => [row.id, row])),
     [customerRows]
+  );
+
+  const tagDefinitionByKey = useMemo(
+    () => new Map(tagDefinitionRows.map((row) => [row.tag_key, row])),
+    [tagDefinitionRows]
   );
 
   const orderedConversations = useMemo(
@@ -483,11 +550,16 @@ export function CrmDashboard() {
       const preview = compactPreview(row.was_audio ? row.audio_transcription || row.message : row.message, 240);
       const summary = compactPreview(row.conversation_summary || preview, 220);
       const insights = cleanStringArray(row.conversation_insights).slice(0, 5);
-      const tags = cleanStringArray(row.applied_tags).map((key) => ({
-        key,
-        label: normalizeSignal(key),
-        group: inferTagGroup(key),
-      }));
+      const tags = cleanStringArray(row.applied_tags).map((key) => {
+        const definition = tagDefinitionByKey.get(key);
+
+        return {
+          key,
+          label: definition?.label || humanizeCrmTagKey(key),
+          group: definition?.tag_group || inferCrmTagGroup(key),
+          colorHex: definition?.color_hex || null,
+        };
+      });
       const payments = cleanStringArray(row.payment_methods_detected);
       const products = cleanStringArray(row.products_mentioned);
       const brands = cleanStringArray(row.brands_detected);
@@ -568,7 +640,7 @@ export function CrmDashboard() {
         return haystack.includes(searchNeedle);
       })
       .sort((a, b) => String(b.lastEventAt).localeCompare(String(a.lastEventAt)));
-  }, [customerById, orderedConversations, search, selectedDate]);
+  }, [customerById, orderedConversations, search, selectedDate, tagDefinitionByKey]);
 
   const stats = useMemo(() => {
     const interactions = cards.reduce((sum, card) => sum + card.events.length, 0);
@@ -583,6 +655,26 @@ export function CrmDashboard() {
       tags,
     };
   }, [cards]);
+
+  useEffect(() => {
+    setExpandedEvents({});
+    setShowAllEventsByCard({});
+    setExpandedCards((current) => {
+      const next = { ...current };
+      const allowedIds = new Set(cards.map((card) => card.customerId));
+      Object.keys(next).forEach((key) => {
+        if (!allowedIds.has(Number(key))) {
+          delete next[Number(key)];
+        }
+      });
+      cards.slice(0, 2).forEach((card) => {
+        if (next[card.customerId] === undefined) {
+          next[card.customerId] = true;
+        }
+      });
+      return next;
+    });
+  }, [cards, selectedDate]);
 
   return (
     <section className="rounded-2xl border bg-card shadow-sm">
@@ -672,11 +764,24 @@ export function CrmDashboard() {
         ) : (
           <div className="space-y-5">
             {cards.map((card) => (
-              <article
-                key={`card-${card.customerId}`}
-                className="overflow-hidden rounded-3xl border bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.08),transparent_24%)] shadow-sm"
-              >
-                <header className="border-b bg-background/85 px-5 py-4">
+              (() => {
+                const isCardExpanded =
+                  expandedCards[card.customerId] ?? (search.trim().length > 0 || cards.indexOf(card) < 2);
+                const showAllEvents = showAllEventsByCard[card.customerId] ?? false;
+                const visibleEvents =
+                  isCardExpanded && (showAllEvents || search.trim().length > 0)
+                    ? card.events
+                    : isCardExpanded
+                      ? card.events.slice(-DEFAULT_VISIBLE_EVENTS)
+                      : [];
+                const hiddenEventsCount = Math.max(card.events.length - visibleEvents.length, 0);
+
+                return (
+                  <article
+                    key={`card-${card.customerId}`}
+                    className="overflow-hidden rounded-3xl border bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.08),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.08),transparent_24%)] shadow-sm"
+                  >
+                    <header className="border-b bg-background/85 px-5 py-4">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-2">
                       <div>
@@ -711,119 +816,184 @@ export function CrmDashboard() {
                             {normalizeSignal(card.paymentLast)}
                           </span>
                         ) : null}
+                        <span className="rounded-full border bg-background/80 px-2 py-1 font-medium text-foreground">
+                          {card.events.length} interacciones
+                        </span>
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border bg-muted/25 px-4 py-3 text-sm text-muted-foreground xl:max-w-md">
-                      <div className="flex items-center gap-2 font-medium text-foreground">
-                        <CalendarDays className="h-4 w-4 text-primary" />
-                        Summary
+                    <div className="flex flex-col gap-3 xl:max-w-md xl:items-end">
+                      <div className="rounded-2xl border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2 font-medium text-foreground">
+                          <CalendarDays className="h-4 w-4 text-primary" />
+                          Summary
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-foreground">
+                          {card.dailySummary || "Sin resumen compacto para este dia todavia."}
+                        </p>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-foreground">
-                        {card.dailySummary || "Sin resumen compacto para este dia todavia."}
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedCards((current) => ({
+                            ...current,
+                            [card.customerId]: !isCardExpanded,
+                          }))
+                        }
+                        className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary/30 hover:text-primary"
+                      >
+                        {isCardExpanded ? (
+                          <>
+                            <ChevronUp className="h-4 w-4" />
+                            Ocultar conversación
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-4 w-4" />
+                            Ver conversación
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
                 </header>
 
-                <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-                  <div className="space-y-4">
-                    {card.events.map((event) => (
-                      <EventBubble key={`${card.customerId}-${event.id}`} event={event} />
-                    ))}
+                {isCardExpanded ? (
+                  <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+                    <div className="space-y-4">
+                      {hiddenEventsCount > 0 ? (
+                        <div className="flex items-center justify-between rounded-2xl border bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+                          <span>
+                            Mostrando las ultimas {visibleEvents.length} interacciones de {card.events.length}.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowAllEventsByCard((current) => ({
+                                ...current,
+                                [card.customerId]: !showAllEvents,
+                              }))
+                            }
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {showAllEvents ? "Ver menos" : `Ver ${hiddenEventsCount} mas`}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {visibleEvents.map((event) => (
+                        <EventBubble
+                          key={`${card.customerId}-${event.id}`}
+                          event={event}
+                          expanded={expandedEvents[event.id] ?? false}
+                          onToggle={() =>
+                            setExpandedEvents((current) => ({
+                              ...current,
+                              [event.id]: !(current[event.id] ?? false),
+                            }))
+                          }
+                        />
+                      ))}
+                    </div>
+
+                    <aside className="space-y-4">
+                      <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
+                        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          <Tag className="h-4 w-4 text-primary" />
+                          Highlights
+                        </div>
+                        {card.insightHighlights.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {card.insightHighlights.map((insight) => (
+                              <span
+                                key={`${card.customerId}-highlight-${insight}`}
+                                className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
+                              >
+                                {insight}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-3 text-sm text-muted-foreground">
+                            No insight highlights stored for this day yet.
+                          </p>
+                        )}
+                      </section>
+
+                      <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
+                        <p className="text-sm font-medium text-foreground">Signals for the day</p>
+                        <div className="mt-3 space-y-3">
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                              Products
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {card.productsToday.length > 0 ? (
+                                card.productsToday.map((product) => (
+                                  <span
+                                    key={`${card.customerId}-product-${product}`}
+                                    className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-700 dark:text-orange-300"
+                                  >
+                                    {product}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-sm text-muted-foreground">No product mention</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                              Payment
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {card.paymentsToday.length > 0 ? (
+                                card.paymentsToday.map((payment) => (
+                                  <span
+                                    key={`${card.customerId}-payment-${payment}`}
+                                    className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300"
+                                  >
+                                    {normalizeSignal(payment)}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-sm text-muted-foreground">No payment signal</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                              Topics
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {card.topicsToday.length > 0 ? (
+                                card.topicsToday.map((topic) => (
+                                  <span
+                                    key={`${card.customerId}-topic-${topic}`}
+                                    className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-700 dark:text-fuchsia-300"
+                                  >
+                                    {normalizeSignal(topic)}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-sm text-muted-foreground">No topic signal</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+                    </aside>
                   </div>
-
-                  <aside className="space-y-4">
-                    <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
-                      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                        <Tag className="h-4 w-4 text-primary" />
-                        Highlights
-                      </div>
-                      {card.insightHighlights.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {card.insightHighlights.map((insight) => (
-                            <span
-                              key={`${card.customerId}-highlight-${insight}`}
-                              className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
-                            >
-                              {insight}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-3 text-sm text-muted-foreground">
-                          No insight highlights stored for this day yet.
-                        </p>
-                      )}
-                    </section>
-
-                    <section className="rounded-2xl border bg-background/80 p-4 shadow-sm">
-                      <p className="text-sm font-medium text-foreground">Signals for the day</p>
-                      <div className="mt-3 space-y-3">
-                        <div>
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Products
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {card.productsToday.length > 0 ? (
-                              card.productsToday.map((product) => (
-                                <span
-                                  key={`${card.customerId}-product-${product}`}
-                                  className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium text-orange-700 dark:text-orange-300"
-                                >
-                                  {product}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-sm text-muted-foreground">No product mention</span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Payment
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {card.paymentsToday.length > 0 ? (
-                              card.paymentsToday.map((payment) => (
-                                <span
-                                  key={`${card.customerId}-payment-${payment}`}
-                                  className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-700 dark:text-sky-300"
-                                >
-                                  {normalizeSignal(payment)}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-sm text-muted-foreground">No payment signal</span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Topics
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {card.topicsToday.length > 0 ? (
-                              card.topicsToday.map((topic) => (
-                                <span
-                                  key={`${card.customerId}-topic-${topic}`}
-                                  className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-700 dark:text-fuchsia-300"
-                                >
-                                  {normalizeSignal(topic)}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-sm text-muted-foreground">No topic signal</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-                  </aside>
-                </div>
+                ) : (
+                  <div className="px-5 py-4 text-sm text-muted-foreground">
+                    Conversación colapsada. El resumen, highlights y señales quedan visibles arriba.
+                  </div>
+                )}
               </article>
+                );
+              })()
             ))}
           </div>
         )}

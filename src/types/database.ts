@@ -723,6 +723,16 @@ export interface Database {
           "city": string | null;
           "province": string | null;
           "delivery_instructions": string | null;
+          "phone": string | null;
+          "phone_normalized": string | null;
+          "customer_id": number | null;
+          "manychat_id": string | null;
+          "whatsapp_wa_id": string | null;
+          "whatsapp_phone": string | null;
+          "source_channel": string | null;
+          "status": string | null;
+          "whatsapp_handoff_token": string | null;
+          "whatsapp_handoff_started_at": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -742,6 +752,16 @@ export interface Database {
           "city"?: string | null;
           "province"?: string | null;
           "delivery_instructions"?: string | null;
+          "phone"?: string | null;
+          "phone_normalized"?: string | null;
+          "customer_id"?: number | null;
+          "manychat_id"?: string | null;
+          "whatsapp_wa_id"?: string | null;
+          "whatsapp_phone"?: string | null;
+          "source_channel"?: string | null;
+          "status"?: string | null;
+          "whatsapp_handoff_token"?: string | null;
+          "whatsapp_handoff_started_at"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -761,6 +781,16 @@ export interface Database {
           "city"?: string | null;
           "province"?: string | null;
           "delivery_instructions"?: string | null;
+          "phone"?: string | null;
+          "phone_normalized"?: string | null;
+          "customer_id"?: number | null;
+          "manychat_id"?: string | null;
+          "whatsapp_wa_id"?: string | null;
+          "whatsapp_phone"?: string | null;
+          "source_channel"?: string | null;
+          "status"?: string | null;
+          "whatsapp_handoff_token"?: string | null;
+          "whatsapp_handoff_started_at"?: string | null;
         };
         Relationships: [];
       };

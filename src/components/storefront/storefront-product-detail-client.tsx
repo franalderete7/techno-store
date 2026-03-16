@@ -162,7 +162,7 @@ export function StorefrontProductDetailClient({ product }: { product: Storefront
                   <div>
                     <p className="font-medium text-white">Seguimiento</p>
                     <p className="text-sm leading-6 text-white/65">
-                      Todo el seguimiento se confirma por email después de la compra.
+                      Todo el seguimiento se confirma por WhatsApp y email después de la compra.
                     </p>
                   </div>
                 </div>

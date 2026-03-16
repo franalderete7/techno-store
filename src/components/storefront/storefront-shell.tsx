@@ -28,19 +28,20 @@ import { Input } from "@/components/ui/input";
 import { cn, getErrorMessage } from "@/lib/utils";
 import {
   TRANSFER_ALIASES,
+  buildStorefrontWhatsAppUrl,
   buildStorefrontProductUrl,
   isValidCheckoutAddress,
   isValidCheckoutCity,
   isValidCheckoutEmail,
   isValidCheckoutName,
+  isValidCheckoutPhone,
   isValidCheckoutProvince,
   isValidCheckoutZipCode,
 } from "@/lib/storefront-checkout";
 import type { StorefrontProduct } from "@/lib/storefront";
 
 const CART_STORAGE_KEY = "techno-store-public-cart-v1";
-const STOREFRONT_WHATSAPP_URL =
-  "https://wa.me/543875319940?text=Hola%20TechnoStore%2C%20vengo%20de%20la%20tienda%20online.";
+const STOREFRONT_WHATSAPP_URL = buildStorefrontWhatsAppUrl();
 
 type CartLine = {
   id: number;
@@ -56,6 +57,7 @@ type CheckoutResponse = {
   orderId: number;
   subtotal: number;
   aliases: string[];
+  whatsappUrl?: string;
 };
 
 type CartContextValue = {
@@ -200,6 +202,7 @@ function CartDrawer() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [zipCode, setZipCode] = useState("");
   const [city, setCity] = useState("");
@@ -220,6 +223,7 @@ function CartDrawer() {
     const normalizedFirstName = firstName.trim();
     const normalizedLastName = lastName.trim();
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = phone.trim();
     const normalizedAddress = address.trim();
     const normalizedZipCode = zipCode.trim();
     const normalizedCity = city.trim();
@@ -236,6 +240,10 @@ function CartDrawer() {
     }
     if (!isValidCheckoutEmail(normalizedEmail)) {
       setError("Revisá el formato del email.");
+      return;
+    }
+    if (!isValidCheckoutPhone(normalizedPhone)) {
+      setError("Escribí un WhatsApp o teléfono válido.");
       return;
     }
     if (!isValidCheckoutAddress(normalizedAddress)) {
@@ -272,6 +280,7 @@ function CartDrawer() {
           firstName: normalizedFirstName,
           lastName: normalizedLastName,
           email: normalizedEmail,
+          phone: normalizedPhone,
           address: normalizedAddress,
           zipCode: normalizedZipCode,
           city: normalizedCity,
@@ -299,6 +308,7 @@ function CartDrawer() {
       setFirstName("");
       setLastName("");
       setEmail("");
+      setPhone("");
       setAddress("");
       setZipCode("");
       setCity("");
@@ -351,34 +361,42 @@ function CartDrawer() {
                   <div className="space-y-2">
                     <p className="font-semibold">Pedido recibido</p>
                     <p className="text-sm leading-6 text-emerald-50/85">
-                      Guardamos tu pedido #{success.orderId}. Transferí el total a cualquiera de
-                      estos alias y te vamos a contactar por email para seguir el proceso.
+                      Guardamos tu pedido #{success.orderId}. Seguí por WhatsApp para recibir los
+                      alias, mandar el comprobante y cerrar el envío.
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-5">
-                <p className="text-sm font-medium text-white">Total a transferir</p>
+                <p className="text-sm font-medium text-white">Total del pedido</p>
                 <p className="mt-2 text-3xl font-semibold text-white">
                   {formatMoney(success.subtotal)}
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {success.aliases.map((alias) => (
-                    <Badge
-                      key={alias}
-                      className="rounded-full bg-sky-300/15 px-3 py-1 text-sky-100"
-                    >
-                      {alias}
-                    </Badge>
-                  ))}
-                </div>
+                <p className="mt-3 text-sm leading-6 text-white/65">
+                  El bot te va a pasar los alias correctos y te va a pedir el comprobante desde el
+                  mismo chat.
+                </p>
               </div>
 
               <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5 text-sm leading-6 text-white/70">
-                Enviá el comprobante apenas puedas. Te contactamos por privado para confirmar el
-                pago y avanzar con el despacho lo antes posible.
+                Cuando entres a WhatsApp, el mensaje ya sale preparado para que `v15` recupere el
+                pedido exacto desde Supabase y siga la conversación con contexto.
               </div>
+
+              <Button
+                asChild
+                className="h-12 w-full rounded-full bg-[#25D366] font-semibold text-[#08110c] hover:bg-[#39da78]"
+              >
+                <a
+                  href={success.whatsappUrl || STOREFRONT_WHATSAPP_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Continuar en WhatsApp
+                </a>
+              </Button>
             </div>
           ) : items.length === 0 ? (
             <div className="rounded-[1.75rem] border border-dashed border-white/15 bg-white/[0.03] p-8 text-center text-white/65">
@@ -500,6 +518,12 @@ function CartDrawer() {
                   className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
                 />
                 <Input
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder="WhatsApp o teléfono"
+                  className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
+                />
+                <Input
                   value={address}
                   onChange={(event) => setAddress(event.target.value)}
                   placeholder="Dirección"
@@ -544,7 +568,7 @@ function CartDrawer() {
                   className="h-12 w-full cursor-pointer rounded-full bg-sky-300 font-semibold text-slate-950 hover:bg-sky-200 disabled:cursor-not-allowed"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Guardar pedido y ver alias
+                  Guardar pedido con contacto y ver alias
                 </Button>
               </div>
             </div>
