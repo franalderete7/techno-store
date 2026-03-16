@@ -20,8 +20,9 @@ Current checked-in catalog migration:
 
 1. [catalog_variant_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/catalog_variant_fields.sql) – adds `products.color` and `products.battery_health`, validates stock-unit/catalog variant alignment, and makes `v_product_catalog` read those storefront fields directly from `products`
 2. [store_settings_pricing_sync.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/store_settings_pricing_sync.sql) – recalculates product financing and pricing snapshots whenever pricing-related `store_settings` keys change
-3. `npm run db:types:pull`
-4. deploy updated app + v15 workflow
+3. [auth_audit_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/auth_audit_fields.sql) – adds `created_by_user_id` audit fields to purchases/stock, adds optional `stock_units.sold_by_user_id`, and removes the old free-text purchase creator
+4. `npm run db:types:pull`
+5. deploy updated app + v15 workflow
 
 The live Supabase project still contains additional inventory/accounting objects used by the app, but those older one-off SQL files are not currently checked into this repo.
 
@@ -93,6 +94,8 @@ Keep per-physical-unit facts in `stock_units`:
 - `status`
 - `date_received`
 - `date_sold`
+- `created_by_user_id`
+- `sold_by_user_id`
 - `proof_image_urls`
 - `notes`
 
@@ -203,6 +206,8 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 | sale_amount_ars | numeric(12, 2) | YES | - | Realized revenue snapshot in ARS |
 | cost_ars_snapshot | numeric(12, 2) | YES | - | Realized cost snapshot in ARS |
 | notes | text | YES | - | Notes |
+| created_by_user_id | uuid | YES | `auth.uid()` | Auth user that registered the stock unit |
+| sold_by_user_id | uuid | YES | - | Auth user that marked the stock unit as sold |
 | proof_image_urls | text[] | YES | '{}' | URLs of proof images (IMEI photos) in Supabase Storage |
 | battery_health | integer | YES | - | Battery health of the individual stock unit |
 | created_at | timestamptz | YES | now() | Created timestamp |
@@ -221,12 +226,15 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 - `idx_stock_units_status` on `status`
 - `idx_stock_units_purchase_id` on `purchase_id`
 - `idx_stock_units_date_sold` on `date_sold DESC`
+- `idx_stock_units_created_by_user_id` on `created_by_user_id`
+- `idx_stock_units_sold_by_user_id` on `sold_by_user_id`
 
 **Triggers:**
 - `trg_stock_units_updated` – updates `updated_at` on row update
 - `trg_stock_units_sale_fields` – auto-fills `date_sold` when a unit is marked as sold
 - `trg_sync_products_from_stock_units` – syncs `products.in_stock` and reprices the matching product when a stock cost changes
 - `trg_validate_stock_unit_catalog_variant` – rejects stock rows whose color/battery do not match the linked product variant
+- `trg_stock_units_audit_user_ids` – fills `created_by_user_id` on insert and `sold_by_user_id` when a unit is first marked as sold
 
 **Pricing sync rule:** the last saved stock cost for a `product_key` becomes the product's pricing source and is tracked in `products.pricing_source_stock_unit_id`. If that stock unit is removed, the product falls back to the latest remaining stock unit with a valid cost.
 
@@ -246,7 +254,7 @@ Purchase orders from suppliers.
 | total_cost | numeric(12, 2) | YES | - | Base purchase total in supplier currency |
 | currency | text | YES | 'USD' | Base purchase currency, usually USD |
 | notes | text | YES | - | Notes |
-| created_by | text | YES | - | Who created this record |
+| created_by_user_id | uuid | YES | `auth.uid()` | Auth user that created this purchase |
 | created_at | timestamptz | YES | now() | Created timestamp |
 | updated_at | timestamptz | YES | now() | Updated timestamp |
 
@@ -257,9 +265,11 @@ Purchase orders from suppliers.
 **Indexes:**
 - `idx_purchases_supplier` on `supplier_name`
 - `idx_purchases_date` on `date_purchase DESC`
+- `idx_purchases_created_by_user_id` on `created_by_user_id`
 
 **Triggers:**
 - `trg_purchases_updated` – updates `updated_at` on row update
+- `trg_purchases_created_by_user_id` – fills `created_by_user_id` from the authenticated Supabase user on insert
 
 ---
 

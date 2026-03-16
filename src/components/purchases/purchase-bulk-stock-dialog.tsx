@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Sparkles, Upload, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { requireAuthenticatedUser } from "@/lib/auth-user";
 import {
   applyProductVariantToStockDraft,
   formatCatalogVariantLabel,
@@ -279,6 +280,15 @@ export function PurchaseBulkStockDialog({
     setSaving(true);
     setStatusMessage(null);
     const uploadedUrls: string[] = [];
+    let currentUserId: string;
+
+    try {
+      currentUserId = (await requireAuthenticatedUser()).id;
+    } catch (error) {
+      setSaving(false);
+      setStatusMessage(getErrorMessage(error, "You need an active admin session to import stock."));
+      return;
+    }
 
     try {
       const records: StockUnitInsert[] = [];
@@ -302,6 +312,7 @@ export function PurchaseBulkStockDialog({
           imei1,
           imei2: parseOptionalText(draft.imei2),
           product_key: productKey,
+          created_by_user_id: currentUserId,
           color: parseOptionalText(draft.color),
           battery_health: parseOptionalNumber(draft.battery_health),
           purchase_id: purchase.purchase_id,

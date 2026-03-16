@@ -474,9 +474,9 @@ export interface Database {
           "total_cost": number | null;
           "currency": string | null;
           "notes": string | null;
-          "created_by": string | null;
           "created_at": string | null;
           "updated_at": string | null;
+          "created_by_user_id": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -487,9 +487,9 @@ export interface Database {
           "total_cost"?: number | null;
           "currency"?: string | null;
           "notes"?: string | null;
-          "created_by"?: string | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
+          "created_by_user_id"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -500,9 +500,9 @@ export interface Database {
           "total_cost"?: number | null;
           "currency"?: string | null;
           "notes"?: string | null;
-          "created_by"?: string | null;
           "created_at"?: string | null;
           "updated_at"?: string | null;
+          "created_by_user_id"?: string | null;
         };
         Relationships: [];
       };
@@ -581,6 +581,8 @@ export interface Database {
           "sale_fx_rate": number | null;
           "sale_amount_ars": number | null;
           "cost_ars_snapshot": number | null;
+          "created_by_user_id": string | null;
+          "sold_by_user_id": string | null;
         };
         Insert: {
           "id"?: number | null;
@@ -605,6 +607,8 @@ export interface Database {
           "sale_fx_rate"?: number | null;
           "sale_amount_ars"?: number | null;
           "cost_ars_snapshot"?: number | null;
+          "created_by_user_id"?: string | null;
+          "sold_by_user_id"?: string | null;
         };
         Update: {
           "id"?: number | null;
@@ -629,6 +633,8 @@ export interface Database {
           "sale_fx_rate"?: number | null;
           "sale_amount_ars"?: number | null;
           "cost_ars_snapshot"?: number | null;
+          "created_by_user_id"?: string | null;
+          "sold_by_user_id"?: string | null;
         };
         Relationships: [];
       };

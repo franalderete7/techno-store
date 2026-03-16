@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { requireAuthenticatedUser } from "@/lib/auth-user";
 import {
   getErrorMessage,
   isMissingRelationError,
@@ -433,7 +434,6 @@ export function PurchasesTable() {
       total_cost: "",
       currency: "USD",
       notes: "",
-      created_by: "",
     });
     setOwnershipRows([{ financierId: null, sharePct: 100 }]);
     setPaymentLegRows(buildPaymentLegDraft(null));
@@ -449,7 +449,6 @@ export function PurchasesTable() {
       total_cost: purchase.total_cost != null ? String(purchase.total_cost) : "",
       currency: purchase.currency ?? DEFAULT_CURRENCY,
       notes: purchase.notes ?? "",
-      created_by: purchase.created_by ?? "",
     });
     setOwnershipRows(buildOwnershipDraft(purchase));
     setPaymentLegRows(buildPaymentLegDraft(purchase));
@@ -600,6 +599,16 @@ export function PurchasesTable() {
       return;
     }
 
+    let currentUserId: string | null = null;
+    if (!editingPurchase) {
+      try {
+        currentUserId = (await requireAuthenticatedUser()).id;
+      } catch (error) {
+        alert(getErrorMessage(error, "You need an active admin session to create purchases."));
+        return;
+      }
+    }
+
     setSaving(true);
     const record: Record<string, unknown> = {
       date_purchase: formData.date_purchase || new Date().toISOString().split("T")[0],
@@ -608,8 +617,10 @@ export function PurchasesTable() {
       total_cost: formData.total_cost ? parseFloat(formData.total_cost) : null,
       currency: formData.currency || "USD",
       notes: formData.notes?.trim() || null,
-      created_by: formData.created_by?.trim() || null,
     };
+    if (!editingPurchase) {
+      record.created_by_user_id = currentUserId;
+    }
 
     try {
       let savedPurchase: Purchase | null = editingPurchase;
@@ -744,11 +755,21 @@ export function PurchasesTable() {
       alert(catalogVariantError);
       return;
     }
+
+    let currentUserId: string;
+    try {
+      currentUserId = (await requireAuthenticatedUser()).id;
+    } catch (error) {
+      alert(getErrorMessage(error, "You need an active admin session to create stock units."));
+      return;
+    }
+
     setSaving(true);
     const record: StockUnitInsert = {
       imei1,
       imei2,
       product_key: productKey,
+      created_by_user_id: currentUserId,
       color: parseOptionalText(unitForm.color),
       battery_health: parseOptionalNumber(unitForm.battery_health),
       purchase_id: addUnitPurchase.purchase_id,
@@ -1378,15 +1399,6 @@ export function PurchasesTable() {
               <p className={`text-xs ${paymentLegDraftValidation.rows.length === 0 || paymentLegDraftValidation.hasMissingFinancier || paymentLegDraftValidation.hasInvalidAmount || paymentLegDraftValidation.hasMissingFx ? "text-amber-600 dark:text-amber-300" : "text-muted-foreground"}`}>
                 ARS snapshot total: ${paymentLegDraftValidation.totalAmountArs.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
               </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Created By</Label>
-              <Input
-                value={formData.created_by ?? ""}
-                onChange={(e) => updateForm("created_by", e.target.value)}
-                placeholder="Your name"
-              />
             </div>
 
             <div className="space-y-2">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { requireAuthenticatedUser } from "@/lib/auth-user";
 import {
   getErrorMessage,
   isMissingColumnError,
@@ -614,6 +615,8 @@ export function StockTable() {
             status: (formData.status as StockStatus) ?? "in_stock",
             date_sold: parseOptionalText(formData.date_sold),
             notes: parseOptionalText(formData.notes),
+            created_by_user_id: editingUnit?.created_by_user_id ?? null,
+            sold_by_user_id: editingUnit?.sold_by_user_id ?? null,
             created_at: editingUnit?.created_at ?? null,
             updated_at: editingUnit?.updated_at ?? null,
             sale_amount: saleAmountPreview,
@@ -692,6 +695,18 @@ export function StockTable() {
       return;
     }
 
+    const needsCurrentUser = !editingUnit || (isSold && editingUnit.status !== "sold");
+    let currentUserId: string | null = null;
+    if (needsCurrentUser) {
+      try {
+        currentUserId = (await requireAuthenticatedUser()).id;
+      } catch (error) {
+        alert(getErrorMessage(error, "You need an active admin session to save stock."));
+        setSaving(false);
+        return;
+      }
+    }
+
     const saleAmountArs =
       isSold && saleAmount != null
         ? saleCurrency === "USD"
@@ -715,6 +730,13 @@ export function StockTable() {
               status: status as StockStatus,
               date_sold: parseOptionalText(dateSold),
               notes: parseOptionalText(formData.notes),
+              created_by_user_id: editingUnit?.created_by_user_id ?? currentUserId,
+              sold_by_user_id:
+                isSold
+                  ? editingUnit?.status === "sold"
+                    ? editingUnit.sold_by_user_id ?? null
+                    : currentUserId
+                  : null,
               created_at: editingUnit?.created_at ?? null,
               updated_at: editingUnit?.updated_at ?? null,
               sale_amount: saleAmount,
@@ -749,6 +771,13 @@ export function StockTable() {
       status: status as StockStatus,
       date_sold: parseOptionalText(dateSold),
       notes: parseOptionalText(formData.notes),
+      created_by_user_id: editingUnit?.created_by_user_id ?? currentUserId,
+      sold_by_user_id:
+        isSold
+          ? editingUnit?.status === "sold"
+            ? editingUnit.sold_by_user_id ?? null
+            : currentUserId
+          : null,
     };
 
     let uploadedProofUrls: string[] = [];
