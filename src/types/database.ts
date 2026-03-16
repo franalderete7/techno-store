@@ -759,6 +759,7 @@ export interface Database {
           "whatsapp_handoff_started_at": string | null;
           "payment_confirmed_at": string | null;
           "payment_confirmed_by_user_id": string | null;
+          "payment_proof_urls": string[] | null;
         };
         Insert: {
           "id"?: number | null;
@@ -790,6 +791,7 @@ export interface Database {
           "whatsapp_handoff_started_at"?: string | null;
           "payment_confirmed_at"?: string | null;
           "payment_confirmed_by_user_id"?: string | null;
+          "payment_proof_urls"?: string[] | null;
         };
         Update: {
           "id"?: number | null;
@@ -821,6 +823,7 @@ export interface Database {
           "whatsapp_handoff_started_at"?: string | null;
           "payment_confirmed_at"?: string | null;
           "payment_confirmed_by_user_id"?: string | null;
+          "payment_proof_urls"?: string[] | null;
         };
         Relationships: [];
       };

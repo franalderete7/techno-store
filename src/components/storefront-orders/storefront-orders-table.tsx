@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ElementType } from "react";
-import { CheckCircle2, Eye, Loader2, MessageCircle, Package, Search, ShoppingBag } from "lucide-react";
+import {
+  CheckCircle2,
+  Eye,
+  ImageIcon,
+  Loader2,
+  MessageCircle,
+  Package,
+  Search,
+  ShoppingBag,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { requireAuthenticatedUser } from "@/lib/auth-user";
 import {
@@ -248,6 +259,49 @@ function buildUnitLabel(unit: StockUnit) {
   return parts.filter(Boolean).join(" ");
 }
 
+function buildStorefrontOrderProofAssetKey(orderId: number) {
+  return `order-${orderId}/payment-proof-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function uploadStorefrontOrderProofImage(
+  file: File,
+  orderId: number
+): Promise<{ secureUrl?: string; error?: string }> {
+  const uploadFormData = new FormData();
+  uploadFormData.append("file", file);
+  uploadFormData.append("assetKey", buildStorefrontOrderProofAssetKey(orderId));
+  uploadFormData.append("folder", "storefront-orders");
+
+  const uploadResponse = await fetch("/api/cloudinary/upload", {
+    method: "POST",
+    body: uploadFormData,
+  });
+
+  const uploadResult = (await uploadResponse.json()) as { error?: string; secureUrl?: string };
+  if (!uploadResponse.ok || !uploadResult.secureUrl) {
+    return { error: uploadResult.error || "No pude subir el comprobante a Cloudinary." };
+  }
+
+  return { secureUrl: uploadResult.secureUrl };
+}
+
+async function deleteStorefrontOrderProofImage(imageUrl: string): Promise<string | null> {
+  const response = await fetch("/api/cloudinary/delete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      imageUrl,
+    }),
+  });
+
+  if (response.ok) return null;
+
+  const result = (await response.json()) as { error?: string };
+  return result.error || "No pude borrar el comprobante de Cloudinary.";
+}
+
 function OrderStatCard({
   label,
   value,
@@ -303,6 +357,8 @@ export function StorefrontOrdersTable() {
   const [detailOrder, setDetailOrder] = useState<StorefrontOrder | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
   const [confirmingOrderId, setConfirmingOrderId] = useState<number | null>(null);
+  const [uploadingProofOrderId, setUploadingProofOrderId] = useState<number | null>(null);
+  const [deletingProofUrl, setDeletingProofUrl] = useState<string | null>(null);
   const [loadingDetailMeta, setLoadingDetailMeta] = useState(false);
   const [detailAssignmentRows, setDetailAssignmentRows] = useState<StorefrontOrderUnitAssignment[]>([]);
   const [detailStockUnits, setDetailStockUnits] = useState<StockUnit[]>([]);
@@ -332,7 +388,7 @@ export function StorefrontOrdersTable() {
       const { data: orderRows, error: ordersError } = await supabase
         .from("storefront_orders")
         .select(
-          "id,first_name,last_name,email,payment_method,currency,subtotal,item_count,items,transfer_aliases,notes,created_at,address,zip_code,city,province,delivery_instructions,phone,phone_normalized,customer_id,manychat_id,whatsapp_wa_id,whatsapp_phone,source_channel,status,whatsapp_handoff_token,whatsapp_handoff_started_at,payment_confirmed_at,payment_confirmed_by_user_id"
+          "id,first_name,last_name,email,payment_method,currency,subtotal,item_count,items,transfer_aliases,notes,created_at,address,zip_code,city,province,delivery_instructions,phone,phone_normalized,customer_id,manychat_id,whatsapp_wa_id,whatsapp_phone,source_channel,status,whatsapp_handoff_token,whatsapp_handoff_started_at,payment_confirmed_at,payment_confirmed_by_user_id,payment_proof_urls"
         )
         .order("created_at", { ascending: false })
         .limit(250);
@@ -399,7 +455,8 @@ export function StorefrontOrdersTable() {
         );
       } else if (
         isMissingColumnError(loadError, "payment_confirmed_at") ||
-        isMissingColumnError(loadError, "payment_confirmed_by_user_id")
+        isMissingColumnError(loadError, "payment_confirmed_by_user_id") ||
+        isMissingColumnError(loadError, "payment_proof_urls")
       ) {
         setError(
           "Faltan columnas de confirmacion de pago. Ejecuta `storefront_order_fulfillment.sql` en Supabase."
@@ -549,8 +606,85 @@ export function StorefrontOrdersTable() {
     }
   };
 
+  const handleUploadProof = async (order: StorefrontOrder, files: FileList | null) => {
+    const selectedFiles = files ? Array.from(files).filter((file) => file.type.startsWith("image/")) : [];
+    if (selectedFiles.length === 0) return;
+
+    setUploadingProofOrderId(order.id);
+    setError(null);
+
+    try {
+      await requireAuthenticatedUser();
+
+      const uploadedUrls: string[] = [];
+      for (const file of selectedFiles) {
+        const uploadResult = await uploadStorefrontOrderProofImage(file, order.id);
+        if (!uploadResult.secureUrl) {
+          throw new Error(uploadResult.error || "No pude subir uno de los comprobantes.");
+        }
+        uploadedUrls.push(uploadResult.secureUrl);
+      }
+
+      const nextProofUrls = [
+        ...(Array.isArray(order.payment_proof_urls) ? order.payment_proof_urls : []),
+        ...uploadedUrls,
+      ];
+
+      const { error: updateError } = await supabase
+        .from("storefront_orders")
+        .update({
+          payment_proof_urls: nextProofUrls,
+        })
+        .eq("id", order.id);
+
+      if (updateError) throw updateError;
+
+      updateOrderLocally(order.id, {
+        payment_proof_urls: nextProofUrls,
+      });
+    } catch (uploadError) {
+      setError(getErrorMessage(uploadError, "No pude guardar el comprobante del pedido."));
+    } finally {
+      setUploadingProofOrderId(null);
+    }
+  };
+
+  const handleRemoveProof = async (order: StorefrontOrder, imageUrl: string) => {
+    setDeletingProofUrl(imageUrl);
+    setError(null);
+
+    try {
+      await requireAuthenticatedUser();
+
+      const nextProofUrls = (Array.isArray(order.payment_proof_urls) ? order.payment_proof_urls : []).filter(
+        (url) => url !== imageUrl
+      );
+
+      const { error: updateError } = await supabase
+        .from("storefront_orders")
+        .update({
+          payment_proof_urls: nextProofUrls.length > 0 ? nextProofUrls : null,
+        })
+        .eq("id", order.id);
+
+      if (updateError) throw updateError;
+
+      const deleteError = await deleteStorefrontOrderProofImage(imageUrl);
+      if (deleteError) {
+        console.error(deleteError);
+      }
+
+      updateOrderLocally(order.id, {
+        payment_proof_urls: nextProofUrls.length > 0 ? nextProofUrls : null,
+      });
+    } catch (removeError) {
+      setError(getErrorMessage(removeError, "No pude quitar el comprobante del pedido."));
+    } finally {
+      setDeletingProofUrl(null);
+    }
+  };
+
   const selectedOrderItemViews = detailOrder ? orderItemViews.get(detailOrder.id) ?? [] : [];
-  const selectedOrderItemRows = detailOrder ? orderItemsByOrderId.get(detailOrder.id) ?? [] : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -648,6 +782,10 @@ export function StorefrontOrdersTable() {
   const selectedWhatsAppLink = detailOrder
     ? getWhatsAppLink(detailOrder.phone || detailOrder.whatsapp_phone)
     : null;
+  const selectedProofUrls =
+    detailOrder && Array.isArray(detailOrder.payment_proof_urls)
+      ? detailOrder.payment_proof_urls
+      : [];
 
   const handleAssignUnit = async (orderItem: OrderItemView) => {
     if (!orderItem.rowId) return;
@@ -978,16 +1116,16 @@ export function StorefrontOrdersTable() {
       </div>
 
       <Dialog open={detailOrder !== null} onOpenChange={(open) => !open && setDetailOrder(null)}>
-        <DialogContent className="max-h-[88vh] max-w-5xl overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl overflow-hidden p-0 sm:max-w-6xl">
           {detailOrder ? (
-            <>
-              <DialogHeader>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
+            <div className="flex max-h-[88vh] flex-col">
+              <DialogHeader className="border-b px-5 py-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
                     <DialogTitle>
                       Pedido web #{detailOrder.id} · {getOrderFullName(detailOrder)}
                     </DialogTitle>
-                    <p className="mt-2 text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {detailOrder.email} · {detailOrder.phone || detailOrder.whatsapp_phone || "Sin telefono"}
                     </p>
                   </div>
@@ -998,304 +1136,378 @@ export function StorefrontOrdersTable() {
                     <Badge className={getPaymentTone(Boolean(detailOrder.payment_confirmed_at))}>
                       {detailOrder.payment_confirmed_at ? "Pago confirmado" : "Pago sin confirmar"}
                     </Badge>
+                    <Badge variant="outline">
+                      {selectedProofUrls.length} comprobante{selectedProofUrls.length === 1 ? "" : "s"}
+                    </Badge>
                   </div>
                 </div>
               </DialogHeader>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
-                <section className="space-y-4">
-                  <div className="rounded-3xl border bg-muted/20 p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Cobro y validacion humana
-                        </p>
-                        <p className="mt-2 text-3xl font-semibold">
-                          {formatMoney(detailOrder.subtotal, detailOrder.currency)}
-                        </p>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Metodo: {String(detailOrder.payment_method || "transferencia").replace(/_/g, " ")}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-2 sm:w-[260px]">
-                        <Button
-                          onClick={() =>
-                            void handlePaymentConfirmation(detailOrder, !detailOrder.payment_confirmed_at)
-                          }
-                          disabled={confirmingOrderId === detailOrder.id}
-                        >
-                          {confirmingOrderId === detailOrder.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-4 w-4" />
-                          )}
-                          {detailOrder.payment_confirmed_at ? "Desconfirmar pago" : "Confirmar comprobante"}
-                        </Button>
-                        <Select
-                          value={normalizeOrderStatus(detailOrder.status)}
-                          onValueChange={(value) =>
-                            void handleStatusChange(detailOrder, value as StorefrontOrderStatus)
-                          }
-                          disabled={updatingOrderId === detailOrder.id}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ORDER_STATUS_OPTIONS.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <DetailField
-                        label="Confirmado por humano"
-                        value={
-                          detailOrder.payment_confirmed_at
-                            ? `${formatDateTime(detailOrder.payment_confirmed_at)} · ${detailOrder.payment_confirmed_by_user_id || "sin user id"}`
-                            : "Todavia no"
-                        }
-                      />
-                      <DetailField
-                        label="Handoff WhatsApp"
-                        value={
-                          detailOrder.whatsapp_handoff_started_at
-                            ? formatDateTime(detailOrder.whatsapp_handoff_started_at)
-                            : "Todavia no"
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <DetailField label="Cliente" value={getOrderFullName(detailOrder)} />
-                    <DetailField label="Email" value={detailOrder.email} />
-                    <DetailField
-                      label="Telefono"
-                      value={detailOrder.phone || detailOrder.whatsapp_phone || "Sin telefono"}
-                    />
-                    <DetailField
-                      label="Ubicacion"
-                      value={[detailOrder.city, detailOrder.province].filter(Boolean).join(", ") || "Sin ciudad"}
-                    />
-                    <DetailField
-                      label="Direccion"
-                      value={detailOrder.address || "Sin direccion"}
-                    />
-                    <DetailField
-                      label="CP"
-                      value={detailOrder.zip_code || "Sin codigo postal"}
-                    />
-                  </div>
-
-                  {detailOrder.delivery_instructions ? (
-                    <div className="rounded-3xl border bg-background/80 p-4">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Indicaciones</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
-                        {detailOrder.delivery_instructions}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {detailOrder.notes ? (
-                    <div className="rounded-3xl border bg-background/80 p-4">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Notas guardadas</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
-                        {detailOrder.notes}
-                      </p>
-                    </div>
-                  ) : null}
-                </section>
-
-                <aside className="space-y-4">
-                  <div className="rounded-3xl border bg-background/80 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Vinculo CRM</p>
-                    <div className="mt-3 space-y-2 text-sm">
-                      <p><span className="font-medium">Customer ID:</span> {detailOrder.customer_id ?? "—"}</p>
-                      <p><span className="font-medium">ManyChat ID:</span> {detailOrder.manychat_id || "—"}</p>
-                      <p><span className="font-medium">WhatsApp WA ID:</span> {detailOrder.whatsapp_wa_id || "—"}</p>
-                      <p><span className="font-medium">WhatsApp guardado:</span> {detailOrder.whatsapp_phone || "—"}</p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-3xl border bg-background/80 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Pedido</p>
-                    <div className="mt-3 space-y-2 text-sm">
-                      <p><span className="font-medium">Creado:</span> {formatDateTime(detailOrder.created_at)}</p>
-                      <p><span className="font-medium">Canal:</span> {detailOrder.source_channel || "storefront_web"}</p>
-                      <p><span className="font-medium">Aliases:</span> {(detailOrder.transfer_aliases ?? []).join(" · ") || "—"}</p>
-                      <p><span className="font-medium">Token handoff:</span> {detailOrder.whatsapp_handoff_token ? "Guardado" : "No"}</p>
-                    </div>
-                  </div>
-
-                  {selectedWhatsAppLink ? (
-                    <Button asChild variant="outline" className="w-full justify-center">
-                      <a href={selectedWhatsAppLink} target="_blank" rel="noreferrer">
-                        <MessageCircle className="h-4 w-4" />
-                        Abrir WhatsApp
-                      </a>
-                    </Button>
-                  ) : null}
-                </aside>
-              </div>
-
-              <div className="rounded-3xl border bg-card p-5">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Fulfillment real</p>
-                    <h3 className="mt-1 text-lg font-semibold">Items y equipos asignados</h3>
-                  </div>
-                  {loadingDetailMeta ? (
-                    <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Cargando stock compatible...
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="mt-4 space-y-4">
-                  {selectedOrderItemViews.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed bg-background/70 p-4 text-sm text-muted-foreground">
-                      No hay items normalizados para este pedido.
-                    </div>
-                  ) : (
-                    selectedOrderItemViews.map((item) => {
-                      const itemAssignments =
-                        item.rowId != null ? assignmentsByOrderItemId.get(item.rowId) ?? [] : [];
-                      const assignedUnits: Array<{
-                        assignment: StorefrontOrderUnitAssignment;
-                        unit: StockUnit;
-                      }> = itemAssignments
-                        .map((assignment) => ({
-                          assignment,
-                          unit: stockUnitsById.get(assignment.stock_unit_id) ?? null,
-                        }))
-                        .filter(
-                          (
-                            entry
-                          ): entry is {
-                            assignment: StorefrontOrderUnitAssignment;
-                            unit: StockUnit;
-                          } => entry.unit !== null
-                        );
-                      const availableUnits = detailStockUnits.filter((unit) => {
-                        if (unit.product_key !== item.productKey) return false;
-                        const assignedOrderItemId = assignedOrderItemByStockUnitId.get(unit.id);
-                        if (assignedOrderItemId && assignedOrderItemId !== item.rowId) return false;
-                        return unit.status === "in_stock" || unit.status === "reserved";
-                      });
-                      const assignmentComplete = assignedUnits.length >= item.quantity;
-
-                      return (
-                        <div key={`${detailOrder.id}-${item.productKey}-${item.rowId ?? "snapshot"}`} className="rounded-3xl border bg-background/80 p-4">
-                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                            <div>
-                              <p className="text-base font-semibold">{item.name}</p>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {item.productKey} · {item.quantity} unidad(es) · {formatMoney(item.lineTotalArs)}
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <Badge variant="outline">{item.availability || "sin disponibilidad"}</Badge>
-                                <Badge className={assignmentComplete ? getPaymentTone(true) : getPaymentTone(false)}>
-                                  {assignmentComplete
-                                    ? "Asignacion completa"
-                                    : `Faltan ${Math.max(item.quantity - assignedUnits.length, 0)}`}
-                                </Badge>
-                              </div>
-                            </div>
-
-                            {item.rowId ? (
-                              <div className="flex w-full flex-col gap-2 lg:max-w-sm">
-                                <Select
-                                  value={assignmentDrafts[item.rowId] || undefined}
-                                  onValueChange={(value) =>
-                                    setAssignmentDrafts((current) => ({
-                                      ...current,
-                                      [item.rowId as number]: value,
-                                    }))
-                                  }
-                                  disabled={busyAssignmentItemId === item.rowId || assignmentComplete}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Elegi un equipo real del stock" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {availableUnits.map((unit) => (
-                                      <SelectItem key={unit.id} value={String(unit.id)}>
-                                        {buildUnitLabel(unit)}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => void handleAssignUnit(item)}
-                                  disabled={
-                                    busyAssignmentItemId === item.rowId ||
-                                    assignmentComplete ||
-                                    !assignmentDrafts[item.rowId]
-                                  }
-                                >
-                                  {busyAssignmentItemId === item.rowId ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : null}
-                                  Vincular equipo
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="rounded-2xl border border-dashed px-4 py-3 text-sm text-muted-foreground">
-                                Este item no tiene fila normalizada en `storefront_order_items`, asi que no se puede asignar stock todavia.
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="mt-4 space-y-2">
-                            {assignedUnits.length > 0 ? (
-                              assignedUnits.map(({ assignment, unit }) => (
-                                <div
-                                  key={assignment.id}
-                                  className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                  <div className="space-y-1">
-                                    <p className="text-sm font-medium">{buildUnitLabel(unit)}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Asignado {formatDateTime(assignment.assigned_at)} · recibido {formatShortDate(unit.date_received)}
-                                    </p>
-                                  </div>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => void handleUnassignUnit(assignment)}
-                                    disabled={busyAssignmentItemId === assignment.order_item_id}
-                                  >
-                                    Quitar
-                                  </Button>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="rounded-2xl border border-dashed bg-card p-3 text-sm text-muted-foreground">
-                                Todavia no hay equipos vinculados a este item.
-                              </div>
-                            )}
-                          </div>
+              <div className="flex-1 overflow-y-auto px-5 py-5">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_340px]">
+                  <section className="space-y-4">
+                    <div className="rounded-3xl border bg-muted/20 p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Cobro y validacion humana
+                          </p>
+                          <p className="mt-2 text-3xl font-semibold">
+                            {formatMoney(detailOrder.subtotal, detailOrder.currency)}
+                          </p>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            Metodo: {String(detailOrder.payment_method || "transferencia").replace(/_/g, " ")}
+                          </p>
                         </div>
-                      );
-                    })
-                  )}
+                        <div className="flex w-full flex-col gap-2 lg:max-w-[280px]">
+                          <Button
+                            onClick={() =>
+                              void handlePaymentConfirmation(detailOrder, !detailOrder.payment_confirmed_at)
+                            }
+                            disabled={confirmingOrderId === detailOrder.id}
+                          >
+                            {confirmingOrderId === detailOrder.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4" />
+                            )}
+                            {detailOrder.payment_confirmed_at ? "Desconfirmar pago" : "Confirmar comprobante"}
+                          </Button>
+                          <Select
+                            value={normalizeOrderStatus(detailOrder.status)}
+                            onValueChange={(value) =>
+                              void handleStatusChange(detailOrder, value as StorefrontOrderStatus)
+                            }
+                            disabled={updatingOrderId === detailOrder.id}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ORDER_STATUS_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <DetailField
+                          label="Confirmado por humano"
+                          value={
+                            detailOrder.payment_confirmed_at
+                              ? `${formatDateTime(detailOrder.payment_confirmed_at)} · ${detailOrder.payment_confirmed_by_user_id || "sin user id"}`
+                              : "Todavia no"
+                          }
+                        />
+                        <DetailField
+                          label="Handoff WhatsApp"
+                          value={
+                            detailOrder.whatsapp_handoff_started_at
+                              ? formatDateTime(detailOrder.whatsapp_handoff_started_at)
+                              : "Todavia no"
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <DetailField label="Cliente" value={getOrderFullName(detailOrder)} />
+                      <DetailField label="Email" value={detailOrder.email} />
+                      <DetailField
+                        label="Telefono"
+                        value={detailOrder.phone || detailOrder.whatsapp_phone || "Sin telefono"}
+                      />
+                      <DetailField
+                        label="Ubicacion"
+                        value={[detailOrder.city, detailOrder.province].filter(Boolean).join(", ") || "Sin ciudad"}
+                      />
+                      <DetailField
+                        label="Direccion"
+                        value={detailOrder.address || "Sin direccion"}
+                      />
+                      <DetailField
+                        label="CP"
+                        value={detailOrder.zip_code || "Sin codigo postal"}
+                      />
+                    </div>
+
+                    {detailOrder.delivery_instructions ? (
+                      <div className="rounded-3xl border bg-background/80 p-4">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Indicaciones</p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                          {detailOrder.delivery_instructions}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {detailOrder.notes ? (
+                      <div className="rounded-3xl border bg-background/80 p-4">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Notas guardadas</p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                          {detailOrder.notes}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-3xl border bg-card p-5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Fulfillment real</p>
+                          <h3 className="mt-1 text-lg font-semibold">Items y equipos asignados</h3>
+                        </div>
+                        {loadingDetailMeta ? (
+                          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Cargando stock compatible...
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 space-y-4">
+                        {selectedOrderItemViews.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed bg-background/70 p-4 text-sm text-muted-foreground">
+                            No hay items normalizados para este pedido.
+                          </div>
+                        ) : (
+                          selectedOrderItemViews.map((item) => {
+                            const itemAssignments =
+                              item.rowId != null ? assignmentsByOrderItemId.get(item.rowId) ?? [] : [];
+                            const assignedUnits: Array<{
+                              assignment: StorefrontOrderUnitAssignment;
+                              unit: StockUnit;
+                            }> = itemAssignments
+                              .map((assignment) => ({
+                                assignment,
+                                unit: stockUnitsById.get(assignment.stock_unit_id) ?? null,
+                              }))
+                              .filter(
+                                (
+                                  entry
+                                ): entry is {
+                                  assignment: StorefrontOrderUnitAssignment;
+                                  unit: StockUnit;
+                                } => entry.unit !== null
+                              );
+                            const availableUnits = detailStockUnits.filter((unit) => {
+                              if (unit.product_key !== item.productKey) return false;
+                              const assignedOrderItemId = assignedOrderItemByStockUnitId.get(unit.id);
+                              if (assignedOrderItemId && assignedOrderItemId !== item.rowId) return false;
+                              return unit.status === "in_stock" || unit.status === "reserved";
+                            });
+                            const assignmentComplete = assignedUnits.length >= item.quantity;
+
+                            return (
+                              <div
+                                key={`${detailOrder.id}-${item.productKey}-${item.rowId ?? "snapshot"}`}
+                                className="rounded-3xl border bg-background/80 p-4"
+                              >
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                  <div>
+                                    <p className="text-base font-semibold">{item.name}</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      {item.productKey} · {item.quantity} unidad(es) · {formatMoney(item.lineTotalArs)}
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <Badge variant="outline">{item.availability || "sin disponibilidad"}</Badge>
+                                      <Badge className={assignmentComplete ? getPaymentTone(true) : getPaymentTone(false)}>
+                                        {assignmentComplete
+                                          ? "Asignacion completa"
+                                          : `Faltan ${Math.max(item.quantity - assignedUnits.length, 0)}`}
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  {item.rowId ? (
+                                    <div className="flex w-full flex-col gap-2 lg:max-w-sm">
+                                      <Select
+                                        value={assignmentDrafts[item.rowId] || undefined}
+                                        onValueChange={(value) =>
+                                          setAssignmentDrafts((current) => ({
+                                            ...current,
+                                            [item.rowId as number]: value,
+                                          }))
+                                        }
+                                        disabled={busyAssignmentItemId === item.rowId || assignmentComplete}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Elegi un equipo real del stock" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {availableUnits.map((unit) => (
+                                            <SelectItem key={unit.id} value={String(unit.id)}>
+                                              {buildUnitLabel(unit)}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <Button
+                                        variant="outline"
+                                        onClick={() => void handleAssignUnit(item)}
+                                        disabled={
+                                          busyAssignmentItemId === item.rowId ||
+                                          assignmentComplete ||
+                                          !assignmentDrafts[item.rowId]
+                                        }
+                                      >
+                                        {busyAssignmentItemId === item.rowId ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : null}
+                                        Vincular equipo
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="rounded-2xl border border-dashed px-4 py-3 text-sm text-muted-foreground">
+                                      Este item no tiene fila normalizada en `storefront_order_items`, asi que no se puede asignar stock todavia.
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="mt-4 space-y-2">
+                                  {assignedUnits.length > 0 ? (
+                                    assignedUnits.map(({ assignment, unit }) => (
+                                      <div
+                                        key={assignment.id}
+                                        className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
+                                      >
+                                        <div className="space-y-1">
+                                          <p className="text-sm font-medium">{buildUnitLabel(unit)}</p>
+                                          <p className="text-xs text-muted-foreground">
+                                            Asignado {formatDateTime(assignment.assigned_at)} · recibido {formatShortDate(unit.date_received)}
+                                          </p>
+                                        </div>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => void handleUnassignUnit(assignment)}
+                                          disabled={busyAssignmentItemId === assignment.order_item_id}
+                                        >
+                                          Quitar
+                                        </Button>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="rounded-2xl border border-dashed bg-card p-3 text-sm text-muted-foreground">
+                                      Todavia no hay equipos vinculados a este item.
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </section>
+
+                  <aside className="space-y-4">
+                    <div className="rounded-3xl border bg-background/80 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Comprobantes</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Guardalos aca como evidencia del pago validado.
+                          </p>
+                        </div>
+                        <Badge variant="outline">
+                          {selectedProofUrls.length} archivo{selectedProofUrls.length === 1 ? "" : "s"}
+                        </Badge>
+                      </div>
+
+                      <label className="mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-3 text-sm font-medium text-foreground transition hover:border-primary/30 hover:bg-muted/30">
+                        {uploadingProofOrderId === detailOrder.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        Subir comprobante
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(event) => {
+                            void handleUploadProof(detailOrder, event.target.files);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+
+                      {selectedProofUrls.length > 0 ? (
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          {selectedProofUrls.map((url, index) => (
+                            <div key={`${detailOrder.id}-proof-${url}`} className="relative overflow-hidden rounded-2xl border bg-muted/20">
+                              <a href={url} target="_blank" rel="noreferrer" className="block">
+                                <img
+                                  src={url}
+                                  alt={`Comprobante ${index + 1}`}
+                                  className="h-32 w-full object-cover"
+                                />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => void handleRemoveProof(detailOrder, url)}
+                                className="absolute right-2 top-2 inline-flex rounded-full border bg-background/90 p-1.5 text-foreground shadow-sm transition hover:border-destructive/40 hover:text-destructive"
+                                disabled={deletingProofUrl === url}
+                              >
+                                {deletingProofUrl === url ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-2xl border border-dashed bg-muted/20 px-4 py-5 text-center text-sm text-muted-foreground">
+                          <ImageIcon className="mx-auto mb-2 h-5 w-5" />
+                          Todavia no hay comprobantes subidos para este pedido.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-3xl border bg-background/80 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Vinculo CRM</p>
+                      <div className="mt-3 space-y-2 text-sm">
+                        <p><span className="font-medium">Customer ID:</span> {detailOrder.customer_id ?? "—"}</p>
+                        <p><span className="font-medium">ManyChat ID:</span> {detailOrder.manychat_id || "—"}</p>
+                        <p><span className="font-medium">WhatsApp WA ID:</span> {detailOrder.whatsapp_wa_id || "—"}</p>
+                        <p><span className="font-medium">WhatsApp guardado:</span> {detailOrder.whatsapp_phone || "—"}</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border bg-background/80 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Pedido</p>
+                      <div className="mt-3 space-y-2 text-sm">
+                        <p><span className="font-medium">Creado:</span> {formatDateTime(detailOrder.created_at)}</p>
+                        <p><span className="font-medium">Canal:</span> {detailOrder.source_channel || "storefront_web"}</p>
+                        <p><span className="font-medium">Aliases:</span> {(detailOrder.transfer_aliases ?? []).join(" · ") || "—"}</p>
+                        <p><span className="font-medium">Token handoff:</span> {detailOrder.whatsapp_handoff_token ? "Guardado" : "No"}</p>
+                      </div>
+                    </div>
+
+                    {selectedWhatsAppLink ? (
+                      <Button asChild variant="outline" className="w-full justify-center">
+                        <a href={selectedWhatsAppLink} target="_blank" rel="noreferrer">
+                          <MessageCircle className="h-4 w-4" />
+                          Abrir WhatsApp
+                        </a>
+                      </Button>
+                    ) : null}
+                  </aside>
                 </div>
               </div>
 
-              <DialogFooter className="gap-2 sm:justify-end">
+              <DialogFooter className="border-t px-5 py-4 sm:justify-end">
                 <Button variant="outline" onClick={() => setDetailOrder(null)}>
                   Cerrar
                 </Button>
               </DialogFooter>
-            </>
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>

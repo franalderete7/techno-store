@@ -37,15 +37,21 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file");
     const productKeyRaw = formData.get("productKey");
+    const assetKeyRaw = formData.get("assetKey");
+    const folderRaw = formData.get("folder");
     const productKey = String(productKeyRaw ?? "").trim().toLowerCase();
+    const assetKey = String(assetKeyRaw ?? "").trim().toLowerCase();
+    const folder =
+      String(folderRaw ?? "").trim().replace(/^\/+|\/+$/g, "") || assetFolder;
+    const publicId = assetKey || productKey;
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "Please choose an image file to upload." }, { status: 400 });
     }
 
-    if (!productKey) {
+    if (!publicId) {
       return NextResponse.json(
-        { error: "A generated product key is required for the upload." },
+        { error: "A generated asset key is required for the upload." },
         { status: 400 }
       );
     }
@@ -53,9 +59,9 @@ export async function POST(request: Request) {
     const timestamp = String(Math.floor(Date.now() / 1000));
     const signature = buildSignature(
       {
-        folder: assetFolder,
+        folder,
         overwrite: "true",
-        public_id: productKey,
+        public_id: publicId,
         timestamp,
       },
       apiSecret
@@ -66,8 +72,8 @@ export async function POST(request: Request) {
     cloudinaryFormData.append("api_key", apiKey);
     cloudinaryFormData.append("timestamp", timestamp);
     cloudinaryFormData.append("signature", signature);
-    cloudinaryFormData.append("folder", assetFolder);
-    cloudinaryFormData.append("public_id", productKey);
+    cloudinaryFormData.append("folder", folder);
+    cloudinaryFormData.append("public_id", publicId);
     cloudinaryFormData.append("overwrite", "true");
 
     const uploadResponse = await fetch(

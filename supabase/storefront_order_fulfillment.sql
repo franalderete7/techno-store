@@ -2,7 +2,8 @@ begin;
 
 alter table public.storefront_orders
   add column if not exists payment_confirmed_at timestamptz,
-  add column if not exists payment_confirmed_by_user_id uuid;
+  add column if not exists payment_confirmed_by_user_id uuid,
+  add column if not exists payment_proof_urls text[];
 
 create index if not exists idx_storefront_orders_payment_confirmed_at
   on public.storefront_orders (payment_confirmed_at);
