@@ -1,6 +1,6 @@
 # Database Schema
 
-**Last updated:** 2026-03-16
+**Last updated:** 2026-03-17
 
 ## Overview
 
@@ -19,10 +19,11 @@ The live Supabase project is the schema source of truth.
 Current checked-in catalog migration:
 
 1. [catalog_variant_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/catalog_variant_fields.sql) – adds `products.color` and `products.battery_health`, validates stock-unit/catalog variant alignment, and makes `v_product_catalog` read those storefront fields directly from `products`
-2. [store_settings_pricing_sync.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/store_settings_pricing_sync.sql) – recalculates product financing and pricing snapshots whenever pricing-related `store_settings` keys change
-3. [auth_audit_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/auth_audit_fields.sql) – adds `created_by_user_id` audit fields to purchases/stock, adds optional `stock_units.sold_by_user_id`, and removes the old free-text purchase creator
-4. `npm run db:types:pull`
-5. deploy updated app + v15 workflow
+2. [store_settings_pricing_sync.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/store_settings_pricing_sync.sql) – recalculates product financing fields whenever pricing-related `store_settings` keys change, without overwriting sell prices
+3. [product_manual_pricing.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/product_manual_pricing.sql) – removes legacy stock-driven pricing columns and makes stock-cost repricing a no-op so `products` stays the catalog pricing source of truth
+4. [auth_audit_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/auth_audit_fields.sql) – adds `created_by_user_id` audit fields to purchases/stock, adds optional `stock_units.sold_by_user_id`, and removes the old free-text purchase creator
+5. `npm run db:types:pull`
+6. deploy updated app + v15 workflow
 
 The live Supabase project still contains additional inventory/accounting objects used by the app, but those older one-off SQL files are not currently checked into this repo.
 
@@ -128,7 +129,7 @@ Keep per-turn CRM analytics in `conversations`:
 
 ### products
 
-Product catalog with pricing, logistics, and delivery info. This is the **price list**, not physical inventory. Price fields can be recalculated automatically from stock costs matched by `product_key`.
+Product catalog with pricing, logistics, and delivery info. This is the **price list**, not physical inventory. `products` is the storefront pricing source of truth. Product cost and sell price are edited here; stock-unit cost does not reprice the catalog.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -163,8 +164,6 @@ Product catalog with pricing, logistics, and delivery info. This is the **price 
 | network | text | YES | - | Network type |
 | image_url | text | YES | - | Image URL (managed separately) |
 | condition | text | NO | 'new' | Product condition: new, like_new, used, or refurbished |
-| pricing_source_stock_unit_id | integer | YES | - | FK → stock_units.id; stock unit whose saved cost currently drives automatic pricing |
-
 **Constraints:**
 - Primary key: `id`
 - Unique: `product_key`
@@ -232,11 +231,11 @@ Note: after the lean-schema cleanup, dedicated `reservations`, `sales`, and `sal
 **Triggers:**
 - `trg_stock_units_updated` – updates `updated_at` on row update
 - `trg_stock_units_sale_fields` – auto-fills `date_sold` when a unit is marked as sold
-- `trg_sync_products_from_stock_units` – syncs `products.in_stock` and reprices the matching product when a stock cost changes
+- `trg_sync_products_from_stock_units` – syncs `products.in_stock`; stock cost changes no longer reprice products
 - `trg_validate_stock_unit_catalog_variant` – rejects stock rows whose color/battery do not match the linked product variant
 - `trg_stock_units_audit_user_ids` – fills `created_by_user_id` on insert and `sold_by_user_id` when a unit is first marked as sold
 
-**Pricing sync rule:** the last saved stock cost for a `product_key` becomes the product's pricing source and is tracked in `products.pricing_source_stock_unit_id`. If that stock unit is removed, the product falls back to the latest remaining stock unit with a valid cost.
+**Pricing sync rule:** store settings refresh financing defaults (`usd_rate`, interests, cuotas), but stock cost changes do not overwrite product sell price or product cost. `products` remains the source of truth for catalog pricing and product-level cost.
 
 ---
 
@@ -390,7 +389,7 @@ These are the functions actively used by the app and automation after the lean-s
 | `get_margin_pct_for_cost(p_cost_usd)` | numeric | Returns the default margin band for a USD cost |
 | `normalize_stock_cost_to_usd(p_cost_unit, p_cost_currency, p_usd_rate)` | numeric | Converts a stock unit cost to USD using the product USD rate |
 | `sync_product_in_stock_flag(p_product_key)` | void | Updates `products.in_stock` from current stock units |
-| `apply_product_pricing_from_stock_cost(p_product_key, p_cost_unit, p_cost_currency, p_source_stock_unit_id)` | void | Recalculates derived product pricing fields from a stock cost |
+| `apply_product_pricing_from_stock_cost(p_product_key, p_cost_unit, p_cost_currency, p_source_stock_unit_id)` | void | Legacy compatibility no-op; stock cost changes no longer mutate products |
 | `sync_product_from_latest_stock_cost(p_product_key)` | void | Rebuilds product pricing from the latest remaining stock unit with cost |
 | `sync_products_from_store_settings_pricing()` | void | Rebuilds product financing fields from pricing-related `store_settings` defaults |
 | `validate_stock_unit_catalog_variant()` | trigger | Ensures `stock_units.color` / `battery_health` match the linked product variant when the product specifies them |

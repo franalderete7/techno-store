@@ -18,7 +18,14 @@ import {
   buildPricingDefaultsFromStoreSettings,
   type PricingDefaults,
 } from "@/lib/pricing-defaults";
+import {
+  buildProductPricingSnapshot,
+  buildProductCostSnapshot,
+  roundArsAmount,
+  roundUsdAmount,
+} from "@/lib/product-pricing";
 import { Button } from "@/components/ui/button";
+import { BulkProductPricingDialog } from "@/components/products/bulk-product-pricing-dialog";
 import {
   Table,
   TableBody,
@@ -66,6 +73,7 @@ import {
   ArrowDown,
   Search,
   Download,
+  Upload,
 } from "lucide-react";
 
 const TABLE_COLUMNS = [
@@ -246,6 +254,9 @@ const EDITABLE_COLUMNS = [
   { key: "product_key", label: "Product Key", type: "text" as const },
   { key: "category", label: "Category", type: "text" as const },
   { key: "product_name", label: "Product Name", type: "text" as const },
+  { key: "cost_usd", label: "Cost USD", type: "number" as const },
+  { key: "price_usd", label: "Price USD", type: "number" as const },
+  { key: "price_ars", label: "Price ARS", type: "number" as const },
   { key: "logistics_usd", label: "Logistics USD", type: "number" as const },
   { key: "promo_price_ars", label: "Promo Price ARS", type: "number" as const },
   { key: "bancarizada_interest", label: "Bancarizada Interest %", type: "number" as const },
@@ -325,6 +336,41 @@ function buildProductUpdatePayload(
   update.color = color;
   update.battery_health = batteryHealth;
 
+  const { snapshot: pricingSnapshot, error: pricingError } = buildProductPricingSnapshot({
+    priceUsd: update.price_usd,
+    priceArs: update.price_ars,
+    promoPriceArs: update.promo_price_ars,
+    usdRate: update.usd_rate,
+    cuotasQty: update.cuotas_qty,
+    bancarizadaInterest: update.bancarizada_interest,
+    macroInterest: update.macro_interest,
+  });
+
+  if (!pricingSnapshot) {
+    return { payload: null, error: pricingError || "Sell price is required." };
+  }
+
+  update.price_usd = pricingSnapshot.priceUsd;
+  update.price_ars = pricingSnapshot.priceArs;
+  update.promo_price_ars = pricingSnapshot.promoPriceArs;
+  update.usd_rate = pricingSnapshot.usdRate;
+  update.cuotas_qty = pricingSnapshot.cuotasQty;
+  update.bancarizada_interest = pricingSnapshot.bancarizadaInterest;
+  update.macro_interest = pricingSnapshot.macroInterest;
+  update.bancarizada_total = pricingSnapshot.bancarizadaTotal;
+  update.bancarizada_cuota = pricingSnapshot.bancarizadaCuota;
+  update.macro_total = pricingSnapshot.macroTotal;
+  update.macro_cuota = pricingSnapshot.macroCuota;
+  const costSnapshot = buildProductCostSnapshot({
+    costUsd: update.cost_usd,
+    logisticsUsd: update.logistics_usd,
+    priceUsd: pricingSnapshot.priceUsd,
+  });
+  update.cost_usd = costSnapshot.costUsd;
+  update.logistics_usd = costSnapshot.logisticsUsd;
+  update.total_cost_usd = costSnapshot.totalCostUsd;
+  update.margin_pct = costSnapshot.marginPct;
+
   return { payload: update as ProductUpdate };
 }
 
@@ -349,8 +395,24 @@ function buildProductInsertPayload(
   if (variantError) {
     return { payload: null, error: variantError };
   }
-  if (insert.price_usd == null) return { payload: null, error: "Price USD is required." };
-  if (insert.price_ars == null) return { payload: null, error: "Price ARS is required." };
+  const { snapshot: pricingSnapshot, error: pricingError } = buildProductPricingSnapshot({
+    priceUsd: insert.price_usd,
+    priceArs: insert.price_ars,
+    promoPriceArs: insert.promo_price_ars,
+    usdRate: insert.usd_rate,
+    cuotasQty: insert.cuotas_qty,
+    bancarizadaInterest: insert.bancarizada_interest,
+    macroInterest: insert.macro_interest,
+  });
+
+  if (!pricingSnapshot) {
+    return { payload: null, error: pricingError || "Sell price is required." };
+  }
+  const costSnapshot = buildProductCostSnapshot({
+    costUsd: insert.cost_usd,
+    logisticsUsd: insert.logistics_usd,
+    priceUsd: pricingSnapshot.priceUsd,
+  });
 
   return {
     payload: {
@@ -364,6 +426,21 @@ function buildProductInsertPayload(
       battery_health: batteryHealth,
       image_url: parseOptionalText(insert.image_url),
       condition,
+      cost_usd: costSnapshot.costUsd,
+      logistics_usd: costSnapshot.logisticsUsd,
+      total_cost_usd: costSnapshot.totalCostUsd,
+      margin_pct: costSnapshot.marginPct,
+      price_usd: pricingSnapshot.priceUsd,
+      price_ars: pricingSnapshot.priceArs,
+      promo_price_ars: pricingSnapshot.promoPriceArs,
+      usd_rate: pricingSnapshot.usdRate,
+      cuotas_qty: pricingSnapshot.cuotasQty,
+      bancarizada_interest: pricingSnapshot.bancarizadaInterest,
+      macro_interest: pricingSnapshot.macroInterest,
+      bancarizada_total: pricingSnapshot.bancarizadaTotal,
+      bancarizada_cuota: pricingSnapshot.bancarizadaCuota,
+      macro_total: pricingSnapshot.macroTotal,
+      macro_cuota: pricingSnapshot.macroCuota,
     },
   };
 }
@@ -455,14 +532,6 @@ function parseNumericValue(value: string | number | boolean | undefined): number
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function roundUsdAmount(value: number): number {
-  return Number(value.toFixed(2));
-}
-
-function roundArsAmount(value: number): number {
-  return Math.round(value);
 }
 
 function inferCategoryFromName(name: string): string {
@@ -581,6 +650,39 @@ function buildQuickAddInsertWithOverrides(
 
     resolved[key] = String(value);
   });
+
+  const { snapshot } = buildProductPricingSnapshot({
+    priceUsd: resolved.price_usd,
+    priceArs: resolved.price_ars,
+    promoPriceArs: resolved.promo_price_ars,
+    usdRate: resolved.usd_rate,
+    cuotasQty: resolved.cuotas_qty,
+    bancarizadaInterest: resolved.bancarizada_interest,
+    macroInterest: resolved.macro_interest,
+  });
+
+  if (!snapshot) return null;
+
+  resolved.price_usd = snapshot.priceUsd;
+  resolved.price_ars = snapshot.priceArs;
+  resolved.promo_price_ars = snapshot.promoPriceArs;
+  resolved.usd_rate = snapshot.usdRate;
+  resolved.cuotas_qty = snapshot.cuotasQty;
+  resolved.bancarizada_interest = snapshot.bancarizadaInterest;
+  resolved.macro_interest = snapshot.macroInterest;
+  resolved.bancarizada_total = snapshot.bancarizadaTotal;
+  resolved.bancarizada_cuota = snapshot.bancarizadaCuota;
+  resolved.macro_total = snapshot.macroTotal;
+  resolved.macro_cuota = snapshot.macroCuota;
+  const costSnapshot = buildProductCostSnapshot({
+    costUsd: resolved.cost_usd,
+    logisticsUsd: resolved.logistics_usd,
+    priceUsd: resolved.price_usd,
+  });
+  resolved.cost_usd = costSnapshot.costUsd;
+  resolved.logistics_usd = costSnapshot.logisticsUsd;
+  resolved.total_cost_usd = costSnapshot.totalCostUsd;
+  resolved.margin_pct = costSnapshot.marginPct;
 
   return resolved as ProductInsert;
 }
@@ -718,6 +820,7 @@ export function ProductsTable() {
   const [editImageMarkedForRemoval, setEditImageMarkedForRemoval] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdvancedDefaults, setShowAdvancedDefaults] = useState(false);
+  const [bulkPricingOpen, setBulkPricingOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
     normalizeVisibleColumns(DEFAULT_VISIBLE_COLUMNS)
   );
@@ -1204,6 +1307,16 @@ export function ProductsTable() {
               <Download className="mr-2 h-4 w-4" />
               <span className="hidden sm:inline">Export CSV</span>
               <span className="sm:hidden">Export</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => setBulkPricingOpen(true)}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Bulk Pricing</span>
+              <span className="sm:hidden">Bulk</span>
             </Button>
             <div ref={columnsRef} className="relative hidden sm:block">
               <Button
@@ -1849,9 +1962,7 @@ export function ProductsTable() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">
-                      Stock syncs from units
-                    </Badge>
+                    <Badge variant="outline">Catalog pricing stays on product</Badge>
                     <Button
                       type="button"
                       variant="outline"
@@ -1879,9 +1990,8 @@ export function ProductsTable() {
                       <div>
                         <p className="text-sm font-medium">Editable defaults</p>
                         <p className="text-xs text-muted-foreground">
-                          Review the generated product data and change it here if this upload is not a
-                          brand-new item. Pricing and in-stock values are synced from Stock, so only
-                          product-level inputs stay editable here.
+                          Review the generated product data and change it here before saving. Product
+                          cost and sell price stay on the catalog item; stock costs do not reprice it.
                         </p>
                       </div>
                       <Button
@@ -1994,6 +2104,13 @@ export function ProductsTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BulkProductPricingDialog
+        open={bulkPricingOpen}
+        onOpenChange={setBulkPricingOpen}
+        products={products}
+        onApplied={fetchProducts}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteProduct} onOpenChange={(o) => !o && setDeleteProduct(null)}>

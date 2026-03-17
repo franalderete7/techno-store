@@ -30,6 +30,52 @@ begin
 end;
 $$;
 
+alter table public.products
+  drop constraint if exists chk_products_pricing_mode;
+
+alter table public.products
+  drop constraint if exists products_pricing_source_stock_unit_id_fkey;
+
+alter table public.products
+  drop column if exists pricing_source_stock_unit_id,
+  drop column if exists pricing_mode;
+
+create or replace function public.get_product_margin_pct_for_cost(
+  p_total_cost_usd numeric
+)
+returns numeric
+language plpgsql
+stable
+as $$
+declare
+  v_band_1_max numeric := public.get_store_setting_numeric(array['pricing_margin_band_1_max_cost_usd'], 200);
+  v_band_2_max numeric := public.get_store_setting_numeric(array['pricing_margin_band_2_max_cost_usd'], 400);
+  v_band_3_max numeric := public.get_store_setting_numeric(array['pricing_margin_band_3_max_cost_usd'], 800);
+  v_band_1_margin numeric := public.get_store_setting_numeric(array['pricing_margin_band_1_margin_pct'], 0.30);
+  v_band_2_margin numeric := public.get_store_setting_numeric(array['pricing_margin_band_2_margin_pct'], 0.25);
+  v_band_3_margin numeric := public.get_store_setting_numeric(array['pricing_margin_band_3_margin_pct'], 0.20);
+  v_band_4_margin numeric := public.get_store_setting_numeric(array['pricing_margin_band_4_margin_pct'], 0.15);
+begin
+  if p_total_cost_usd is null then
+    return v_band_3_margin;
+  end if;
+
+  if p_total_cost_usd <= v_band_1_max then
+    return v_band_1_margin;
+  end if;
+
+  if p_total_cost_usd <= v_band_2_max then
+    return v_band_2_margin;
+  end if;
+
+  if p_total_cost_usd <= v_band_3_max then
+    return v_band_3_margin;
+  end if;
+
+  return v_band_4_margin;
+end;
+$$;
+
 create or replace function public.sync_products_from_store_settings_pricing()
 returns void
 language plpgsql
@@ -79,36 +125,21 @@ begin
 end;
 $$;
 
-create or replace function public.handle_store_settings_pricing_sync()
-returns trigger
+create or replace function public.apply_product_pricing_from_stock_cost(
+  p_product_key text,
+  p_cost_unit numeric,
+  p_cost_currency text,
+  p_source_stock_unit_id integer
+)
+returns void
 language plpgsql
 as $$
-declare
-  affected_key text := coalesce(new.key, old.key);
 begin
-  if affected_key = any (array[
-    'pricing_default_usd_rate',
-    'usd_to_ars',
-    'pricing_default_cuotas_qty',
-    'cuotas_qty',
-    'pricing_bancarizada_interest',
-    'bancarizada_interest',
-    'pricing_macro_interest',
-    'macro_interest'
-  ]) then
-    perform public.sync_products_from_store_settings_pricing();
-  end if;
-
-  return coalesce(new, old);
+  -- Product pricing and product cost are controlled from the catalog (`products`).
+  -- Stock-unit cost changes must not mutate product pricing fields.
+  return;
 end;
 $$;
-
-drop trigger if exists trg_store_settings_pricing_sync on public.store_settings;
-
-create trigger trg_store_settings_pricing_sync
-after insert or update or delete on public.store_settings
-for each row
-execute function public.handle_store_settings_pricing_sync();
 
 select public.sync_products_from_store_settings_pricing();
 
