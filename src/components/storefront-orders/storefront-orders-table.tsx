@@ -1292,6 +1292,16 @@ export function StorefrontOrdersTable() {
                                   unit: StockUnit;
                                 } => entry.unit !== null
                               );
+                            const sameProductUnits = detailStockUnits.filter(
+                              (unit) => unit.product_key === item.productKey
+                            );
+                            const soldSameProductUnits = sameProductUnits.filter(
+                              (unit) => unit.status === "sold"
+                            );
+                            const assignedElsewhereSameProductUnits = sameProductUnits.filter((unit) => {
+                              const assignedOrderItemId = assignedOrderItemByStockUnitId.get(unit.id);
+                              return assignedOrderItemId != null && assignedOrderItemId !== item.rowId;
+                            });
                             const availableUnits = detailStockUnits.filter((unit) => {
                               if (unit.product_key !== item.productKey) return false;
                               const assignedOrderItemId = assignedOrderItemByStockUnitId.get(unit.id);
@@ -1299,6 +1309,16 @@ export function StorefrontOrdersTable() {
                               return unit.status === "in_stock" || unit.status === "reserved";
                             });
                             const assignmentComplete = assignedUnits.length >= item.quantity;
+                            const noCompatibleUnits = !assignmentComplete && availableUnits.length === 0;
+                            const assignmentHint = !noCompatibleUnits
+                              ? "Solo aparecen equipos del stock con el mismo product_key y estado in_stock o reserved."
+                              : sameProductUnits.length === 0
+                                ? "No hay equipos en stock con este mismo product_key. Si el pedido corresponde a otro producto o variante, primero hay que corregir ese desajuste."
+                                : soldSameProductUnits.length === sameProductUnits.length
+                                  ? `Hay ${soldSameProductUnits.length} equipo(s) con este product_key, pero ya estan marcados como sold.`
+                                  : assignedElsewhereSameProductUnits.length > 0
+                                    ? `Los equipos compatibles ya estan asignados a otro pedido (${assignedElsewhereSameProductUnits.length} unidad(es)).`
+                                    : "No hay equipos compatibles disponibles para vincular en este momento.";
 
                             return (
                               <div
@@ -1331,7 +1351,11 @@ export function StorefrontOrdersTable() {
                                             [item.rowId as number]: value,
                                           }))
                                         }
-                                        disabled={busyAssignmentItemId === item.rowId || assignmentComplete}
+                                        disabled={
+                                          busyAssignmentItemId === item.rowId ||
+                                          assignmentComplete ||
+                                          availableUnits.length === 0
+                                        }
                                       >
                                         <SelectTrigger>
                                           <SelectValue placeholder="Elegi un equipo real del stock" />
@@ -1344,6 +1368,9 @@ export function StorefrontOrdersTable() {
                                           ))}
                                         </SelectContent>
                                       </Select>
+                                      <p className="text-xs leading-5 text-muted-foreground">
+                                        {assignmentHint}
+                                      </p>
                                       <Button
                                         variant="outline"
                                         onClick={() => void handleAssignUnit(item)}
