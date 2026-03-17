@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -27,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn, getErrorMessage } from "@/lib/utils";
 import {
-  TRANSFER_ALIASES,
   buildStorefrontWhatsAppUrl,
   buildStorefrontProductUrl,
   isValidCheckoutAddress,
@@ -60,17 +60,24 @@ type CheckoutResponse = {
   whatsappUrl?: string;
 };
 
+type CartPreview = {
+  item: CartLine;
+  totalQuantity: number;
+};
+
 type CartContextValue = {
   items: CartLine[];
   itemCount: number;
   subtotal: number;
   isOpen: boolean;
+  cartPreview: CartPreview | null;
   openCart: () => void;
   closeCart: () => void;
   addItem: (product: StorefrontProduct, options?: { openCart?: boolean }) => void;
   removeItem: (productKey: string) => void;
   updateQuantity: (productKey: string, quantity: number) => void;
   clearCart: () => void;
+  dismissCartPreview: () => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -102,6 +109,7 @@ function toCartLine(product: StorefrontProduct): CartLine {
 function useProvideStorefrontCart(): CartContextValue {
   const [items, setItems] = useState<CartLine[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [cartPreview, setCartPreview] = useState<CartPreview | null>(null);
 
   useEffect(() => {
     try {
@@ -145,35 +153,67 @@ function useProvideStorefrontCart(): CartContextValue {
     [items]
   );
 
+  useEffect(() => {
+    if (!cartPreview) return;
+    const timeoutId = window.setTimeout(() => {
+      setCartPreview(null);
+    }, 4200);
+    return () => window.clearTimeout(timeoutId);
+  }, [cartPreview]);
+
   return {
     items,
     itemCount,
     subtotal,
     isOpen,
+    cartPreview,
     openCart: () => setIsOpen(true),
     closeCart: () => setIsOpen(false),
     addItem: (product, options) => {
+      let preview: CartPreview | null = null;
       setItems((current) => {
         const existing = current.find((item) => item.product_key === product.product_key);
         if (existing) {
-          return current.map((item) =>
+          const next = current.map((item) =>
             item.product_key === product.product_key
               ? { ...item, quantity: Math.min(5, item.quantity + 1) }
               : item
           );
+          const nextItem = next.find((item) => item.product_key === product.product_key) || null;
+          if (nextItem) {
+            preview = {
+              item: nextItem,
+              totalQuantity: nextItem.quantity,
+            };
+          }
+          return next;
         }
-        return [...current, toCartLine(product)];
+        const nextItem = toCartLine(product);
+        preview = {
+          item: nextItem,
+          totalQuantity: nextItem.quantity,
+        };
+        return [...current, nextItem];
       });
       if (options?.openCart) {
+        setCartPreview(null);
         setIsOpen(true);
+      } else if (preview) {
+        setCartPreview(preview);
       }
     },
     removeItem: (productKey) => {
       setItems((current) => current.filter((item) => item.product_key !== productKey));
+      setCartPreview((current) =>
+        current?.item.product_key === productKey ? null : current
+      );
     },
     updateQuantity: (productKey, quantity) => {
       if (quantity <= 0) {
         setItems((current) => current.filter((item) => item.product_key !== productKey));
+        setCartPreview((current) =>
+          current?.item.product_key === productKey ? null : current
+        );
         return;
       }
       setItems((current) =>
@@ -183,8 +223,21 @@ function useProvideStorefrontCart(): CartContextValue {
             : item
         )
       );
+      setCartPreview((current) =>
+        current?.item.product_key === productKey
+          ? {
+              ...current,
+              totalQuantity: Math.max(1, Math.min(5, quantity)),
+              item: { ...current.item, quantity: Math.max(1, Math.min(5, quantity)) },
+            }
+          : current
+      );
     },
-    clearCart: () => setItems([]),
+    clearCart: () => {
+      setItems([]);
+      setCartPreview(null);
+    },
+    dismissCartPreview: () => setCartPreview(null),
   };
 }
 
@@ -394,7 +447,7 @@ function CartDrawer() {
                   rel="noreferrer"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  Continuar en WhatsApp
+                  Continuar por WhatsApp
                 </a>
               </Button>
             </div>
@@ -492,8 +545,8 @@ function CartDrawer() {
                     Finalizar pedido
                   </p>
                   <p className="mt-2 text-sm leading-6 text-white/65">
-                    Completá tus datos y la dirección de entrega para mostrarte los alias y
-                    preparar el despacho.
+                    Completá tus datos y la dirección de entrega para continuar por WhatsApp y
+                    dejar listo el seguimiento del pedido.
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -517,9 +570,14 @@ function CartDrawer() {
                   placeholder="Email"
                   className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
                 />
-                <Input
+                  <Input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  onChange={(event) =>
+                    setPhone(event.target.value.replace(/[^\d+()\-\s]/g, ""))
+                  }
                   placeholder="WhatsApp o teléfono"
                   className="border-white/10 bg-black/20 text-white placeholder:text-white/30"
                 />
@@ -568,7 +626,7 @@ function CartDrawer() {
                   className="h-12 w-full cursor-pointer rounded-full bg-sky-300 font-semibold text-slate-950 hover:bg-sky-200 disabled:cursor-not-allowed"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Guardar pedido con contacto y ver alias
+                  Continuar por WhatsApp
                 </Button>
               </div>
             </div>
@@ -623,6 +681,107 @@ function CartFloatingButton() {
       </div>
       <span className="hidden sm:inline">Carrito</span>
     </button>
+  );
+}
+
+function CartAddPreview() {
+  const { cartPreview, dismissCartPreview, openCart } = useStorefrontCart();
+  const previewRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!cartPreview) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!previewRef.current) return;
+      if (previewRef.current.contains(event.target as Node)) return;
+      dismissCartPreview();
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        dismissCartPreview();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [cartPreview, dismissCartPreview]);
+
+  if (!cartPreview) return null;
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-24 z-40 px-4 sm:top-28 sm:px-6">
+      <div className="mx-auto flex max-w-7xl justify-end">
+        <div
+          ref={previewRef}
+          className="pointer-events-auto w-full max-w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-[1.6rem] border border-white/12 bg-[#08131f]/96 shadow-[0_28px_80px_rgba(2,6,23,0.6)] backdrop-blur"
+        >
+          <div className="flex items-start gap-3 p-4">
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[1.15rem] border border-white/10 bg-white/5">
+              {cartPreview.item.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={cartPreview.item.image_url}
+                  alt={cartPreview.item.product_name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-[11px] text-white/40">
+                  Sin imagen
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-emerald-300/80">
+                    Agregado al carrito
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-sm font-semibold text-white">
+                    {cartPreview.item.product_name}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissCartPreview}
+                  className="rounded-full border border-white/10 bg-white/5 p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Cerrar vista previa del carrito"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-white/65">
+                {formatMoney(cartPreview.item.unit_price)} · {cartPreview.totalQuantity} en el carrito
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    dismissCartPreview();
+                    openCart();
+                  }}
+                  className="h-10 flex-1 rounded-full bg-sky-300 font-semibold text-slate-950 hover:bg-sky-200"
+                >
+                  Ver carrito
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={dismissCartPreview}
+                  className="h-10 rounded-full border-white/10 bg-white/[0.04] text-white hover:bg-white/10 hover:text-white"
+                >
+                  Seguir viendo
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -716,6 +875,7 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
       {children}
       <WhatsAppFloatingButton />
       <CartFloatingButton />
+      <CartAddPreview />
       <CartDrawer />
     </CartContext.Provider>
   );
