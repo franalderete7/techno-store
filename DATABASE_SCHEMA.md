@@ -16,20 +16,16 @@ The live Supabase project is the schema source of truth.
 - n8n should read store policy and CRM context from Supabase, not from hardcoded workflow text
 - n8n storefront links should use `STOREFRONT_BASE_URL=https://puntotechno.com`
 
-Current checked-in catalog migration:
+Current repo reality:
 
-1. [catalog_variant_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/catalog_variant_fields.sql) – adds `products.color` and `products.battery_health`, validates stock-unit/catalog variant alignment, and makes `v_product_catalog` read those storefront fields directly from `products`
-2. [store_settings_pricing_sync.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/store_settings_pricing_sync.sql) – recalculates product financing fields whenever pricing-related `store_settings` keys change, without overwriting sell prices
-3. [product_manual_pricing.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/product_manual_pricing.sql) – removes legacy stock-driven pricing columns and makes stock-cost repricing a no-op so `products` stays the catalog pricing source of truth
-4. [auth_audit_fields.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/auth_audit_fields.sql) – adds `created_by_user_id` audit fields to purchases/stock, adds optional `stock_units.sold_by_user_id`, and removes the old free-text purchase creator
-5. `npm run db:types:pull`
-6. deploy updated app + v15 workflow
-
-The live Supabase project still contains additional inventory/accounting objects used by the app, but those older one-off SQL files are not currently checked into this repo.
+- The repo has generated types for more live objects than it has checked-in SQL migrations
+- The app actively depends on storefront order tables and views that are present in the live project
+- The only workflow-specific SQL currently checked in is [v17_workflow_foundation.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/v17_workflow_foundation.sql)
+- Before the next serious schema refactor, export the missing live migrations and make the repo reproducible again
 
 ## Public Objects
 
-Current public tables:
+Known public tables used by the app and workflows:
 
 - `conversations`
 - `crm_tag_definitions`
@@ -39,9 +35,13 @@ Current public tables:
 - `purchase_payment_legs`
 - `products`
 - `purchases`
+- `storefront_order_items`
+- `storefront_order_unit_assignments`
+- `storefront_orders`
 - `stock_units`
 - `stickers`
 - `store_settings`
+- `ai_workflow_turns`
 
 Current public views:
 
@@ -51,6 +51,7 @@ Current public views:
 - `v_recent_conversations`
 - `v_stock_summary`
 - `v_store_context`
+- `v_ai_workflow_turn_daily`
 
 ## Lean Model
 
@@ -59,9 +60,19 @@ Current public views:
 - `customers`
 - `products`
 - `purchases`
+- `storefront_orders`
 - `stock_units`
-- `stickers`
 - `store_settings`
+
+Workflow/observability objects:
+
+- `conversations`
+- `crm_tag_definitions`
+- `ai_workflow_turns`
+- `v_customer_context`
+- `v_recent_conversations`
+- `v_store_context`
+- `v_ai_workflow_turn_daily`
 
 ## Data Split
 

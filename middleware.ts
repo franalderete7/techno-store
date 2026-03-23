@@ -21,7 +21,6 @@ const legacyAdminRedirects = new Map<string, string>([
   ["/stock", "/admin/stock"],
   ["/purchases", "/admin/purchases"],
   ["/crm", "/admin/crm"],
-  ["/reservations", "/admin"],
 ]);
 
 function buildLoginRedirect(request: NextRequest, nextPath: string, reason?: string) {

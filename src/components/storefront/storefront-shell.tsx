@@ -63,6 +63,9 @@ type CheckoutResponse = {
 type CartPreview = {
   item: CartLine;
   totalQuantity: number;
+  /** Full cart snapshot when the preview opens (all lines). */
+  allItems: CartLine[];
+  cartSubtotal: number;
 };
 
 type CartContextValue = {
@@ -157,7 +160,7 @@ function useProvideStorefrontCart(): CartContextValue {
     if (!cartPreview) return;
     const timeoutId = window.setTimeout(() => {
       setCartPreview(null);
-    }, 4200);
+    }, 6800);
     return () => window.clearTimeout(timeoutId);
   }, [cartPreview]);
 
@@ -181,19 +184,29 @@ function useProvideStorefrontCart(): CartContextValue {
           );
           const nextItem = next.find((item) => item.product_key === product.product_key) || null;
           if (nextItem) {
+            const cartSubtotal = next.reduce(
+              (sum, line) => sum + line.unit_price * line.quantity,
+              0
+            );
             preview = {
               item: nextItem,
               totalQuantity: nextItem.quantity,
+              allItems: next,
+              cartSubtotal,
             };
           }
           return next;
         }
         const nextItem = toCartLine(product);
+        const next = [...current, nextItem];
+        const cartSubtotal = next.reduce((sum, line) => sum + line.unit_price * line.quantity, 0);
         preview = {
           item: nextItem,
           totalQuantity: nextItem.quantity,
+          allItems: next,
+          cartSubtotal,
         };
-        return [...current, nextItem];
+        return next;
       });
       if (options?.openCart) {
         setCartPreview(null);
@@ -204,16 +217,26 @@ function useProvideStorefrontCart(): CartContextValue {
     },
     removeItem: (productKey) => {
       setItems((current) => current.filter((item) => item.product_key !== productKey));
-      setCartPreview((current) =>
-        current?.item.product_key === productKey ? null : current
-      );
+      setCartPreview((current) => {
+        if (!current) return current;
+        if (current.item.product_key === productKey) return null;
+        const allItems = current.allItems.filter((line) => line.product_key !== productKey);
+        if (allItems.length === 0) return null;
+        const cartSubtotal = allItems.reduce((s, line) => s + line.unit_price * line.quantity, 0);
+        return { ...current, allItems, cartSubtotal };
+      });
     },
     updateQuantity: (productKey, quantity) => {
       if (quantity <= 0) {
         setItems((current) => current.filter((item) => item.product_key !== productKey));
-        setCartPreview((current) =>
-          current?.item.product_key === productKey ? null : current
-        );
+        setCartPreview((current) => {
+          if (!current) return current;
+          if (current.item.product_key === productKey) return null;
+          const allItems = current.allItems.filter((line) => line.product_key !== productKey);
+          if (allItems.length === 0) return null;
+          const cartSubtotal = allItems.reduce((s, line) => s + line.unit_price * line.quantity, 0);
+          return { ...current, allItems, cartSubtotal };
+        });
         return;
       }
       setItems((current) =>
@@ -223,15 +246,21 @@ function useProvideStorefrontCart(): CartContextValue {
             : item
         )
       );
-      setCartPreview((current) =>
-        current?.item.product_key === productKey
-          ? {
-              ...current,
-              totalQuantity: Math.max(1, Math.min(5, quantity)),
-              item: { ...current.item, quantity: Math.max(1, Math.min(5, quantity)) },
-            }
-          : current
-      );
+      setCartPreview((current) => {
+        if (!current || current.item.product_key !== productKey) return current;
+        const q = Math.max(1, Math.min(5, quantity));
+        const allItems = current.allItems.map((line) =>
+          line.product_key === productKey ? { ...line, quantity: q } : line
+        );
+        const cartSubtotal = allItems.reduce((sum, line) => sum + line.unit_price * line.quantity, 0);
+        return {
+          ...current,
+          totalQuantity: q,
+          item: { ...current.item, quantity: q },
+          allItems,
+          cartSubtotal,
+        };
+      });
     },
     clearCart: () => {
       setItems([]);
@@ -488,9 +517,15 @@ function CartDrawer() {
                         <p className="mt-1 text-xs uppercase tracking-[0.24em] text-white/35">
                           {item.category}
                         </p>
-                        <p className="mt-3 text-lg font-semibold text-white">
-                          {formatMoney(item.unit_price)}
-                        </p>
+                        <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <p className="text-sm text-white/55">
+                            {formatMoney(item.unit_price)}
+                            {item.quantity > 1 ? ` × ${item.quantity}` : ""}
+                          </p>
+                          <p className="text-lg font-semibold tabular-nums text-white">
+                            {formatMoney(item.unit_price * item.quantity)}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
@@ -664,17 +699,37 @@ export function StorefrontAddToCartButton({
 
 function CartFloatingButton() {
   const { itemCount, openCart } = useStorefrontCart();
+  const hasItems = itemCount > 0;
 
   return (
     <button
       type="button"
       onClick={openCart}
-      className="fixed right-4 top-20 z-30 inline-flex cursor-pointer items-center gap-3 rounded-full border border-white/10 bg-[#07131f]/90 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_50px_rgba(2,6,23,0.6)] backdrop-blur transition hover:border-sky-300/40 hover:bg-[#0b1b2c] sm:right-6 sm:top-24"
+      aria-label={hasItems ? `Abrir carrito, ${itemCount} artículos` : "Abrir carrito"}
+      className={cn(
+        "fixed right-4 top-20 z-30 inline-flex cursor-pointer items-center gap-3 rounded-full border border-white/10 bg-[#07131f]/90 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_50px_rgba(2,6,23,0.6)] backdrop-blur transition hover:border-sky-300/40 hover:bg-[#0b1b2c] sm:right-6 sm:top-24",
+        hasItems &&
+          "border-sky-400/35 shadow-[0_18px_50px_rgba(56,189,248,0.18)] ring-2 ring-sky-400/20"
+      )}
     >
-      <div className="relative">
-        <ShoppingCart className="h-5 w-5 text-sky-200" />
-        {itemCount > 0 ? (
-          <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-sky-300 px-1.5 text-[11px] font-bold text-slate-950">
+      <div className="relative flex h-9 w-9 items-center justify-center">
+        <span
+          className={cn(
+            "inline-flex will-change-transform",
+            hasItems ? "storefront-cart-icon-bob-active" : "storefront-cart-icon-bob"
+          )}
+        >
+          <span
+            className={cn(
+              "inline-flex will-change-transform",
+              hasItems ? "storefront-cart-icon-spin-active" : "storefront-cart-icon-spin"
+            )}
+          >
+            <ShoppingCart className="h-5 w-5 text-sky-200" aria-hidden />
+          </span>
+        </span>
+        {hasItems ? (
+          <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-sky-300 px-1.5 text-[11px] font-bold text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.55)]">
             {itemCount}
           </span>
         ) : null}
@@ -713,70 +768,135 @@ function CartAddPreview() {
 
   if (!cartPreview) return null;
 
+  const lines = cartPreview.allItems ?? [cartPreview.item];
+  const distinctCount = lines.length;
+  const subtotal = cartPreview.cartSubtotal ?? lines.reduce((s, l) => s + l.unit_price * l.quantity, 0);
+
   return (
     <div className="pointer-events-none fixed inset-x-0 top-24 z-40 px-4 sm:top-28 sm:px-6">
       <div className="mx-auto flex max-w-7xl justify-end">
         <div
           ref={previewRef}
-          className="pointer-events-auto w-full max-w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-[1.6rem] border border-white/12 bg-[#08131f]/96 shadow-[0_28px_80px_rgba(2,6,23,0.6)] backdrop-blur"
+          className="pointer-events-auto w-full max-w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-[1.6rem] border border-white/12 bg-[#08131f]/96 shadow-[0_28px_80px_rgba(2,6,23,0.6)] backdrop-blur duration-300 animate-in fade-in slide-in-from-top-3"
         >
-          <div className="flex items-start gap-3 p-4">
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[1.15rem] border border-white/10 bg-white/5">
-              {cartPreview.item.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={cartPreview.item.image_url}
-                  alt={cartPreview.item.product_name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-[11px] text-white/40">
-                  Sin imagen
+          <div className="border-b border-white/10 bg-gradient-to-r from-emerald-500/10 via-transparent to-sky-500/10 p-4">
+            <div className="flex items-start gap-3">
+              <div className="relative h-[4.5rem] w-[4.5rem] shrink-0 overflow-hidden rounded-[1.15rem] border border-emerald-400/30 bg-white/5 shadow-[0_0_24px_rgba(52,211,153,0.12)]">
+                {cartPreview.item.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={cartPreview.item.image_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[11px] text-white/40">
+                    Sin imagen
+                  </div>
+                )}
+                <span className="absolute bottom-1 right-1 rounded-md bg-emerald-400/90 px-1.5 py-0.5 text-[10px] font-bold text-slate-950">
+                  ×{cartPreview.totalQuantity}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.26em] text-emerald-300/90">
+                      Recién agregado
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-white">
+                      {cartPreview.item.product_name}
+                    </p>
+                    <p className="mt-1 text-xs text-white/55">
+                      {formatMoney(cartPreview.item.unit_price)} c/u · {cartPreview.totalQuantity}{" "}
+                      {cartPreview.totalQuantity === 1 ? "unidad" : "unidades"} de este producto
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dismissCartPreview}
+                    className="shrink-0 rounded-full border border-white/10 bg-white/5 p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Cerrar vista previa del carrito"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.26em] text-emerald-300/80">
-                    Agregado al carrito
-                  </p>
-                  <p className="mt-1 line-clamp-2 text-sm font-semibold text-white">
-                    {cartPreview.item.product_name}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={dismissCartPreview}
-                  className="rounded-full border border-white/10 bg-white/5 p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white"
-                  aria-label="Cerrar vista previa del carrito"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-white/65">
-                {formatMoney(cartPreview.item.unit_price)} · {cartPreview.totalQuantity} en el carrito
+          </div>
+
+          <div className="px-4 pb-4 pt-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                Tu carrito
               </p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    dismissCartPreview();
-                    openCart();
-                  }}
-                  className="h-10 flex-1 rounded-full bg-sky-300 font-semibold text-slate-950 hover:bg-sky-200"
-                >
-                  Ver carrito
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={dismissCartPreview}
-                  className="h-10 rounded-full border-white/10 bg-white/[0.04] text-white hover:bg-white/10 hover:text-white"
-                >
-                  Seguir viendo
-                </Button>
-              </div>
+              <p className="text-xs font-medium text-white/70">
+                {distinctCount} {distinctCount === 1 ? "producto" : "productos"}
+              </p>
+            </div>
+
+            <div className="-mx-1 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+              {lines.map((line) => {
+                const isAdded = line.product_key === cartPreview.item.product_key;
+                return (
+                  <div
+                    key={line.product_key}
+                    className={cn(
+                      "shrink-0 rounded-xl border bg-black/25 p-1.5",
+                      isAdded
+                        ? "border-emerald-400/50 ring-1 ring-emerald-400/25"
+                        : "border-white/10"
+                    )}
+                  >
+                    <div className="relative h-14 w-14 overflow-hidden rounded-lg bg-white/5">
+                      {line.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={line.image_url}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[9px] text-white/35">
+                          —
+                        </div>
+                      )}
+                      <span className="absolute bottom-0.5 right-0.5 flex h-5 min-w-5 items-center justify-center rounded-md bg-slate-950/90 px-1 text-[10px] font-bold text-white">
+                        {line.quantity}
+                      </span>
+                    </div>
+                    <p className="mt-1 max-w-[3.5rem] truncate text-[10px] leading-tight text-white/60">
+                      {line.product_name}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
+              <span className="text-sm text-white/60">Subtotal</span>
+              <span className="text-lg font-semibold tabular-nums text-white">{formatMoney(subtotal)}</span>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                onClick={() => {
+                  dismissCartPreview();
+                  openCart();
+                }}
+                className="h-10 flex-1 rounded-full bg-sky-300 font-semibold text-slate-950 hover:bg-sky-200"
+              >
+                Ver carrito completo
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={dismissCartPreview}
+                className="h-10 rounded-full border-white/10 bg-white/[0.04] text-white hover:bg-white/10 hover:text-white"
+              >
+                Seguir comprando
+              </Button>
             </div>
           </div>
         </div>

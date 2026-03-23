@@ -129,3 +129,50 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Storefront floating cart: slow spin + gentle bob (respect reduced motion) */
+@keyframes storefront-cart-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes storefront-cart-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@layer utilities {
+  .storefront-cart-icon-bob {
+    animation: storefront-cart-bob 2.8s ease-in-out infinite;
+  }
+
+  .storefront-cart-icon-spin {
+    animation: storefront-cart-spin 12s linear infinite;
+  }
+
+  .storefront-cart-icon-bob-active {
+    animation: storefront-cart-bob 1.55s ease-in-out infinite;
+  }
+
+  .storefront-cart-icon-spin-active {
+    animation: storefront-cart-spin 6.5s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .storefront-cart-icon-bob,
+    .storefront-cart-icon-spin,
+    .storefront-cart-icon-bob-active,
+    .storefront-cart-icon-spin-active {
+      animation: none;
+    }
+  }
+}

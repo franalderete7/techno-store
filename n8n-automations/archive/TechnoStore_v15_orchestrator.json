@@ -1,0 +1,1570 @@
+{
+  "name": "TechnoStore - AI Sales Agent v15 (Orchestrator)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "techno-sales",
+        "options": {}
+      },
+      "id": "0b9c74b2-4c51-42f8-97fd-399201060554",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        144
+      ],
+      "webhookId": "techno-sales"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse incoming Full Contact Data from ManyChat - v15\nconst raw = $input.first().json;\nconst body = raw.body || raw || {};\n\nconst toBool = (value) => {\n  if (typeof value === 'boolean') return value;\n  const normalized = String(value ?? '').trim().toLowerCase();\n  return ['true', '1', 'yes', 'si', 'sí', 'y'].includes(normalized);\n};\n\nconst getCustomField = (fields, key) => {\n  if (Array.isArray(fields)) {\n    const hit = fields.find((item) => item?.name === key || item?.key === key || item?.field_name === key);\n    return hit?.value ?? '';\n  }\n  if (fields && typeof fields === 'object') {\n    return fields[key] ?? '';\n  }\n  return '';\n};\n\nconst normalizePhoneDigits = (value) => {\n  let digits = String(value || '').replace(/\\D+/g, '');\n  if (digits.startsWith('54')) digits = digits.slice(2);\n  if (digits.startsWith('9')) digits = digits.slice(1);\n  if (digits.startsWith('0')) digits = digits.slice(1);\n  return digits;\n};\n\nconst PHONE_AREA_CODES = [\n  { code: '3718', name: 'Clorinda', province: 'Formosa' },\n  { code: '3873', name: 'Tartagal', province: 'Salta' },\n  { code: '3492', name: 'Rafaela', province: 'Santa Fe' },\n  { code: '3489', name: 'Campana / Zarate', province: 'Buenos Aires' },\n  { code: '3482', name: 'Reconquista', province: 'Santa Fe' },\n  { code: '3878', name: 'Oran', province: 'Salta' },\n  { code: '3876', name: 'Metan', province: 'Salta' },\n  { code: '3865', name: 'Concepcion', province: 'Tucuman' },\n  { code: '3858', name: 'Termas de Rio Hondo', province: 'Santiago del Estero' },\n  { code: '3757', name: 'Puerto Iguazu', province: 'Misiones' },\n  { code: '3755', name: 'Obera', province: 'Misiones' },\n  { code: '3777', name: 'Goya', province: 'Corrientes' },\n  { code: '3564', name: 'San Francisco', province: 'Cordoba' },\n  { code: '3541', name: 'Villa Carlos Paz', province: 'Cordoba' },\n  { code: '353', name: 'Villa Maria', province: 'Cordoba' },\n  { code: '364', name: 'Presidencia Roque Saenz Pena', province: 'Chaco' },\n  { code: '358', name: 'Rio Cuarto', province: 'Cordoba' },\n  { code: '345', name: 'Concordia', province: 'Entre Rios' },\n  { code: '343', name: 'Parana', province: 'Entre Rios' },\n  { code: '342', name: 'Santa Fe', province: 'Santa Fe' },\n  { code: '341', name: 'Rosario', province: 'Santa Fe' },\n  { code: '3888', name: 'San Pedro de Jujuy', province: 'Jujuy' },\n  { code: '3885', name: 'La Quiaca', province: 'Jujuy' },\n  { code: '387', name: 'Salta', province: 'Salta' },\n  { code: '388', name: 'San Salvador de Jujuy', province: 'Jujuy' },\n  { code: '385', name: 'Santiago del Estero', province: 'Santiago del Estero' },\n  { code: '383', name: 'San Fernando del Valle de Catamarca', province: 'Catamarca' },\n  { code: '381', name: 'San Miguel de Tucuman', province: 'Tucuman' },\n  { code: '380', name: 'La Rioja', province: 'La Rioja' },\n  { code: '379', name: 'Corrientes', province: 'Corrientes' },\n  { code: '376', name: 'Posadas', province: 'Misiones' },\n  { code: '370', name: 'Formosa', province: 'Formosa' },\n  { code: '362', name: 'Resistencia', province: 'Chaco' },\n  { code: '351', name: 'Cordoba', province: 'Cordoba' },\n  { code: '336', name: 'San Nicolas', province: 'Buenos Aires' },\n  { code: '299', name: 'Neuquen', province: 'Neuquen' },\n  { code: '298', name: 'General Roca / Alto Valle', province: 'Rio Negro' },\n  { code: '297', name: 'Comodoro Rivadavia', province: 'Chubut' },\n  { code: '2966', name: 'Rio Gallegos', province: 'Santa Cruz' },\n  { code: '2954', name: 'Santa Rosa', province: 'La Pampa' },\n  { code: '294', name: 'Bariloche / Patagonia Andina', province: 'Rio Negro' },\n  { code: '291', name: 'Bahia Blanca', province: 'Buenos Aires' },\n  { code: '2902', name: 'Rio Grande', province: 'Tierra del Fuego' },\n  { code: '2901', name: 'Ushuaia', province: 'Tierra del Fuego' },\n  { code: '280', name: 'Trelew / Rawson', province: 'Chubut' },\n  { code: '266', name: 'San Luis', province: 'San Luis' },\n  { code: '2657', name: 'Villa Mercedes', province: 'San Luis' },\n  { code: '264', name: 'San Juan', province: 'San Juan' },\n  { code: '261', name: 'Mendoza', province: 'Mendoza' },\n  { code: '260', name: 'San Rafael', province: 'Mendoza' },\n  { code: '249', name: 'Tandil', province: 'Buenos Aires' },\n  { code: '236', name: 'Junin', province: 'Buenos Aires' },\n  { code: '2302', name: 'General Pico', province: 'La Pampa' },\n  { code: '223', name: 'Mar del Plata', province: 'Buenos Aires' },\n  { code: '221', name: 'La Plata', province: 'Buenos Aires' },\n  { code: '11', name: 'AMBA / CABA', province: 'CABA' },\n].sort((a, b) => b.code.length - a.code.length);\n\nconst inferArgentinaPhoneArea = (phone) => {\n  const digits = normalizePhoneDigits(phone);\n  if (!digits) {\n    return {\n      phone_digits: '',\n      phone_area_code: '',\n      phone_area_name: '',\n      phone_area_province: '',\n      phone_location_hint: 'unknown',\n    };\n  }\n\n  const match = PHONE_AREA_CODES.find((item) => digits.startsWith(item.code));\n  if (!match) {\n    return {\n      phone_digits: digits,\n      phone_area_code: '',\n      phone_area_name: '',\n      phone_area_province: '',\n      phone_location_hint: 'unknown_area',\n    };\n  }\n\n  return {\n    phone_digits: digits,\n    phone_area_code: match.code,\n    phone_area_name: match.name,\n    phone_area_province: match.province,\n    phone_location_hint: match.province === 'Salta' ? 'salta_area' : 'phone_area_known',\n  };\n};\n\nconst subscriberId = String(body.subscriber_id || body.id || '');\nconst message = String(body.message || body.last_input_text || '').trim();\nconst firstName = body.first_name || 'amigo';\nconst lastName = body.last_name || '';\nconst phone = body.whatsapp_phone || body.phone || '';\nconst timezone = body.timezone || '';\nconst subscribedAt = body.subscribed || body.subscribed_at || '';\n\nconst customFields = body.custom_fields || {};\nconst city = getCustomField(customFields, 'city');\nconst funnelStage = getCustomField(customFields, 'funnel_stage');\nconst interestedProduct = getCustomField(customFields, 'interested_product');\nconst isHumanActive = toBool(getCustomField(customFields, 'is_human_active'));\n\nconst isAudio = message.startsWith('https://')\n  && (message.includes('fbsbx.com') || message.includes('fbcdn.net') || message.includes('manybot-files.s3'));\n\nconst isEmpty = !message;\nconst storefrontOrderMatch = message.match(/pedido\\s+web\\s*#?\\s*(\\d+)[^\\n]*?\\btoken\\b\\s*([a-z0-9_-]{8,64})/i) || message.match(/#(\\d+)[^\\n]*?\\btoken\\b\\s*([a-z0-9_-]{8,64})/i);\nconst storefrontOrderId = storefrontOrderMatch ? Number(storefrontOrderMatch[1]) : null;\nconst storefrontOrderToken = storefrontOrderMatch ? String(storefrontOrderMatch[2] || '').trim().toLowerCase() : '';\nconst isStorefrontOrderHandoff = Number.isFinite(storefrontOrderId) && storefrontOrderId > 0 && storefrontOrderToken.length >= 8;\nconst inferredPhoneArea = inferArgentinaPhoneArea(phone);\nconst isSaltaPhone = inferredPhoneArea.phone_area_province === 'Salta';\n\nreturn [{\n  json: {\n    subscriber_id: subscriberId,\n    first_name: firstName,\n    last_name: lastName,\n    phone,\n    timezone,\n    subscribed_at: subscribedAt,\n    city,\n    funnel_stage: funnelStage,\n    interested_product: interestedProduct,\n    storefront_order_id: isStorefrontOrderHandoff ? storefrontOrderId : null,\n    storefront_order_token: isStorefrontOrderHandoff ? storefrontOrderToken : '',\n    is_storefront_order_handoff: isStorefrontOrderHandoff,\n    is_human_active: isHumanActive,\n    raw_message: message,\n    is_audio: isAudio,\n    is_empty: isEmpty,\n    is_salta_phone: isSaltaPhone,\n    phone_location_hint: inferredPhoneArea.phone_location_hint,\n    phone_area_code: inferredPhoneArea.phone_area_code,\n    phone_area_name: inferredPhoneArea.phone_area_name,\n    phone_area_province: inferredPhoneArea.phone_area_province,\n  }\n}];"
+      },
+      "id": "63d6c36d-cd73-4fb6-822d-6ce35370fb76",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-audio",
+              "leftValue": "={{ $json.is_audio }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0b569f70-4642-4425-9779-af0e18e181b6",
+      "name": "Is Audio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.raw_message }}",
+        "options": {
+          "response": {
+            "responseFormat": "file",
+            "outputPropertyName": "data"
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "18a64703-ceff-439f-ad39-def9a3df1164",
+      "name": "Download Audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "whisper-large-v3-turbo"
+            },
+            {
+              "name": "language",
+              "value": "es"
+            },
+            {
+              "name": "response_format",
+              "value": "json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "171b9d5d-f566-4675-82c7-fa2e0ad40378",
+      "name": "Groq Whisper Transcribe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mw4ftZwdAxSdWFjU",
+          "name": "Groq Whisper"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge: audio transcription or text input – v15\nconst detectData = $('Parse Input').first().json;\nlet userMessage, wasAudio;\n\ntry {\n  const whisperOutput = $('Groq Whisper Transcribe').first().json;\n  userMessage = whisperOutput.text || 'No pude entender el audio.';\n  wasAudio = true;\n} catch(e) {\n  userMessage = detectData.raw_message;\n  wasAudio = false;\n}\n\nreturn [{\n  json: {\n    ...detectData,\n    user_message: userMessage,\n    was_audio: wasAudio\n  }\n}];"
+      },
+      "id": "75d0e04d-5cba-47a6-b66c-78f2f261df7d",
+      "name": "Merge Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ manychat_id: String($json.subscriber_id), customer_id: null, role: \"user\", message: $json.user_message || \"(vacío)\", message_type: $json.was_audio ? \"audio\" : \"text\", was_audio: $json.was_audio || false, audio_transcription: $json.was_audio ? $json.user_message : null, intent_detected: null, products_mentioned: [], triggered_human: false, channel: \"manychat\", external_message_id: null, whatsapp_phone_number_id: null }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "63550096-eb87-43c5-90e0-881d3979c418",
+      "name": "Save Incoming Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nawait new Promise((resolve) => setTimeout(resolve, 8000));\nreturn [{ json: data }];\n"
+      },
+      "id": "bd985e1a-a109-4ee6-b13c-45ab6e92ecc0",
+      "name": "Wait 8s Debounce",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/check_is_latest_message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_manychat_id\": \"{{ $(\"Merge Input\").first().json.subscriber_id }}\",\n  \"p_message_id\": {{ (() => { const s = $(\"Save Incoming Message\").first().json; const id = Array.isArray(s) && s[0] ? s[0].id : (s && s.id); return id != null ? id : 0; })() }}\n}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "6bdcb8d9-dffd-4ba9-9e06-a6e085443095",
+      "name": "Check Is Latest (RPC)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// DEBOUNCE CHECK v15 - Atomic latest-message validation\nconst mergedData = $('Merge Input').first().json;\nconst saveNode = $('Save Incoming Message').first();\n\nlet ourId = null;\nconst savedBody = saveNode.json;\n\nif (Array.isArray(savedBody)) {\n  if (savedBody.length > 0 && savedBody[0]?.id !== undefined) {\n    ourId = savedBody[0].id;\n  }\n} else if (savedBody && typeof savedBody === 'object') {\n  if (savedBody.id !== undefined) {\n    ourId = savedBody.id;\n  }\n}\n\nif (ourId === null || ourId === undefined) {\n  return [{ json: { ...mergedData, should_continue: false, debug: 'could_not_extract_saved_message_id' } }];\n}\n\nconst rpcResult = $('Check Is Latest (RPC)').first().json;\n\nlet isLatest = false;\nif (typeof rpcResult === 'boolean') {\n  isLatest = rpcResult;\n} else if (Array.isArray(rpcResult) && rpcResult.length > 0) {\n  isLatest = rpcResult[0] === true || rpcResult[0]?.check_is_latest_message === true;\n} else if (rpcResult && typeof rpcResult === 'object') {\n  isLatest = rpcResult.check_is_latest_message === true || rpcResult.result === true;\n}\n\nif (!isLatest) {\n  return [{ json: { ...mergedData, should_continue: false, debug: 'not_latest' } }];\n}\n\nreturn [{ json: { ...mergedData, should_continue: true, our_id: ourId } }];\n"
+      },
+      "id": "a1398b20-906a-44ed-bf4d-fa5be4eff288",
+      "name": "Debounce Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-latest",
+              "leftValue": "={{ $json.should_continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9ace1160-fcf9-404e-8f6a-12d2935d4290",
+      "name": "Is Latest?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/conversations?manychat_id=eq.{{ $('Merge Input').first().json.subscriber_id }}&order=created_at.desc&limit=20&created_at=gte.{{ new Date(Date.now() - 40000).toISOString() }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 7000
+        }
+      },
+      "id": "dabcd75c-af48-4ef8-a360-e3c2bef9adbf",
+      "name": "Fetch Recent Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json }];"
+      },
+      "id": "ensure-merge-input-001",
+      "name": "Ensure Merge Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// MERGE & AGGREGATE consecutive user bursts v15\nconst mergedData = $('Debounce Check').first().json;\n\nlet recentRaw = [];\ntry {\n  recentRaw = $('Fetch Recent Messages').all();\n} catch (e) {\n  recentRaw = [];\n}\n\nconst byId = new Map();\nfor (const item of recentRaw) {\n  const payload = item.json;\n  const rows = Array.isArray(payload) ? payload : [payload];\n  for (const row of rows) {\n    if (!row || row.id === undefined || row.id === null) continue;\n    byId.set(row.id, row);\n  }\n}\n\nconst recentMessages = [...byId.values()]\n  .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));\n\nif (recentMessages.length === 0) {\n  return [{ json: { ...mergedData, messages_merged: 1 } }];\n}\n\nconst latestId = mergedData.our_id;\nlet latestIndex = recentMessages.findIndex((row) => String(row.id) === String(latestId));\nif (latestIndex === -1) latestIndex = recentMessages.length - 1;\n\nconst burst = [];\nfor (let i = latestIndex; i >= 0; i--) {\n  const row = recentMessages[i];\n  if (!row || row.role !== 'user') break;\n  const text = String(row.message || '').trim();\n  if (text && text !== '(vacío)') burst.unshift(text);\n}\n\nconst combined = burst.join(' ').trim();\n\nreturn [{\n  json: {\n    ...mergedData,\n    user_message: combined || mergedData.user_message,\n    messages_merged: Math.max(burst.length, 1)\n  }\n}];\n"
+      },
+      "id": "1ddd45c4-8547-4951-83cd-b2bd06b9e7f3",
+      "name": "Merge & Aggregate Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/upsert_customer",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_manychat_id: String($json.subscriber_id || ''), p_phone: String($json.phone || ''), p_whatsapp_phone: String($json.phone || ''), p_first_name: String($json.first_name || ''), p_last_name: String($json.last_name || ''), p_timezone: String($json.timezone || '') }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "59fe2b7d-8178-4491-9e55-a9d0e8df295a",
+      "name": "Upsert Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/v_customer_context?select=id,manychat_id,city,is_salta_capital,location_source,phone_area_code,phone_area_name,phone_area_province,preferred_brand,preferred_budget,payment_method_last,payment_methods_mentioned,interested_product,products_mentioned,brands_mentioned,topics_mentioned,funnel_stage,last_funnel_change_at,browsing_at,interested_at,closing_at,human_handoff_at,last_intent,lead_score,tags,total_interactions,last_bot_interaction,last_human_interaction,human_assigned,first_seen_at,lead_source&manychat_id=eq.{{ $(\"Merge & Aggregate Messages\").first().json.subscriber_id }}&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "9d7e9c3c-22f5-47e9-92ca-eef5244225bc",
+      "name": "Fetch Customer Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        144
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/v_recent_conversations?select=role,message,created_at&manychat_id=eq.{{ $('Merge & Aggregate Messages').first().json.subscriber_id }}&limit=8&order=created_at.desc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "ea9bac8d-3fe7-404a-97f5-fcdf865361db",
+      "name": "Fetch Conversation History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        144
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = [];\nfor (const item of $input.all()) {\n  const data = item.json;\n  if (Array.isArray(data)) rows.push(...data);\n  else if (data && data.role && data.message) rows.push(data);\n}\nreturn [{ json: { history_rows: rows } }];"
+      },
+      "id": "aggregate-conversation-history-v15",
+      "name": "Aggregate Conversation History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/v_product_catalog?select=product_key,category,product_name,price_usd,price_ars,promo_price_ars,bancarizada_cuota,macro_cuota,in_stock,delivery_type,delivery_days,ram_gb,storage_gb,network,image_url,condition,color,battery_health&order=category.asc,price_ars.desc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "5855530f-fd81-49cc-85c8-7ce31b4e2184",
+      "name": "Fetch Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        144
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = [];\nfor (const item of $input.all()) {\n  let data = item.json;\n  if (data && data.data && Array.isArray(data.data)) data = data.data;\n  if (Array.isArray(data)) rows.push(...data);\n  else if (data && data.product_key) rows.push(data);\n}\nreturn [{ json: { products: rows } }];"
+      },
+      "id": "aggregate-product-catalog-v15",
+      "name": "Aggregate Product Catalog",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Orchestrator v15 - AI-first compact inventory context\nif ($input.context.itemIndex > 0) return [];\n\nconst merged = $('Merge & Aggregate Messages').first().json;\n\nconst getNodeObject = (nodeName) => {\n  try {\n    const raw = $(nodeName).first().json;\n    if (Array.isArray(raw)) return raw[0] || {};\n    return raw && typeof raw === 'object' ? raw : {};\n  } catch (error) {\n    return {};\n  }\n};\n\nconst getNodeArray = (nodeName, key) => {\n  try {\n    const raw = $(nodeName).first().json?.[key];\n    return Array.isArray(raw) ? raw : [];\n  } catch (error) {\n    return [];\n  }\n};\n\nconst customerData = getNodeObject('Fetch Customer Profile');\nconst historyRows = getNodeArray('Aggregate Conversation History', 'history_rows');\nconst productRows = getNodeArray('Aggregate Product Catalog', 'products');\nconst storeSettings = getNodeObject('Fetch Store Settings');\nconst stickerRows = getNodeArray('Aggregate Stickers', 'stickers');\nconst storefrontOrder = getNodeObject('Fetch Storefront Order Handoff');\n\nconst productImages = {};\nconst productKeyNameMap = {};\nconst productStockMap = {};\nconst productConditionMap = {};\nconst productPricingMap = {};\n\nconst normalize = (value) => String(value || '')\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[^a-z0-9\\s_-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst unique = (arr) => [...new Set(arr.filter(Boolean))];\nconst hasDigits = (token) => /[a-z]*\\d+[a-z]*/.test(token);\nconst compactMoney = (value) => {\n  const num = Number(value);\n  return Number.isFinite(num) ? '$' + num.toLocaleString('es-AR') : null;\n};\nconst normalizeCategory = (value) => {\n  const raw = String(value || 'GENERAL').trim();\n  const norm = normalize(raw);\n  if (/iphone|ios/.test(norm)) return 'IPHONE';\n  if (/samsung/.test(norm)) return 'SAMSUNG';\n  if (/redmi|poco|xiaomi/.test(norm)) return 'REDMI/POCO';\n  return raw.toUpperCase();\n};\nconst normalizeBrandKey = (value) => {\n  const norm = normalize(value);\n  if (/iphone|apple|ios/.test(norm)) return 'iphone';\n  if (/samsung|galaxy/.test(norm)) return 'samsung';\n  if (/redmi|poco|xiaomi/.test(norm)) return 'redmi_poco';\n  if (/motorola|moto/.test(norm)) return 'motorola';\n  return '';\n};\nconst extractBrandKeys = (value) => {\n  const norm = normalize(value);\n  const brands = [];\n  if (/iphone|apple|ios/.test(norm)) brands.push('iphone');\n  if (/samsung|galaxy/.test(norm)) brands.push('samsung');\n  if (/redmi|poco|xiaomi/.test(norm)) brands.push('redmi_poco');\n  if (/motorola|moto/.test(norm)) brands.push('motorola');\n  return unique(brands);\n};\nconst getBrandKeyFromProduct = (p) => normalizeBrandKey([p.category, p.product_name, p.product_key].join(' '));\nconst normalizeConditionKey = (value) => {\n  const raw = String(value || 'new').trim().toLowerCase();\n  if (raw === 'used') return 'used';\n  if (raw === 'like_new') return 'like_new';\n  if (raw === 'refurbished') return 'refurbished';\n  return 'new';\n};\nconst extractStorageHints = (text) => unique(\n  [...String(text || '').matchAll(/\\b(32|64|128|256|512|1024)\\s*(?:gb|g)?\\b/gi)]\n    .map((match) => Number(match[1]))\n    .filter((value) => Number.isFinite(value))\n);\nconst getAvailability = (p) => {\n  const inStockNow = p.in_stock === true;\n  const onOrder = String(p.delivery_type || '').trim().toLowerCase() === 'on_order';\n  const deliveryDays = Number(p.delivery_days || 0);\n  if (inStockNow) return { code: 'available_now', label: 'disponible ahora', sortWeight: 3 };\n  if (onOrder) return { code: 'on_order', label: 'a pedido ' + deliveryDays + 'd', sortWeight: 2 };\n  return { code: 'out_of_stock', label: 'sin stock', sortWeight: 1 };\n};\n\nconst buildDisplayName = (p) => {\n  const baseName = String(p.product_name || p.product_key || '').trim();\n  const cond = String(p.condition || 'new').trim().toLowerCase();\n  const variantBits = [];\n  if (cond === 'used') variantBits.push('seminuevo');\n  else if (cond === 'like_new') variantBits.push('como nuevo');\n  else if (cond === 'refurbished') variantBits.push('reacondicionado');\n  else variantBits.push('nuevo');\n  if (p.color) variantBits.push(String(p.color).trim());\n  if (p.battery_health) variantBits.push('bat ' + p.battery_health + '%');\n  return baseName + (variantBits.length ? ' (' + variantBits.join(', ') + ')' : '');\n};\n\nconst buildShortExample = (p) => {\n  const bits = [String(p.product_name || '').trim()];\n  if (p.storage_gb) bits.push(p.storage_gb + 'GB');\n  if (p.color) bits.push(String(p.color).trim());\n  return bits.filter(Boolean).join(' ');\n};\n\nconst uniqueProducts = (arr) => [...new Map(\n  arr\n    .filter(Boolean)\n    .map((item) => [String(item.product_key || ''), item])\n).values()];\n\nconst buildProductLine = (p) => {\n  const specs = [\n    p.ram_gb ? p.ram_gb + 'GB RAM' : '',\n    p.storage_gb ? p.storage_gb + 'GB' : '',\n    p.color || '',\n    p.network ? String(p.network).toUpperCase() : '',\n  ].filter(Boolean).join(' | ');\n  const priceBits = [];\n  const contado = compactMoney(p.price_ars);\n  const promo = compactMoney(p.promo_price_ars);\n  const banc = compactMoney(p.bancarizada_cuota);\n  const macro = compactMoney(p.macro_cuota);\n  if (contado) priceBits.push('contado:' + contado);\n  if (promo && promo !== contado) priceBits.push('promo contado:' + promo);\n  if (banc) priceBits.push('6x bancarizada:' + banc + '/cuota');\n  if (macro) priceBits.push('6x macro:' + macro + '/cuota');\n  const battery = p.battery_health ? ' bat:' + p.battery_health + '%' : '';\n  const availability = getAvailability(p).label;\n\n  return '- ' + String(p.product_key || '').trim() + ' | ' + String(p.product_name || '').trim() + ' | ' + String(p.condition || 'new') + ' | ' + (specs || 'sin specs') + battery + ' | ' + (priceBits.join(' | ') || 'sin precio') + ' | disponibilidad:' + availability;\n};\n\nfor (const p of productRows) {\n  if (!p || !p.product_key) continue;\n  const productKey = String(p.product_key).trim();\n  productKeyNameMap[productKey] = buildDisplayName(p);\n  productStockMap[productKey] = p.in_stock;\n  productConditionMap[productKey] = String(p.condition || 'new').trim().toLowerCase();\n  productPricingMap[productKey] = {\n    product_name: String(p.product_name || '').trim(),\n    category: String(p.category || '').trim(),\n    price_ars: p.price_ars ?? null,\n    promo_price_ars: p.promo_price_ars ?? null,\n    bancarizada_cuota: p.bancarizada_cuota ?? null,\n    macro_cuota: p.macro_cuota ?? null,\n    condition: String(p.condition || 'new').trim().toLowerCase(),\n    color: p.color ?? null,\n    battery_health: p.battery_health ?? null,\n    storage_gb: p.storage_gb ?? null,\n    ram_gb: p.ram_gb ?? null,\n    delivery_type: p.delivery_type ?? null,\n    delivery_days: p.delivery_days ?? null,\n  };\n\n  const imageUrl = String(p.image_url || p.image || p.url || '').trim();\n  if (imageUrl.startsWith('http')) productImages[productKey] = imageUrl;\n}\n\nconst storeInfo = {\n  address: String(storeSettings.store_address || 'Caseros 1365, Salta Capital').trim(),\n  hours: String(storeSettings.store_hours || 'Lun-Vie 10-13 y 18-21 | Sab 10-13').trim(),\n  paymentMethods: String(storeSettings.store_payment_methods || 'Transferencia bancaria, Mercado Pago, efectivo, cripto y tarjetas').trim(),\n  creditPolicy: String(storeSettings.store_credit_policy || '6 cuotas presenciales en Salta Capital').trim(),\n  shippingPolicy: String(storeSettings.store_shipping_policy || 'Envios y seguimiento coordinados por privado por email y WhatsApp. Pedimos pago y comprobante lo antes posible para despachar la compra cuanto antes.').trim(),\n  warrantyNew: String(storeSettings.store_warranty_new || '1 ano de garantia oficial').trim(),\n  warrantyUsed: String(storeSettings.store_warranty_used || 'Garantia propia TechnoStore').trim(),\n  supportedCards: String(storeSettings.customer_cards_supported || 'macro,naranja,visa,mastercard,amex,cabal').trim(),\n  blockedCards: String(storeSettings.customer_cards_blocked || 'SuCredito').trim(),\n};\n\nif (merged.is_human_active === true || customerData.human_assigned === true) return [];\n\nconst userMessage = String(merged.user_message || '').trim();\nconst userMessageNorm = normalize(userMessage);\nconst isTradeInRequest = /(plan canje|canje|permuta|parte de pago|tomas? usados|toman usados|aceptan canje|aceptan usados|tomarian mi|toman mi|te doy mi|entrego mi|reciben mi|recibis mi|dejo mi cel(?:ular)?|dejo mi iphone|mi cel(?:ular)? mas diferencia|mi iphone mas diferencia|mi usado|usado y diferencia)/.test(userMessageNorm);\n\nif (merged.is_storefront_order_handoff === true) {\n  const storefrontOrderId = Number(storefrontOrder.id || merged.storefront_order_id || 0);\n  const storefrontOrderToken = String(storefrontOrder.whatsapp_handoff_token || '').trim();\n  const storefrontOrderFound = Number.isFinite(storefrontOrderId) && storefrontOrderId > 0 && storefrontOrderToken;\n  const storefrontOrderItems = Array.isArray(storefrontOrder.items) ? storefrontOrder.items : [];\n  const storefrontOrderAliases = Array.isArray(storefrontOrder.transfer_aliases)\n    ? storefrontOrder.transfer_aliases.map((alias) => String(alias || '').trim()).filter(Boolean)\n    : [];\n  const orderProductKeys = unique(storefrontOrderItems.map((item) => String(item.product_key || '').trim()).filter(Boolean));\n\n  if (!storefrontOrderFound) {\n    const chatInput = [\n      '[MENSAJE]',\n      userMessage || '(vacio)',\n      '',\n      '[PEDIDO WEB]',\n      'No se encontró un pedido válido para ese id/token.',\n      '',\n      '[INSTRUCCION]',\n      'Respondé breve: decí que no pude validar ese pedido web, pedí que vuelva a abrir el enlace que salió desde la tienda online o que nos escriba otra vez desde ese botón. No inventes alias ni productos.',\n    ].join('\\n');\n\n    return [{\n      json: {\n        route: 'storefront_order_handoff',\n        response_text: null,\n        chatInput,\n        chat_input_chars: chatInput.length,\n        relevant_product_count: 0,\n        total_product_count: productRows.length,\n        catalog_group_count: 0,\n        recent_history_count: historyRows.length,\n        inventory_mode: 'order_handoff_missing',\n        availability_totals: { availableNow: 0, onOrder: 0, outOfStock: 0 },\n        is_silent: false,\n        needs_human: false,\n        subscriber_id: merged.subscriber_id,\n        wa_id: merged.wa_id || merged.subscriber_id,\n        whatsapp_phone_number_id: merged.whatsapp_phone_number_id || '',\n        channel: 'manychat',\n        first_name: merged.first_name,\n        phone: merged.phone,\n        user_message: merged.user_message,\n        was_audio: merged.was_audio,\n        customer_id: customerData.id || null,\n        customer_profile: customerData,\n        product_images: productImages,\n        product_key_name_map: productKeyNameMap,\n        product_stock_map: productStockMap,\n        product_condition_map: productConditionMap,\n        candidate_product_keys: [],\n        is_first_interaction: historyRows.length === 0,\n        phone_location_hint: String(merged.phone_location_hint || '').trim(),\n        phone_area_code: String(merged.phone_area_code || customerData.phone_area_code || '').trim(),\n        phone_area_name: String(merged.phone_area_name || customerData.phone_area_name || '').trim(),\n        phone_area_province: String(merged.phone_area_province || customerData.phone_area_province || '').trim(),\n        should_ask_location: false,\n        is_trade_in_request: false,\n        storefront_order_id: Number.isFinite(Number(merged.storefront_order_id || 0)) ? Number(merged.storefront_order_id || 0) : null,\n        storefront_order_status: 'missing'\n      }\n    }];\n  }\n\nconst deliveryBits = [\n    storefrontOrder.address ? 'dirección: ' + String(storefrontOrder.address).trim() : '',\n    storefrontOrder.zip_code ? 'CP: ' + String(storefrontOrder.zip_code).trim() : '',\n    storefrontOrder.city ? 'ciudad: ' + String(storefrontOrder.city).trim() : '',\n    storefrontOrder.province ? 'provincia: ' + String(storefrontOrder.province).trim() : '',\n    storefrontOrder.delivery_instructions ? 'indicaciones: ' + String(storefrontOrder.delivery_instructions).trim() : '',\n  ].filter(Boolean).join(' | ');\n\n  const itemLines = storefrontOrderItems.length > 0\n    ? storefrontOrderItems.map((item) => {\n        const qty = Number(item.quantity || 1);\n        const name = String(item.product_name || item.product_key || 'producto').trim();\n        const unitValue = Number(item.unit_price || item.unit_price_ars || 0);\n        const totalValue = Number(item.line_total || item.line_total_ars || 0);\n        return '- ' + qty + ' x ' + name + ' | unit: ' + (compactMoney(unitValue) || 'sin precio') + ' | total: ' + (compactMoney(totalValue) || 'sin total');\n      }).join('\\n')\n    : '(sin items cargados)';\n\n  const chatInput = [\n    '[MENSAJE]',\n    userMessage || '(vacio)',\n    '',\n    '[PEDIDO WEB VALIDADO]',\n    'pedido_id: ' + storefrontOrderId,\n    'estado: ' + String(storefrontOrder.status || 'pending_whatsapp').trim(),\n    'cliente: ' + [storefrontOrder.first_name, storefrontOrder.last_name].filter(Boolean).join(' ').trim(),\n    'email: ' + String(storefrontOrder.email || '').trim(),\n    'teléfono: ' + String(storefrontOrder.phone || merged.phone || '').trim(),\n    'pago: ' + String(storefrontOrder.payment_method || 'transferencia').trim(),\n    'moneda: ' + String(storefrontOrder.currency || 'ARS').trim(),\n    'total: ' + (compactMoney(storefrontOrder.subtotal) || 'sin total'),\n    'aliases: ' + (storefrontOrderAliases.join(', ') || 'sin alias cargados'),\n    'entrega: ' + (deliveryBits || 'sin datos de entrega'),\n    '',\n    '[ITEMS]',\n    itemLines,\n    '',\n    '[INFO TIENDA]',\n    'direccion: ' + storeInfo.address,\n    'horarios: ' + storeInfo.hours,\n    'pagos: ' + storeInfo.paymentMethods,\n    'envios: ' + storeInfo.shippingPolicy,\n    '',\n    '[INSTRUCCION]',\n    'Encontramos un pedido web válido. Confirmá el total y los aliases EXACTOS del bloque anterior. Pedí que envíe el comprobante por este mismo chat. Aclará que un humano revisa el pago y coordina el despacho o la entrega. No inventes links, productos, total ni aliases.',\n  ].join('\\n');\n\n  return [{\n    json: {\n      route: 'storefront_order_handoff',\n      response_text: null,\n      chatInput,\n      chat_input_chars: chatInput.length,\n      relevant_product_count: storefrontOrderItems.length,\n      total_product_count: productRows.length,\n      catalog_group_count: 0,\n      recent_history_count: historyRows.length,\n      inventory_mode: 'order_handoff',\n      availability_totals: { availableNow: 0, onOrder: 0, outOfStock: 0 },\n      is_silent: false,\n      needs_human: false,\n      subscriber_id: merged.subscriber_id,\n      wa_id: merged.wa_id || merged.subscriber_id,\n      whatsapp_phone_number_id: merged.whatsapp_phone_number_id || '',\n      channel: 'manychat',\n      first_name: merged.first_name,\n      phone: merged.phone,\n      user_message: merged.user_message,\n      was_audio: merged.was_audio,\n      customer_id: customerData.id || storefrontOrder.customer_id || null,\n      customer_profile: customerData,\n      product_images: productImages,\n      product_key_name_map: productKeyNameMap,\n      product_stock_map: productStockMap,\n      product_condition_map: productConditionMap,\n      candidate_product_keys: orderProductKeys,\n      is_first_interaction: historyRows.length === 0,\n      phone_location_hint: String(merged.phone_location_hint || '').trim(),\n      phone_area_code: String(merged.phone_area_code || customerData.phone_area_code || '').trim(),\n      phone_area_name: String(merged.phone_area_name || customerData.phone_area_name || '').trim(),\n      phone_area_province: String(merged.phone_area_province || customerData.phone_area_province || '').trim(),\n      should_ask_location: false,\n      is_trade_in_request: false,\n      storefront_order_id: storefrontOrderId,\n      storefront_order_status: String(storefrontOrder.status || 'pending_whatsapp').trim()\n    }\n  }];\n}\n\nconst trackedProduct = String(customerData.interested_product || merged.interested_product || '').trim();\nconst referencesCurrentProduct = /(este|esta|ese|esa|este modelo|ese modelo|el que me dijiste|el del mensaje anterior|mandamelo|pasamelo|del primero|del segundo|ese azul|ese negro)/i.test(userMessage);\nconst userTokens = unique(userMessageNorm\n  .split(/\\s+/)\n  .map((token) => token.trim())\n  .filter((token) => token.length >= 3 || hasDigits(token)));\nconst hasSpecificCurrentRequest = userTokens.some((token) => hasDigits(token))\n  || /(iphone|samsung|redmi|poco|xiaomi|motorola|moto|galaxy|ultra|pro max|promax|plus|max|note)/.test(userMessageNorm);\nconst shouldUseContinuity = referencesCurrentProduct || !hasSpecificCurrentRequest;\nconst currentStage = String(customerData.funnel_stage || merged.funnel_stage || '').trim().toLowerCase();\nconst profileCity = String(customerData.city || merged.city || '').trim();\nconst phoneAreaCode = String(merged.phone_area_code || customerData.phone_area_code || '').trim();\nconst phoneAreaName = String(merged.phone_area_name || customerData.phone_area_name || '').trim();\nconst phoneAreaProvince = String(merged.phone_area_province || customerData.phone_area_province || '').trim();\nconst phoneLocationText = phoneAreaCode\n  ? 'indicativo ' + phoneAreaCode + ' => ' + phoneAreaName + (phoneAreaProvince ? ', ' + phoneAreaProvince : '')\n  : 'sin pista confiable';\nconst shouldAskLocation = !profileCity;\n\nconst recentHistoryRows = [...historyRows]\n  .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))\n  .slice(-4);\nconst recentContextText = normalize(recentHistoryRows.map((row) => String(row.message || '')).join(' '));\nconst tokenSource = unique([\n  normalize(userMessage),\n  shouldUseContinuity ? recentContextText : '',\n  shouldUseContinuity ? normalize(trackedProduct) : '',\n  shouldUseContinuity ? normalize(customerData.preferred_brand || '') : '',\n]).join(' ');\nconst tokens = unique(tokenSource\n  .split(/\\s+/)\n  .map((token) => token.trim())\n  .filter((token) => token.length >= 3 || hasDigits(token)))\n  .slice(0, 32);\nconst requestedBrandKeys = extractBrandKeys(userMessageNorm);\nconst requestedBrandKey = requestedBrandKeys.length === 1\n  ? requestedBrandKeys[0]\n  : (requestedBrandKeys.length === 0 && shouldUseContinuity ? normalizeBrandKey(customerData.preferred_brand || trackedProduct) : '');\nconst hasMultipleBrandRequest = requestedBrandKeys.length > 1;\nconst requestedStorages = extractStorageHints(userMessageNorm);\nconst requestedStorageTokenSet = new Set(requestedStorages.map((value) => String(value)));\nconst modelDigitTokens = userTokens.filter((token) => {\n  const normalizedToken = token.replace(/gb$/i, '').replace(/g$/i, '');\n  return hasDigits(token) && !requestedStorageTokenSet.has(normalizedToken);\n});\nconst requestedConditionKey = /seminuevo|semi nuevo|usado|used|bateria\\s*\\d{2}|bat\\s*\\d{2}/.test(userMessageNorm)\n  ? 'used'\n  : /nuevo|new|sellado/.test(userMessageNorm)\n    ? 'new'\n    : '';\nconst isCuotasInquiry = /(cuotas?|financi|naranja|macro|visa|master|amex|cabal|tarjeta)/.test(userMessageNorm);\nconst isPriceInquiry = /(precio|promo|oferta|cu[aá]nto|cuanto sale|valor)/.test(userMessageNorm);\nconst hasSpecificVariantToken = modelDigitTokens.length > 0\n  || /(ultra|promax|pro max|plus|max|note|fe|flip|fold|mini|air|se)\b/.test(userMessageNorm);\nconst isBroadBrandBrowse = Boolean(requestedBrandKey)\n  && !hasMultipleBrandRequest\n  && !referencesCurrentProduct\n  && !hasSpecificVariantToken;\nconst prefersUsedBrowse = requestedConditionKey === 'used'\n  || (shouldUseContinuity && trackedProduct && ['used', 'like_new', 'refurbished'].includes(String(productConditionMap[trackedProduct] || '').trim().toLowerCase()));\n\nconst rankedProducts = productRows\n  .map((p) => {\n    const keyNorm = normalize(p.product_key);\n    const nameNorm = normalize(p.product_name);\n    const categoryNorm = normalizeCategory(p.category);\n    const availability = getAvailability(p);\n    const brandKey = getBrandKeyFromProduct(p);\n    const conditionKey = normalizeConditionKey(p.condition);\n    const storageValue = Number(p.storage_gb || 0);\n    const hasQuotaPricing = Boolean(Number(p.bancarizada_cuota || 0) || Number(p.macro_cuota || 0));\n    const brandMatches = !requestedBrandKey || brandKey === requestedBrandKey;\n    const conditionMatches = !requestedConditionKey || (\n      requestedConditionKey === 'used'\n        ? ['used', 'like_new', 'refurbished'].includes(conditionKey)\n        : conditionKey === 'new'\n    );\n    const storageMatches = requestedStorages.length === 0 || (Number.isFinite(storageValue) && requestedStorages.includes(storageValue));\n    let score = 0;\n\n    if (trackedProduct && shouldUseContinuity && p.product_key === trackedProduct) score += 140;\n    if (requestedBrandKey) score += brandMatches ? 36 : -48;\n    if (requestedConditionKey) score += conditionMatches ? 22 : -32;\n    if (requestedStorages.length > 0) score += storageMatches ? 18 : -22;\n    if (isCuotasInquiry) score += hasQuotaPricing ? 10 : -6;\n    if (isPriceInquiry && p.promo_price_ars) score += 4;\n    for (const token of tokens) {\n      if (!token) continue;\n      if (keyNorm.includes(token)) score += hasDigits(token) ? 18 : 8;\n      if (nameNorm.includes(token)) score += hasDigits(token) ? 16 : 6;\n      if (categoryNorm.includes(token.toUpperCase())) score += 5;\n    }\n    score += availability.sortWeight * 3;\n\n    return {\n      ...p,\n      score,\n      normalized_category: categoryNorm,\n      availability,\n      brand_key: brandKey,\n      condition_key: conditionKey,\n      storage_value: storageValue,\n      brand_matches: brandMatches,\n      condition_matches: conditionMatches,\n      storage_matches: storageMatches,\n      has_quota_pricing: hasQuotaPricing,\n    };\n  })\n  .sort((a, b) => (\n    b.score - a.score\n  ) || (\n    b.availability.sortWeight - a.availability.sortWeight\n  ) || (\n    Number(a.price_ars || 0) - Number(b.price_ars || 0)\n  ));\n\nconst brandMatchedProducts = requestedBrandKey\n  ? rankedProducts.filter((item) => item.brand_matches)\n  : rankedProducts;\nconst brandFilterFailed = Boolean(requestedBrandKey) && brandMatchedProducts.length === 0;\n\nconst preStoragePool = (() => {\n  let pool = requestedBrandKey ? brandMatchedProducts : rankedProducts;\n  if (requestedBrandKey && pool.length === 0) return [];\n  if (hasMultipleBrandRequest) pool = rankedProducts;\n\n  if (requestedConditionKey) {\n    const conditionMatches = pool.filter((item) => item.condition_matches);\n    if (conditionMatches.length > 0) pool = conditionMatches;\n  }\n  return pool;\n})();\nconst storageMatchedProducts = requestedStorages.length > 0\n  ? preStoragePool.filter((item) => item.storage_matches)\n  : preStoragePool;\nconst storageFilterFailed = requestedStorages.length > 0 && preStoragePool.length > 0 && storageMatchedProducts.length === 0;\nconst retrievalPool = (() => {\n  let pool = requestedStorages.length > 0 ? storageMatchedProducts : preStoragePool;\n  if (requestedStorages.length > 0 && pool.length === 0) return [];\n  if (hasSpecificCurrentRequest) {\n    const strongMatches = pool.filter((item) => item.score >= 18);\n    if (strongMatches.length > 0) pool = strongMatches;\n  }\n  return pool;\n})();\n\nconst groupedCatalog = new Map();\nfor (const item of rankedProducts) {\n  const groupKey = item.normalized_category || 'GENERAL';\n  const bucket = groupedCatalog.get(groupKey) || { category: groupKey, total: 0, availableNow: 0, onOrder: 0, examples: [] };\n  bucket.total += 1;\n  if (item.availability.code === 'available_now') bucket.availableNow += 1;\n  if (item.availability.code === 'on_order') bucket.onOrder += 1;\n  const example = buildShortExample(item);\n  if (example && bucket.examples.length < 2 && !bucket.examples.includes(example)) bucket.examples.push(example);\n  groupedCatalog.set(groupKey, bucket);\n}\n\nconst catalogGroups = [...groupedCatalog.values()]\n  .sort((a, b) => (b.availableNow + b.onOrder) - (a.availableNow + a.onOrder) || b.total - a.total || a.category.localeCompare(b.category))\n  .slice(0, 6);\n\nconst totals = rankedProducts.reduce((acc, item) => {\n  if (item.availability.code === 'available_now') acc.availableNow += 1;\n  else if (item.availability.code === 'on_order') acc.onOrder += 1;\n  else acc.outOfStock += 1;\n  return acc;\n}, { availableNow: 0, onOrder: 0, outOfStock: 0 });\n\nconst catalogSummaryText = [\n  'total modelos: ' + productRows.length + ' | disponible ahora: ' + totals.availableNow + ' | a pedido: ' + totals.onOrder,\n  ...catalogGroups.map((group) => '- ' + group.category + ': ahora ' + group.availableNow + ' | a pedido ' + group.onOrder + ' | total ' + group.total + '. Ej: ' + (group.examples.join(', ') || 'sin ejemplo')),\n].join('\\n');\n\nconst buildBrandScopedCatalogSummary = (items, label) => {\n  const scopedGroups = new Map();\n  for (const item of items) {\n    const groupKey = item.normalized_category || 'GENERAL';\n    const bucket = scopedGroups.get(groupKey) || { category: groupKey, total: 0, availableNow: 0, onOrder: 0, examples: [] };\n    bucket.total += 1;\n    if (item.availability.code === 'available_now') bucket.availableNow += 1;\n    if (item.availability.code === 'on_order') bucket.onOrder += 1;\n    const example = buildShortExample(item);\n    if (example && bucket.examples.length < 2 && !bucket.examples.includes(example)) bucket.examples.push(example);\n    scopedGroups.set(groupKey, bucket);\n  }\n  const scopedTotals = items.reduce((acc, item) => {\n    if (item.availability.code === 'available_now') acc.availableNow += 1;\n    else if (item.availability.code === 'on_order') acc.onOrder += 1;\n    else acc.outOfStock += 1;\n    return acc;\n  }, { availableNow: 0, onOrder: 0, outOfStock: 0 });\n  const scopedGroupsList = [...scopedGroups.values()]\n    .sort((a, b) => (b.availableNow + b.onOrder) - (a.availableNow + a.onOrder) || b.total - a.total || a.category.localeCompare(b.category))\n    .slice(0, 6);\n  return [\n    label + ' | disponible ahora: ' + scopedTotals.availableNow + ' | a pedido: ' + scopedTotals.onOrder,\n    ...scopedGroupsList.map((group) => '- ' + group.category + ': ahora ' + group.availableNow + ' | a pedido ' + group.onOrder + ' | total ' + group.total + '. Ej: ' + (group.examples.join(', ') || 'sin ejemplo')),\n  ].join('\\n');\n};\n\nconst catalogSummaryScopedText = requestedBrandKey && !hasMultipleBrandRequest\n  ? (brandMatchedProducts.length > 0\n      ? buildBrandScopedCatalogSummary(brandMatchedProducts, 'marca filtrada: ' + requestedBrandKey + ' | modelos ' + brandMatchedProducts.length)\n      : 'marca filtrada: ' + requestedBrandKey + ' | no veo modelos cargados para esa marca ahora mismo')\n  : catalogSummaryText;\n\nconst rankBrowseCondition = (item) => {\n  const condition = String(item.condition_key || item.condition || 'new').trim().toLowerCase();\n  if (requestedConditionKey === 'new') return condition === 'new' ? 4 : 0;\n  if (prefersUsedBrowse) {\n    if (condition === 'used') return 5;\n    if (condition === 'like_new') return 4;\n    if (condition === 'refurbished') return 3;\n    return 0;\n  }\n  if (condition === 'new') return 5;\n  if (condition === 'like_new') return 3;\n  if (condition === 'used') return 1;\n  if (condition === 'refurbished') return 1;\n  return 0;\n};\nconst buildBrandBrowseCandidates = (items, limit) => {\n  const ordered = [...items].sort((a, b) => (\n    rankBrowseCondition(b) - rankBrowseCondition(a)\n  ) || (\n    Number(b.price_ars || 0) - Number(a.price_ars || 0)\n  ) || (\n    b.availability.sortWeight - a.availability.sortWeight\n  ) || (\n    String(a.product_name || '').localeCompare(String(b.product_name || ''))\n  ));\n\n  if (prefersUsedBrowse || requestedConditionKey === 'new') {\n    return uniqueProducts(ordered).slice(0, limit);\n  }\n\n  const preferred = ordered.filter((item) => rankBrowseCondition(item) >= 3);\n  const secondary = ordered.filter((item) => rankBrowseCondition(item) < 3);\n  const secondaryLimit = requestedBrandKey === 'iphone' ? 2 : 1;\n  return uniqueProducts([...preferred, ...secondary.slice(0, secondaryLimit)]).slice(0, limit);\n};\n\nconst asksBroadCatalog = /(catalogo|lista completa|ver todo|mostrar todo|todos los|que tienen|que hay|equipos|celus|celu|phones|telefonos|celulares)/.test(normalize(userMessage));\nconst focusedCandidates = retrievalPool.filter((item) => item.score > 0 || (shouldUseContinuity && item.product_key === trackedProduct));\nconst topScoreGap = focusedCandidates.length > 1 ? focusedCandidates[0].score - focusedCandidates[1].score : 999;\nconst primaryCandidate = focusedCandidates.length > 0 && (\n  focusedCandidates.length === 1\n  || (focusedCandidates[0].score >= 24 && topScoreGap >= 12)\n) ? focusedCandidates[0] : null;\nconst brandBrowseCandidateLimit = requestedBrandKey === 'iphone' ? 10 : 8;\nconst maxFocusedCandidates = asksBroadCatalog\n  ? 15\n  : isBroadBrandBrowse\n    ? brandBrowseCandidateLimit\n    : primaryCandidate\n      ? 4\n      : (hasSpecificCurrentRequest || isCuotasInquiry || isPriceInquiry ? 5 : 8);\nlet candidateProducts = [];\nlet inventoryMode = 'sample';\n\nif (focusedCandidates.length > 0) {\n  if (isBroadBrandBrowse) {\n    inventoryMode = 'brand_browse';\n    candidateProducts = buildBrandBrowseCandidates(focusedCandidates, maxFocusedCandidates);\n  } else {\n    inventoryMode = 'focused';\n    if (asksBroadCatalog) {\n      const grouped = new Map();\n      for (const item of focusedCandidates) {\n        const key = item.normalized_category || 'GENERAL';\n        const list = grouped.get(key) || [];\n        if (list.length < 3) list.push(item);\n        grouped.set(key, list);\n      }\n      candidateProducts = [...grouped.values()].flat().slice(0, maxFocusedCandidates);\n    } else {\n      candidateProducts = focusedCandidates.slice(0, maxFocusedCandidates);\n    }\n  }\n} else if (requestedBrandKey && !hasMultipleBrandRequest) {\n  if (requestedStorages.length > 0) {\n    inventoryMode = storageFilterFailed ? 'storage_missing' : 'storage_filtered_empty';\n  } else {\n    inventoryMode = brandFilterFailed ? 'brand_missing' : 'brand_filtered_empty';\n  }\n  candidateProducts = [];\n} else {\n  const fallback = [];\n  for (const group of catalogGroups) {\n    const matches = rankedProducts.filter((item) => item.normalized_category === group.category).slice(0, 2);\n    fallback.push(...matches);\n  }\n  candidateProducts = uniqueProducts(fallback).slice(0, maxFocusedCandidates);\n}\n\nif (primaryCandidate && !isBroadBrandBrowse) {\n  candidateProducts = uniqueProducts([primaryCandidate, ...candidateProducts]).slice(0, maxFocusedCandidates);\n}\n\nconst historyText = recentHistoryRows.length > 0\n  ? recentHistoryRows.map((row) => {\n      const role = row.role === 'user' ? 'U' : row.role === 'bot' ? 'B' : 'A';\n      return role + ': ' + String(row.message || '').trim();\n    }).join('\\n')\n  : '(primera interaccion)';\n\nconst profileBits = [];\nif (customerData.id) profileBits.push('id:' + customerData.id);\nif (profileCity) profileBits.push('ciudad:' + profileCity);\nelse if (phoneAreaCode) profileBits.push('pista:' + phoneLocationText);\nif (customerData.preferred_brand) profileBits.push('marca:' + customerData.preferred_brand);\nif (trackedProduct) profileBits.push('interes:' + trackedProduct);\nif (currentStage) profileBits.push('etapa:' + currentStage);\nif (customerData.total_interactions) profileBits.push('interacciones:' + customerData.total_interactions);\n\nconst queryModeLabel = asksBroadCatalog\n  ? 'catalogo'\n  : isBroadBrandBrowse\n    ? 'brand_browse'\n    : isCuotasInquiry\n      ? 'cuotas'\n      : isPriceInquiry\n        ? 'precio'\n        : hasSpecificCurrentRequest\n          ? 'modelo_especifico'\n          : 'general';\nconst emojiStyleHint = currentStage === 'closing'\n  ? 'emoji:cierre (podes usar 🔥 o 🚀 natural, max 2)'\n  : currentStage === 'interested'\n    ? 'emoji:interes (podes usar 🔥, 👌 o 🙌 natural, max 2)'\n    : currentStage === 'human_handoff'\n      ? 'emoji:humano (mantener sobrio, como maximo 🙌)'\n      : 'emoji:browsing (sobrio, 0-1 emoji)';\nconst querySignals = [\n  'modo:' + queryModeLabel,\n  requestedBrandKey ? 'marca:' + requestedBrandKey : '',\n  requestedStorages.length > 0 ? 'storage:' + requestedStorages.join('/') + 'GB' : '',\n  requestedConditionKey ? 'condicion:' + requestedConditionKey : '',\n  emojiStyleHint,\n].filter(Boolean).join(' | ');\nconst primaryCandidateText = primaryCandidate ? buildProductLine(primaryCandidate) : '(sin candidato principal claro)';\nconst candidateText = candidateProducts.length > 0\n  ? candidateProducts.map((p) => buildProductLine(p)).join('\\n')\n  : '(sin candidatos cargados)';\n\nconst agentHints = [];\nif (inventoryMode === 'sample') agentHints.push('si el cliente pide un modelo exacto y no esta en candidatos, no inventar: ofrecer revisar el modelo o mostrar opciones cercanas');\nif (primaryCandidate) agentHints.push('si hay [CANDIDATO PRINCIPAL], usar ese modelo para precio, cuotas, fotos y link salvo que el cliente pida comparar');\nif (candidateProducts.some((p) => getAvailability(p).code === 'on_order')) agentHints.push('si un producto figura a pedido, ofrecerlo como disponible por encargo con plazo, no como sin stock');\nif (shouldAskLocation) agentHints.push('pedir ciudad/localidad solo si impacta cuotas o envio');\nif (trackedProduct && shouldUseContinuity) agentHints.push('no perder continuidad con ' + trackedProduct);\nif (hasSpecificCurrentRequest && !referencesCurrentProduct) agentHints.push('priorizar el modelo nombrado en este mensaje sobre productos anteriores');\nif (requestedBrandKey) agentHints.push('no mezclar marcas: el cliente esta preguntando ' + requestedBrandKey + ' y cualquier otra marca seria incorrecta salvo comparacion explicita');\nif (brandFilterFailed) agentHints.push('si pide la marca ' + requestedBrandKey + ' y no aparece en candidatos, deci que no la ves cargada ahora mismo; no la reemplaces por otra marca');\nif (storageFilterFailed && requestedStorages.length > 0) agentHints.push('si pide ' + requestedStorages.join('/') + 'GB y no aparece esa capacidad, deci que no la ves cargada ahora mismo; no la reemplaces por otra capacidad');\nif (isBroadBrandBrowse && requestedBrandKey === 'iphone' && !prefersUsedBrowse) agentHints.push('si piden iPhone en general, listar varios modelos y priorizar nuevos / mas caros primero; los usados solo dejalos para despues o si el cliente los pide');\nif (isBroadBrandBrowse && prefersUsedBrowse) agentHints.push('si el contexto apunta a usados/seminuevos, priorizar iPhone usados o como nuevos con bateria/estado visibles antes que nuevos');\nif (requestedStorages.length > 0) agentHints.push('no mezclar capacidades: priorizar ' + requestedStorages.join('/') + 'GB');\nif (requestedConditionKey === 'used') agentHints.push('el cliente esta pidiendo usado/seminuevo; no priorizar nuevos salvo aclaracion');\nif (isCuotasInquiry) agentHints.push('si pregunta cuotas, usar SOLO 6x bancarizada y/o 6x macro del producto correcto; nunca usar el precio contado como valor de cuota');\nif (isCuotasInquiry && shouldAskLocation) agentHints.push('si consulta cuotas y no sabemos ciudad, aclarar que las cuotas son solo presenciales en Salta Capital antes de comprometer montos');\nagentHints.push('seguir la pista de emoji del bloque [CONSULTA] y no exagerar');\nif (isTradeInRequest) agentHints.push('si el cliente pide canje, permuta o entregar su usado en parte de pago, responder que TechnoStore NO trabaja con canje ni toma usados en parte de pago y ofrecer seguir solo con compra directa');\n\nconst chatInput = [\n  '[MENSAJE]',\n  userMessage || '(vacio)',\n  '',\n  '[CLIENTE]',\n  profileBits.length ? profileBits.join(' | ') : '(nuevo)',\n  '',\n  '[CONSULTA]',\n  querySignals || 'modo:general',\n  '',\n  '[UBICACION]',\n  (profileCity ? 'ciudad confirmada: ' + profileCity : 'sin ciudad confirmada') + ' | ' + phoneLocationText,\n  '',\n  '[HISTORIAL RECIENTE]',\n  historyText,\n  '',\n  '[INFO TIENDA]',\n  'direccion: ' + storeInfo.address,\n  'horarios: ' + storeInfo.hours,\n  'pagos: ' + storeInfo.paymentMethods,\n  'cuotas: ' + storeInfo.creditPolicy,\n  'envios: ' + storeInfo.shippingPolicy,\n  'garantias: nuevos=' + storeInfo.warrantyNew + ' | usados=' + storeInfo.warrantyUsed,\n  'tarjetas: permitidas=' + storeInfo.supportedCards + ' | bloqueadas=' + storeInfo.blockedCards,\n  '',\n  '[RESUMEN CATALOGO]',\n  catalogSummaryScopedText,\n  '',\n  '[CANDIDATO PRINCIPAL]',\n  primaryCandidateText,\n  '',\n  '[PRODUCTOS CANDIDATOS ' + candidateProducts.length + '/' + productRows.length + ' | ' + inventoryMode + ']',\n  candidateText,\n  '',\n  '[HINTS]',\n  agentHints.length ? agentHints.join(' | ') : '(sin hints)',\n].join('\\n');\n\nreturn [{\n  json: {\n    route: 'sales',\n    response_text: null,\n    chatInput,\n    chat_input_chars: chatInput.length,\n    relevant_product_count: candidateProducts.length,\n    total_product_count: productRows.length,\n    catalog_group_count: catalogGroups.length,\n    recent_history_count: recentHistoryRows.length,\n    inventory_mode: inventoryMode,\n    availability_totals: totals,\n    is_silent: false,\n    needs_human: false,\n    subscriber_id: merged.subscriber_id,\n    wa_id: merged.wa_id || merged.subscriber_id,\n    whatsapp_phone_number_id: merged.whatsapp_phone_number_id || '',\n    channel: 'manychat',\n    first_name: merged.first_name,\n    phone: merged.phone,\n    user_message: merged.user_message,\n    was_audio: merged.was_audio,\n    customer_id: customerData.id || null,\n    customer_profile: customerData,\n    product_images: productImages,\n    product_key_name_map: productKeyNameMap,\n    product_stock_map: productStockMap,\n    product_condition_map: productConditionMap,\n    product_pricing_map: productPricingMap,\n    candidate_product_keys: candidateProducts.map((p) => String(p.product_key || '').trim()).filter(Boolean),\n    primary_product_key: primaryCandidate ? String(primaryCandidate.product_key || '').trim() : null,\n    requested_brand_key: requestedBrandKey || null,\n    has_multiple_brand_request: hasMultipleBrandRequest,\n    is_cuotas_inquiry: isCuotasInquiry,\n    is_first_interaction: historyRows.length === 0,\n    phone_location_hint: String(merged.phone_location_hint || '').trim(),\n    phone_area_code: phoneAreaCode,\n    phone_area_name: phoneAreaName,\n    phone_area_province: phoneAreaProvince,\n    should_ask_location: shouldAskLocation,\n    is_trade_in_request: isTradeInRequest\n  }\n}];"
+      },
+      "id": "orchestrator-v15",
+      "name": "Orchestrator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "Sos TechnoBot, el vendedor de WhatsApp de TechnoStore Salta. Hablas en espanol argentino natural (vos, tenes, dale, joya). Sos cercano, claro y resolutivo. Max 3-4 oraciones por mensaje. 0-2 emojis maximo. Salvo catalogo completo o fotos pedidas, responde en un solo mensaje de WhatsApp.\n\n=== FORMA DE VENDER ===\n- Responde como vendedor, no como base de datos.\n- Si el cliente pide precios, modelos o stock, mostra productos sin dar vueltas innecesarias.\n- Si el cliente ya eligio un modelo y despues responde con pago, ciudad, envio o sucursal, segui la charla con continuidad.\n- No hagas repetir modelo, bateria, capacidad o condicion si ya quedaron claros.\n\n=== VARIANTES DEL MISMO MODELO ===\n- Trata cada fila del inventario como una variante real.\n- Si ves el mismo modelo en nuevo y seminuevo/usado, ofrece ambas variantes.\n- Usa estado, bateria, color y capacidad para diferenciar natural.\n- Color y bateria solo son garantizados si vienen cargados en la fila del catalogo; si estan vacios, no prometas un color exacto ni un porcentaje de bateria.\n- Para fotos o metadata, elegi el product_key EXACTO de la variante correcta.\n\n=== PRODUCTOS USADOS / SEMINUEVOS ===\n- Deci \"seminuevo\", \"como nuevo\" o \"usado en excelente estado\" segun corresponda.\n- Los seminuevos/usados vienen con cable. iPhone usado/seminuevo no incluye cargador, solo cable.\n- Si hay bateria cargada, mencionarla natural.\n- Los nuevos son sellados con garantia oficial.\n\n=== FOTOS ===\n- Si el cliente pide foto, imagen o ver un modelo, en metadata.products pone el product_key EXACTO de la variante correcta.\n- Si el cliente nombra un modelo nuevo en este mensaje, prioriza ESE modelo por encima del historial para foto o link.\n- Si el cliente pide fotos de \"este\" o \"ese\", apalancate en la continuidad del historial y del producto en seguimiento.\n- No prometas fotos si no tenes claro el modelo; pedi una aclaracion corta.\n\n=== INFO DE TECHNOSTORE = SOURCE OF TRUTH ===\n- [INFO TIENDA] viene desde Supabase v_store_context y es la verdad actual.\n- Nunca contradigas ese bloque con memoria o conocimiento general.\n- Si cambian direccion, horarios, pagos, cuotas o envios, segui [INFO TIENDA].\n\n=== PEDIDO WEB / CHECKOUT ===\n- Si en el contexto aparece [PEDIDO WEB VALIDADO], ese bloque pasa a ser la verdad actual.\n- Confirmá que encontramos el pedido web.\n- Repetí el total exacto y los aliases exactos del bloque.\n- Pedí que envíe el comprobante por este mismo chat.\n- Aclará que un humano revisa el pago y coordina la entrega o el despacho.\n- No vuelvas a vender ni a ofrecer otros productos salvo que el cliente cambie de tema.\n- Nunca inventes ni modifiques pedido_id, total, aliases, cliente o items.\n- Si el bloque dice que no se encontró un pedido válido, explicalo breve y pedí que vuelvan a abrir el enlace desde la tienda online.\n\n=== COMPRAS ONLINE, ENVIO Y TRACKING ===\n- Para compras online o envios, explica que coordinamos pago, comprobante y seguimiento por privado.\n- Nos contactamos por email y WhatsApp para confirmar datos y despachar la compra lo antes posible.\n- Si el cliente pide un link de compra o pago, responde natural y deja que el sistema adjunte, como maximo, un solo link canonico del producto correcto.\n- Nunca escribas URLs, dominios ni rutas en el texto.\n- Si ese link ya se compartio en el historial reciente, no lo repitas.\n- Si el link real no esta cargado o el modelo no esta claro, deci que se lo confirmamos por privado.\n\n=== UBICACION ===\n- Si el cliente pide direccion, ubicacion, sucursal, mapa, pin o como llegar, responde breve y en metadata pone share_location:true.\n- El sistema puede mandar el pin real de WhatsApp. No prometas Google Maps ni links raros; solo habilita share_location:true cuando corresponda.\n\n=== CUOTAS Y TARJETAS ===\n- Cuotas solo presencial en Salta Capital, 6 cuotas fijas.\n- Aceptamos Naranja, Macro y demas tarjetas bancarizadas.\n- La unica financiacion bloqueada es SuCredito.\n- Macro tiene precios especiales.\n- Usa calcular_cuotas solo para reglas de elegibilidad y tarjetas; los montos exactos salen de [PRODUCTOS CANDIDATOS] o [CANDIDATO PRINCIPAL].\n- Si el cliente pregunta cuotas, NUNCA uses el precio contado como si fuera valor de cuota.\n- Para cuotas usa solo los campos 6x bancarizada y/o 6x macro del modelo correcto.\n- Si menciona Macro, prioriza 6x macro. Para Naranja/Visa/Master/Amex/Cabal, usa 6x bancarizada.\n- Si no esta confirmado que sea Salta Capital, primero aclarar que las cuotas son solo presenciales en Salta Capital.\n- Cuando el cliente mencione una forma de pago, guardala en payment_method con el nombre mas especifico posible.\n\n=== CANJE / PARTE DE PAGO ===\n- TechnoStore NO trabaja con canje, permuta ni toma equipos usados en parte de pago.\n- Si el cliente lo pide, respondelo claro y corto: no aceptamos canje ni usados como parte de pago.\n- No ofrezcas evaluacion, cotizacion, revision, tasacion ni derivacion por canje.\n- Si quiere seguir, redirigilo a compra directa del equipo.\n\n=== INVENTARIO = SOURCE OF TRUTH ===\nRecibis tres bloques reales desde Supabase:\n- [RESUMEN CATALOGO]: resumen compacto del catalogo actual.\n- [CANDIDATO PRINCIPAL]: mejor candidato cuando la consulta es bastante especifica.\n- [PRODUCTOS CANDIDATOS]: filas exactas del inventario mas utiles para esta charla.\n\nReglas de disponibilidad:\n- \"disponible ahora\" = hay stock real inmediato.\n- \"a pedido Xd\" = SI se puede vender, pero por encargo con ese plazo. No lo llames sin stock.\n- \"sin stock\" = no disponible ahora ni a pedido segun lo cargado.\n\nReglas de uso:\n- Nunca digas que no hay celulares o no hay iPhone si [RESUMEN CATALOGO] muestra catalogo cargado.\n- Si la consulta es general, usa [RESUMEN CATALOGO] para orientar y apalancate en [PRODUCTOS CANDIDATOS] como ejemplos reales.\n- Si [CONSULTA] trae modo:brand_browse con una sola marca, podés listar mas modelos de esa marca que en una respuesta comun.\n- Para iPhone en modo:brand_browse, priorizá nuevos y mas caros primero. Mostrá usados/seminuevos solo si el cliente los pidió o el contexto claramente apunta a usados.\n- Para precio exacto o variante exacta, usa solo [CANDIDATO PRINCIPAL] y [PRODUCTOS CANDIDATOS].\n- Si [CONSULTA] trae una sola marca (por ejemplo marca:samsung), esa marca manda: no nombres otra salvo comparacion explicita pedida por el cliente.\n- Si existe [CANDIDATO PRINCIPAL] y el cliente pregunta precio, cuotas, foto o link, prioriza ese modelo y no mezcles precios o cuotas de otros.\n- Si el modelo pedido aparece como \"a pedido\", ofreceselo como disponible por encargo y menciona el plazo.\n- Si el modelo pedido no aparece en [PRODUCTOS CANDIDATOS], no inventes ni afirmes ausencia total: deci que no lo ves entre los modelos destacados y ofrece lo mas parecido o pedi una aclaracion breve.\n- Los precios deben ser exactamente los del inventario.\n- Si hay varios candidatos parecidos y la consulta no es lo bastante clara, pedí una aclaracion corta antes de dar un precio exacto.\n- Si el cliente pide un link de compra o pago, responde natural y deja que el sistema adjunte, como maximo, un solo link canonico del producto correcto. Si ese link ya se compartio, no lo repitas.\n\nPROHIBIDO:\n- Inventar productos, precios, specs o variantes.\n- Exponer product_key o IDs internos.\n- Usar conocimiento general sobre celulares como si fuera stock real.\n- Nunca inventar URLs, dominios ni rutas de compra.\n- Si el link real no esta cargado, explica que se lo confirmamos por privado; nunca inventes uno.\n- Aceptar, sugerir o dejar abierta la posibilidad de canje, permuta o usados en parte de pago.\n\n=== STICKERS ===\n- El sistema puede adjuntar un sticker desde Supabase segun intent, etapa y tags.\n- No describas el sticker ni prometas uno; solo responde natural y deja que el sistema lo elija.\n\n=== RESERVAS ===\n- Si el cliente dice \"quiero reservar\", \"lo reservo\", \"haceme una sena\", \"lo encargo\" o similar, NO uses tabla de reservas.\n- Marca intent: reservation en metadata, conserva el product_key correcto y explica que un asesor sigue el cierre.\n\n=== EMOJIS ===\n- Usa emojis solo si suman a la venta; 0-2 maximo por mensaje.\n- Etapa new/browsing: mantenerlo sobrio, con ninguno o uno suave como 👌 o 🙌.\n- Etapa interested/closing: podes usar alguno mas vendedor como 🔥, 🚀, 👌 o 🙌 si queda natural.\n- No repitas siempre el mismo emoji y no pongas uno en cada linea.\n- Evitá usar 😉 como muletilla o cierre por defecto. En general no lo uses salvo que el tono del cliente ya venga muy juguetón.\n- Si usás emoji, preferí variar entre 👌, 🙌, 🔥 y 🚀.\n- Si el tono del cliente es serio o seco, bajá los emojis.\n\n=== FORMATO ===\n- Cuando listes productos, cada producto va en su propia linea.\n- Precios: $712.480. Si hay promo, mostra ambos natural.\n- USD solo si preguntan.\n- No repitas informacion.\n- Si el cliente pide la lista completa, organiza por marca y maximo 4-5 por mensaje.\n- Si el cliente pide una sola marca en general, podés listar 6-10 modelos de esa marca en una sola respuesta si quedan claros y ordenados.\n\nCIERRE: \"lo quiero\" -> confirma producto + forma de pago + entrega -> resumen + [HUMAN].\n[HUMAN]: persona/asesor, post-venta, reclamo, o algo que no podes resolver. Fuera de horario: \"Te escriben en el proximo turno 🙌\".\n\n---METADATA--- (SIEMPRE al final, SIEMPRE con los delimitadores exactos ---METADATA--- y ---END_METADATA---)\nintent: greeting|price_inquiry|stock_check|comparison|purchase_intent|reservation|cuotas_inquiry|shipping_inquiry|complaint|off_topic|followup|ambiguous\nproducts: key1,key2 o none\nfunnel_update: new|browsing|interested|closing|human_handoff|no_change\ncity_detected: ciudad o none\nis_salta: true|false|unknown\nbrand_interest: IPHONE|SAMSUNG|REDMI/POCO|none\nbudget_hint: budget|mid|premium|none\npayment_method: transferencia|mercado_pago|efectivo_ars|efectivo_usd|crypto|bitcoin|usdt|naranja|macro|visa|mastercard|amex|cabal|subcredito|cuotas|tarjeta|none\ntopics: precio|stock|imagenes|envio|cuotas|pago|garantia|ubicacion|reserva|comparacion|trade_in|none\nshare_location: true|false\n---END_METADATA---\n[HUMAN] antes de metadata. [SILENT] va solo.",
+          "maxIterations": 3
+        },
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}"
+      },
+      "id": "ai-agent-sales-v15",
+      "name": "AI Agent (Sales)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        3840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "id": "6c8507f8-4ac7-4d80-9846-c481087d48bd",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        3700,
+        520
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "kaLPLSecsHfc5vlx",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "calcular_cuotas",
+        "description": "Aclara reglas de cuotas y tarjetas. NO calcula montos exactos. Los montos exactos siempre salen del producto correcto en [PRODUCTOS CANDIDATOS] o [CANDIDATO PRINCIPAL]. Necesita saber si el cliente esta en Salta Capital. Formato: product_key opcional, salta: true/false.",
+        "jsCode": "const query = $input.first().json.query || '';\nconst q = String(query || '').toLowerCase();\n\nlet esSalta = null;\nconst saltaMatch = q.match(/salta[:\\s]*(true|false|si|sí|no|unknown)/i);\nif (saltaMatch) {\n  const val = saltaMatch[1].toLowerCase();\n  esSalta = (val === 'true' || val === 'si' || val === 'sí');\n}\n\nif (esSalta === false) {\n  return 'Las cuotas son solo presenciales en Salta Capital. Para envíos a otras ciudades las opciones son transferencia, Mercado Pago, crypto o efectivo presencial.';\n}\n\nif (esSalta === null) {\n  return 'Necesito confirmar si estás en Salta Capital. Las cuotas son solo presenciales en Salta Capital y los montos exactos salen del catálogo del modelo correcto.';\n}\n\nconst mentionsSubcredito = /subcredit|sucredit/i.test(q);\nif (mentionsSubcredito) {\n  return 'No trabajamos con SuCredito. Sí trabajamos con Naranja, Macro y las demás tarjetas bancarizadas en 6 cuotas fijas presenciales en Salta Capital.';\n}\n\nreturn 'Reglas de cuotas: 6 cuotas fijas solo presencial en Salta Capital. Para montos exactos usá el modelo correcto de [PRODUCTOS CANDIDATOS] o [CANDIDATO PRINCIPAL]. Si menciona Macro, usá 6x macro. Para Naranja/Visa/Master/Amex/Cabal, usá 6x bancarizada.';",
+        "language": "javaScript"
+      },
+      "id": "868ad70d-1067-4666-906e-6a6ffa332f36",
+      "name": "Tool: calcular_cuotas",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        3900,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process AI Response v15 - Parse metadata, clean text, build ManyChat payload\nconst aiOutput = $input.first().json;\nconst mergedData = $('Merge & Aggregate Messages').first().json;\nconst contextData = $('Orchestrator').first().json;\nconst profile = contextData.customer_profile || {};\nconst profileCity = String(profile.city || '').trim();\nconst lowerProfileCity = profileCity.toLowerCase();\nconst phoneLocationHint = String(contextData.phone_location_hint || 'unknown').trim().toLowerCase();\nconst phoneAreaCode = String(contextData.phone_area_code || profile.phone_area_code || '').trim();\nconst phoneAreaName = String(contextData.phone_area_name || profile.phone_area_name || '').trim();\nconst phoneAreaProvince = String(contextData.phone_area_province || profile.phone_area_province || '').trim();\nconst fallbackIsSalta = ['salta', 'salta capital', 'salta cap'].includes(lowerProfileCity) || profile.is_salta_capital === true\n  ? 'true'\n  : profileCity\n    ? 'false'\n    : 'unknown';\nconst fallbackCityDetected = profileCity || 'none';\nconst fallbackMetadata = {\n  intent: 'followup',\n  funnel_update: 'no_change',\n  products: 'none',\n  city_detected: fallbackCityDetected,\n  is_salta: fallbackIsSalta,\n  brand_interest: 'none',\n  budget_hint: 'none',\n  payment_method: 'none',\n  topics: 'none',\n  share_location: 'false'\n};\n\nconst normalize = (value) => String(value || '')\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[^a-z0-9\\s_-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst normalizeTag = (value) => String(value || '')\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[^a-z0-9_-]/g, '_')\n  .replace(/_+/g, '_')\n  .replace(/^_+|_+$/g, '')\n  .trim();\n\nconst unique = (arr) => [...new Set(arr.filter(Boolean))];\nconst extractBrandKeys = (value) => {\n  const text = normalize(value);\n  const brands = [];\n  if (/iphone|apple|ios/.test(text)) brands.push('iphone');\n  if (/samsung|galaxy/.test(text)) brands.push('samsung');\n  if (/redmi|poco|xiaomi/.test(text)) brands.push('redmi_poco');\n  if (/motorola|moto/.test(text)) brands.push('motorola');\n  return unique(brands);\n};\nconst detectSingleBrand = (value) => {\n  const brands = extractBrandKeys(value);\n  return brands.length === 1 ? brands[0] : '';\n};\nconst humanizeBrandKey = (brandKey) => ({\n  iphone: 'iPhone',\n  samsung: 'Samsung',\n  redmi_poco: 'Redmi/POCO',\n  motorola: 'Motorola',\n}[brandKey] || brandKey);\nconst formatMoney = (value) => {\n  const num = Number(value);\n  return Number.isFinite(num) && num > 0 ? '$' + num.toLocaleString('es-AR') : null;\n};\nconst storefrontBaseUrl = String($env.STOREFRONT_BASE_URL || 'https://puntotechno.com').trim().replace(/\\/$/, '');\nconst buildStorefrontProductUrl = (productKey) => {\n  const normalizedKey = String(productKey || '').trim();\n  return normalizedKey ? storefrontBaseUrl + '/productos/' + encodeURIComponent(normalizedKey) : '';\n};\n\nconst recentConversationRows = (() => {\n  try {\n    const raw = $('Aggregate Conversation History').first().json?.history_rows;\n    return Array.isArray(raw) ? raw : [];\n  } catch (error) {\n    return [];\n  }\n})();\n\nconst escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst storefrontUrlPattern = new RegExp(escapeRegExp(storefrontBaseUrl) + '/productos/[^\\s<>()]+', 'gi');\nconst extractStorefrontUrls = (text) => unique((String(text || '').match(storefrontUrlPattern) || []).map((url) => String(url || '').trim()));\nconst stripUnexpectedUrls = (text, allowedUrls = []) => {\n  let out = String(text || '');\n  const protectedUrls = unique(allowedUrls.map((url) => String(url || '').trim()).filter((url) => /^https?:\\/\\//i.test(url)))\n    .sort((left, right) => right.length - left.length);\n\n  protectedUrls.forEach((url, index) => {\n    out = out.replace(new RegExp(escapeRegExp(url), 'g'), '__ALLOWED_URL_' + index + '__');\n  });\n\n  out = out\n    .replace(/\\bhttps?:\\/\\/[^\\s<>()]+/gi, '')\n    .replace(/ {2,}/g, ' ')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n\n  protectedUrls.forEach((url, index) => {\n    out = out.replace(new RegExp('__ALLOWED_URL_' + index + '__', 'g'), url);\n  });\n\n  return out;\n};\n\nconst stripLinkPlaceholders = (text) => String(text || '')\n  .replace(/\\[[^\\]]*\\]\\(\\s*https?:\\/\\/[^\\s)]+\\s*\\)/gi, '')\n  .replace(/\\[[^\\]]*\\]\\(\\s*\\)/g, '')\n  .replace(/\\(\\s*https?:\\/\\/[^\\s)]+\\s*\\)/gi, '')\n  .replace(/\\(\\s*\\)/g, '')\n  .replace(/\\n?🔗[^\\n]*/g, '')\n  .replace(/\\n?(?:te|les)?\\s*(?:dejo|paso)\\s+(?:el\\s+)?(?:link|enlace|url)[^\\n]*/gi, '')\n  .replace(/\\n?(?:aca|acá|ahi|ahí)\\s+(?:ten[eé]s|va)\\s+(?:el\\s+)?(?:link|enlace|url)[^\\n]*/gi, '')\n  .replace(/\\n?(?:link\\s+directo|link\\s+de\\s+compra|compra\\s+directa)[^\\n]*/gi, '')\n  .replace(/\\b(?:aca|acá|ahi|ahí)\\s+ten[eé]s\\s+el\\b/gi, '')\n  .replace(/\\bte\\s+(?:dejo|paso)\\s+el\\b/gi, '')\n  .replace(/ {2,}/g, ' ')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\nconst parseList = (rawValue) => {\n  const raw = String(rawValue ?? '').trim();\n  if (!raw || raw.toLowerCase() === 'none') return [];\n  return unique(\n    raw\n      .replace(/^\\[/, '')\n      .replace(/\\]$/, '')\n      .replace(/[\"']/g, '')\n      .split(/[,;|\\n]/)\n      .map((piece) => normalizeTag(piece))\n      .filter(Boolean)\n      .filter((piece) => piece !== 'none')\n  );\n};\n\nconst scoreToken = (token) => (/[a-z]*\\d+[a-z]*/.test(token) ? 4 : 1);\nconst productImagesMap = contextData.product_images || {};\nconst productKeyNameMap = contextData.product_key_name_map || {};\nconst productStockMap = contextData.product_stock_map || {};\nconst productPricingMap = contextData.product_pricing_map || {};\nconst primaryProductKey = String(contextData.primary_product_key || '').trim();\nconst candidateProductKeys = Array.isArray(contextData.candidate_product_keys) ? contextData.candidate_product_keys : [];\nconst allProductKeys = [...new Set([\n  ...Object.keys(productKeyNameMap),\n  ...Object.keys(productStockMap),\n  ...Object.keys(productImagesMap),\n])];\n\nconst catalog = allProductKeys.map((key) => {\n  const pricing = productPricingMap[key] || {};\n  const priceArs = Number(pricing.price_ars ?? NaN);\n  const promoPriceArs = Number(pricing.promo_price_ars ?? NaN);\n  const bancarizadaCuota = Number(pricing.bancarizada_cuota ?? NaN);\n  const macroCuota = Number(pricing.macro_cuota ?? NaN);\n  return {\n    key,\n    keyNorm: normalize(key),\n    name: String(productKeyNameMap[key] || key).trim(),\n    nameNorm: normalize(productKeyNameMap[key] || ''),\n    inStock: productStockMap[key],\n    imageUrl: String(productImagesMap[key] || '').trim(),\n    storefrontUrl: buildStorefrontProductUrl(key),\n    priceArs: Number.isFinite(priceArs) ? priceArs : null,\n    promoPriceArs: Number.isFinite(promoPriceArs) ? promoPriceArs : null,\n    bancarizadaCuota: Number.isFinite(bancarizadaCuota) ? bancarizadaCuota : null,\n    macroCuota: Number.isFinite(macroCuota) ? macroCuota : null,\n    category: String(pricing.category || '').trim(),\n    condition: String(pricing.condition || '').trim(),\n    deliveryType: String(pricing.delivery_type || '').trim(),\n    deliveryDays: Number(pricing.delivery_days || 0) || null,\n    color: pricing.color ?? null,\n    batteryHealth: pricing.battery_health ?? null,\n    storageGb: pricing.storage_gb ?? null,\n    ramGb: pricing.ram_gb ?? null,\n    brandKey: detectSingleBrand([pricing.category, productKeyNameMap[key], key].join(' ')),\n  };\n});\n\nconst candidateCatalog = candidateProductKeys\n  .map((key) => catalog.find((item) => item.key === key))\n  .filter(Boolean);\nconst requestedBrandKey = String(contextData.requested_brand_key || '').trim() || detectSingleBrand(mergedData.user_message || '');\nconst strictSingleBrandRequest = Boolean(requestedBrandKey) && contextData.has_multiple_brand_request !== true;\n\nconst keyAliasPairs = Object.entries(productKeyNameMap).flatMap(([key, name]) => {\n  const human = String(name || key).trim();\n  const variants = [key, key.replace(/_/g, '-'), key.replace(/-/g, '_')];\n  return [...new Set(variants)].map((variant) => ({ alias: variant, human }));\n});\n\nconst sanitizeInternalIds = (text) => {\n  const urlMatches = [];\n  let out = String(text || '').replace(/\\bhttps?:\\/\\/[^\\s<>()]+/gi, (match) => {\n    const token = '__URL_' + urlMatches.length + '__';\n    urlMatches.push(match);\n    return token;\n  });\n  out = out\n    .replace(/\\bError:\\s*/gi, '')\n    .replace(/product[_\\s-]?keys?/gi, 'modelos')\n    .replace(/c[o\\u00f3]digos?\\s+internos?/gi, 'modelos')\n    .replace(/`([^`]+)`/g, '$1');\n  for (const pair of keyAliasPairs) {\n    const re = new RegExp('\\\\b' + escapeRegExp(pair.alias) + '\\\\b', 'gi');\n    out = out.replace(re, pair.human);\n  }\n  out = out.replace(/\\b[a-z0-9]+(?:[-_][a-z0-9]+){3,}\\b/gi, (match) => /^__URL_\\d+__$/.test(match) ? match : 'ese modelo');\n  out = out.replace(/ {2,}/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim();\n  urlMatches.forEach((url, index) => {\n    out = out.replace(new RegExp('__URL_' + index + '__', 'g'), url);\n  });\n  return out;\n};\n\nconst resolveProductKeyInCatalog = (candidate, sourceCatalog) => {\n  const exact = sourceCatalog.find((p) => p.keyNorm === candidate);\n  if (exact) return exact.key;\n  const starts = sourceCatalog.filter((p) => p.keyNorm.startsWith(candidate));\n  if (starts.length === 1) return starts[0].key;\n  const partial = sourceCatalog\n    .map((p) => {\n      let score = 0;\n      if (p.keyNorm.includes(candidate)) score += 5;\n      if (p.nameNorm.includes(candidate)) score += 4;\n      return { key: p.key, score };\n    })\n    .filter((x) => x.score > 0)\n    .sort((a, b) => b.score - a.score || a.key.length - b.key.length);\n  return partial.length > 0 ? partial[0].key : null;\n};\n\nconst resolveProductKey = (candidateRaw) => {\n  const candidate = normalize(candidateRaw);\n  if (!candidate) return null;\n  return resolveProductKeyInCatalog(candidate, candidateCatalog.length > 0 ? candidateCatalog : catalog)\n    || resolveProductKeyInCatalog(candidate, catalog)\n    || null;\n};\n\nconst inferProductKeysFromText = (text, limit = 3, sourceCatalog = catalog) => {\n  const t = normalize(text);\n  if (!t) return [];\n  const tokens = [...new Set(\n    t.split(/\\s+/).map((w) => w.trim()).filter((w) => w.length >= 3 || /[a-z]*\\d+[a-z]*/.test(w))\n  )];\n  const digitTokens = tokens.filter((token) => /[a-z]*\\d+[a-z]*/.test(token));\n  const requestedBrand = /iphone|apple/.test(t)\n    ? 'iphone'\n    : /samsung|galaxy/.test(t)\n      ? 'samsung'\n      : /redmi|poco|xiaomi/.test(t)\n        ? 'redmi_poco'\n        : /motorola|moto/.test(t)\n          ? 'motorola'\n          : '';\n  const scoreBrand = (product) => {\n    const haystack = product.keyNorm + ' ' + product.nameNorm;\n    if (!requestedBrand) return 0;\n    if (requestedBrand === 'iphone') return /iphone|apple/.test(haystack) ? 7 : -7;\n    if (requestedBrand === 'samsung') return /samsung|galaxy/.test(haystack) ? 7 : -7;\n    if (requestedBrand === 'redmi_poco') return /redmi|poco|xiaomi/.test(haystack) ? 7 : -7;\n    if (requestedBrand === 'motorola') return /motorola|moto/.test(haystack) ? 7 : -7;\n    return 0;\n  };\n  const scored = sourceCatalog.map((p) => {\n    let score = 0;\n    if (t.includes(p.keyNorm)) score += 12;\n    if (p.nameNorm && t.includes(p.nameNorm)) score += 10;\n    score += scoreBrand(p);\n    for (const token of tokens) {\n      const tokenScore = scoreToken(token);\n      if (p.keyNorm.includes(token)) score += tokenScore;\n      if (p.nameNorm.includes(token)) score += tokenScore;\n    }\n    if (digitTokens.length > 0) {\n      const hasDigitMatch = digitTokens.some((token) => p.keyNorm.includes(token) || p.nameNorm.includes(token));\n      if (hasDigitMatch) score += 8;\n      else score -= 10;\n    }\n    if (p.inStock === false) score -= 2;\n    return { key: p.key, score };\n  });\n  return scored.filter((x) => x.score >= 6).sort((a, b) => b.score - a.score).slice(0, limit).map((x) => x.key);\n};\n\nconst tagDefinitionRows = (() => {\n  try {\n    const raw = $('Aggregate CRM Tag Definitions').first().json?.tags;\n    return Array.isArray(raw) ? raw : [];\n  } catch (error) {\n    return [];\n  }\n})();\nconst allowedTagKeys = new Set(tagDefinitionRows.map((row) => normalizeTag(row.tag_key)).filter(Boolean));\nconst deniedTagKeys = new Set(['loc_interior', 'product_tracked', 'contacted', 'condition_seminuevo_interest']);\nconst filterAllowedTags = (tags) => unique(tags.map((tag) => normalizeTag(tag)).filter((tag) => tag && !deniedTagKeys.has(tag) && (allowedTagKeys.size === 0 || allowedTagKeys.has(tag))));\n\nconst detectPaymentMethods = (...values) => {\n  const text = normalize(values.filter(Boolean).join(' | '));\n  const found = [];\n  const add = (key, regex) => {\n    if (regex.test(text)) found.push(key);\n  };\n\n  add('mercado_pago', /mercado\\s*pago|\\bmp\\b/);\n  add('transferencia', /transfer|transfe/);\n  if (/efectivo|contado/.test(text)) {\n    if (/(usd|dolar)/.test(text)) found.push('efectivo_usd');\n    else found.push('efectivo_ars');\n  }\n  add('bitcoin', /bitcoin|\\bbtc\\b/);\n  add('usdt', /usdt|trc20/);\n  add('crypto', /crypto|cripto/);\n  add('naranja', /naranja/);\n  add('macro', /macro/);\n  add('visa', /visa/);\n  add('mastercard', /master\\s*card|\\bmaster\\b/);\n  add('amex', /amex|american\\s*express/);\n  add('cabal', /cabal/);\n  add('subcredito', /subcredit|sucredit/);\n  add('cuotas', /cuotas?|financi/);\n  add('tarjeta', /tarjetas?|debito|credito/);\n  return unique(found);\n};\n\nconst detectTopics = ({ intent, userMessage, cleanText, payments, wantsLocation }) => {\n  const text = normalize([userMessage, cleanText].filter(Boolean).join(' | '));\n  const topics = [];\n  if (/precio|cu[aá]nto|cuanto sale|promo|oferta/.test(text)) topics.push('precio');\n  if (/stock|tenes|tienen|hay|disponib|entrega inmediata|a pedido/.test(text)) topics.push('stock');\n  if (/foto|fotos|imagen|im[aá]gen|imagenes|mostrame|mostr[aá]|quiero ver/.test(text)) topics.push('imagenes');\n  if (/envio|env[ií]o|despacho|via cargo|oca|flecha carga|buspack/.test(text)) topics.push('envio');\n  if (/cuotas?|financi|naranja|macro|visa|master|amex|cabal|tarjeta/.test(text)) topics.push('cuotas');\n  if (/pago|transfer|mercado pago|efectivo|contado|btc|bitcoin|usdt|cripto/.test(text) || payments.length > 0) topics.push('pago');\n  if (/garant/i.test(text)) topics.push('garantia');\n  if (wantsLocation || /direccion|direcci[oó]n|ubicaci[oó]n|mapa|pin|sucursal|como llego|c[oó]mo llego/.test(text)) topics.push('ubicacion');\n  if (/reserv|seña|sena|encargo/.test(text) || intent === 'reservation') topics.push('reserva');\n  if (/compar|vs\\b|cual conviene|cual me recomendas|cu[aá]l conviene/.test(text) || intent === 'comparison') topics.push('comparacion');\n  if (/permuta|tom[aá]s usado|entrego mi celu|trade/.test(text)) topics.push('trade_in');\n  if (intent === 'shipping_inquiry') topics.push('envio');\n  if (intent === 'cuotas_inquiry') topics.push('cuotas', 'pago');\n  if (intent === 'price_inquiry') topics.push('precio');\n  if (intent === 'stock_check') topics.push('stock');\n  if (intent === 'purchase_intent') topics.push('pago');\n  return unique(topics.map((topic) => normalizeTag(topic))).slice(0, 6);\n};\n\nconst detectBrands = ({ brandInterest, products, userMessage, cleanText }) => {\n  const text = normalize([userMessage, cleanText, products.join(' ')].filter(Boolean).join(' | '));\n  const brands = [];\n  if (normalizeTag(brandInterest) === 'iphone' || /iphone|apple/.test(text)) brands.push('iphone');\n  if (normalizeTag(brandInterest) === 'samsung' || /samsung/.test(text)) brands.push('samsung');\n  if (normalizeTag(brandInterest) === 'redmi_poco' || /redmi|poco|xiaomi/.test(text)) brands.push('redmi_poco');\n  return unique(brands);\n};\n\nlet responseText = aiOutput.output || aiOutput.text || 'Disculpá, hubo un error. ¿Podés repetir tu consulta?';\nconst isSilent = responseText.trim() === '[SILENT]' || responseText.includes('[SILENT]');\nif (isSilent) {\n  return [{\n    json: {\n      is_silent: true,\n      payload: null,\n      needs_human: false,\n      clean_text: '',\n      metadata: fallbackMetadata,\n      products_list: [],\n      applied_tags: [],\n      payment_methods_detected: [],\n      brands_mentioned: [],\n      topics_mentioned: [],\n      share_store_location: false,\n      store_location_name: '',\n      store_location_address: '',\n      store_latitude: '',\n      store_longitude: '',\n      subscriber_id: mergedData.subscriber_id,\n      wa_id: mergedData.wa_id || mergedData.subscriber_id,\n      whatsapp_phone_number_id: mergedData.whatsapp_phone_number_id || '',\n      channel: 'manychat',\n      first_name: contextData.first_name || mergedData.first_name,\n      phone: contextData.phone || mergedData.phone,\n      user_message: mergedData.user_message,\n      was_audio: mergedData.was_audio,\n      customer_id: contextData.customer_id,\n      customer_profile: profile,\n      phone_location_hint: phoneLocationHint,\n      phone_area_code: phoneAreaCode,\n      phone_area_name: phoneAreaName,\n      phone_area_province: phoneAreaProvince,\n      should_ask_location: contextData.should_ask_location === true,\n      current_funnel_stage: profile.funnel_stage || null\n    }\n  }];\n}\n\nlet metadata = {};\nconst metaFields = ['intent', 'products', 'funnel_update', 'city_detected', 'is_salta', 'brand_interest', 'budget_hint', 'payment_method', 'topics', 'share_location'];\nconst metaMatch = responseText.match(/---METADATA---(.*?)---END_METADATA---/s);\nif (metaMatch) {\n  const metaLines = metaMatch[1].trim().split('\\n');\n  for (const line of metaLines) {\n    const [key, ...valueParts] = line.split(':');\n    if (key && valueParts.length > 0) {\n      metadata[key.trim()] = valueParts.join(':').trim();\n    }\n  }\n} else {\n  const looseMatch = responseText.match(/(?:^|\\n)\\s*-{2,}\\s*\\n?\\s*intent:\\s*(\\S+)/s)\n    || responseText.match(/(?:^|\\n)\\s*intent:\\s*(\\S+)\\s*\\n\\s*(?:products|funnel_update)/s);\n  if (looseMatch) {\n    const startIdx = responseText.indexOf(looseMatch[0]);\n    const metaBlock = responseText.slice(startIdx);\n    for (const field of metaFields) {\n      const fm = metaBlock.match(new RegExp(field + '\\\\s*:\\\\s*(.+)', 'i'));\n      if (fm) metadata[field] = fm[1].trim();\n    }\n  }\n}\n\nif (!metadata.city_detected || metadata.city_detected === 'none') metadata.city_detected = fallbackCityDetected;\nif (!metadata.is_salta || metadata.is_salta === 'unknown') metadata.is_salta = fallbackIsSalta;\nif (!metadata.topics) metadata.topics = 'none';\nif (!metadata.share_location) metadata.share_location = 'false';\n\nconst tradeInPattern = /(plan canje|canje|permuta|parte de pago|tomas? usados|toman usados|aceptan canje|aceptan usados|tomarian mi|toman mi|te doy mi|entrego mi|reciben mi|recibis mi|dejo mi cel(?:ular)?|dejo mi iphone|mi cel(?:ular)? mas diferencia|mi iphone mas diferencia|mi usado|usado y diferencia)/;\nconst tradeInRequested = contextData.is_trade_in_request === true || tradeInPattern.test(normalize(String(mergedData.user_message || '')));\n\nif (tradeInRequested) {\n  responseText = 'No trabajamos con plan canje, permuta ni tomamos equipos usados en parte de pago. Si querés comprar directo, decime el modelo y te paso precio y medios de pago.';\n  metadata.intent = metadata.intent && metadata.intent !== 'none' ? metadata.intent : 'followup';\n  metadata.products = 'none';\n  metadata.funnel_update = 'no_change';\n  metadata.payment_method = metadata.payment_method || 'none';\n  metadata.topics = 'trade_in';\n  metadata.share_location = 'false';\n}\n\nconst needsHuman = !tradeInRequested && responseText.includes('[HUMAN]');\nlet cleanText = responseText\n  .replace(/---METADATA---[\\s\\S]*?---END_METADATA---/g, '')\n  .replace(/\\[HUMAN\\]/g, '')\n  .replace(/\\*\\*/g, '')\n  .replace(/\\*/g, '')\n  .replace(/^#+\\s/gm, '')\n  .replace(/```[\\s\\S]*?```/g, '')\n  .replace(/\\s*[:：]?\\s*products:\\s*\\[[^\\]]*\\]/gi, '')\n  .replace(/\\s*products:\\s*\\[[^\\]]*\\]/gi, '')\n  .replace(/\\s*products:\\s*[^\\n]+/gi, '')\n  .replace(/en\\s*\\[info_tienda[^\\]]*\\]/gi, '📍 Caseros 1365, Salta Capital. Diagonal a OCA.')\n  .replace(/\\[info_tienda[^\\]]*\\]/gi, '📍 Caseros 1365, Salta Capital. Diagonal a OCA.')\n  .replace(/\\[calcular_cuotas[^\\]]*\\]/gi, '')\n  .replace(/\\[\\w+_?\\w*\\s*:[^\\]]*\\]/g, '')\n  .replace(/,?\\s*en\\s*\\.\\s*,?/gi, '. ')\n  .replace(/\\s*-{2,}\\s*\\n?\\s*intent:[\\s\\S]*$/g, '')\n  .replace(/\\n\\s*intent:\\s*\\S+\\s*\\n\\s*(?:products|funnel_update)[\\s\\S]*$/g, '')\n  .replace(/\\n\\s*intent:\\s*\\S+\\s*(?:funnel_update|products)[\\s\\S]*$/g, '')\n  .replace(/\\s*intent:\\s*(?:greeting|price_inquiry|stock_check|comparison|purchase_intent|cuotas_inquiry|shipping_inquiry|complaint|off_topic|followup|ambiguous)\\b[\\s\\S]*$/gi, '')\n  .replace(/ {2,}/g, ' ').replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\ncleanText = sanitizeInternalIds(cleanText);\ncleanText = stripUnexpectedUrls(cleanText);\ncleanText = stripLinkPlaceholders(cleanText);\nif (!cleanText) cleanText = 'Disculpá, ¿me repetís la consulta?';\n\nconst MAX_CHARS = 1600;\nconst userMsg = String(mergedData.user_message || '');\nconst explicitlyAskedForImage = /foto|fotos|imagen|imágen|imágenes|imagenes|mostrame|mostrá|ver.*(foto|imagen)|mandame|envíame|envia|quiero ver|photo|picture|foto del|foto de la/i.test(userMsg);\nconst explicitlyAskedForLink = /link|enlace|url|comprar|pagar|checkout|publicaci[oó]n|carrito/i.test(userMsg);\nconst askedFullCatalog = /(todos|todo el|catalogo completo|cat[aá]logo completo|lista completa|android y iphone|iphone y android|todas las marcas|ver todo|mostrar todo)/i.test(userMsg);\nconst MAX_MESSAGES = askedFullCatalog ? 4 : 1;\nconst referencesCurrentProduct = /(este|esta|ese|esa|este modelo|ese modelo|el que me dijiste|el del mensaje anterior|mandamelo|pasamelo|del primero|del segundo|ese azul|ese negro)/i.test(userMsg);\nconst userMsgNorm = normalize(userMsg);\nconst userRequestsCuotas = /cuotas?|financi|naranja|macro|visa|master|amex|cabal|tarjeta/.test(userMsgNorm);\nconst userRequestsPrice = /precio|promo|oferta|cu[aá]nto|cuanto sale|valor/.test(userMsgNorm);\nconst comparisonRequested = /compar|\\bvs\\b|versus|cual conviene|cu[aá]l conviene/.test(userMsgNorm);\nconst userSpecificTokens = unique(\n  userMsgNorm\n    .split(/\\s+/)\n    .map((token) => token.trim())\n    .filter((token) => token.length >= 3 || /[a-z]*\\d+[a-z]*/.test(token))\n);\nconst hasSpecificCurrentRequest = userSpecificTokens.some((token) => /[a-z]*\\d+[a-z]*/.test(token))\n  || /(iphone|samsung|redmi|poco|xiaomi|motorola|moto|galaxy|ultra|pro max|promax|plus|max|note)/.test(userMsgNorm);\nconst shouldForceSingleExactLink = explicitlyAskedForLink && hasSpecificCurrentRequest && !referencesCurrentProduct && !askedFullCatalog;\nconst recentAgentConversationText = recentConversationRows\n  .filter((row) => String(row.role || '').trim().toLowerCase() !== 'user')\n  .map((row) => String(row.message || '').trim())\n  .join('\\n');\nconst previouslySharedStorefrontUrls = extractStorefrontUrls(recentAgentConversationText);\nconst previouslySharedStorefrontUrlSet = new Set(previouslySharedStorefrontUrls);\nconst previouslySharedLinkedProductKeys = unique(recentConversationRows\n  .filter((row) => String(row.role || '').trim().toLowerCase() !== 'user')\n  .filter((row) => {\n    const messageType = String(row.message_type || '').trim().toLowerCase();\n    return messageType.includes('storefront_link') || extractStorefrontUrls(row.message || '').length > 0;\n  })\n  .flatMap((row) => Array.isArray(row.products_mentioned) ? row.products_mentioned : [])\n  .map((product) => resolveProductKey(product))\n  .filter(Boolean));\nconst previouslySharedLinkedProductKeySet = new Set(previouslySharedLinkedProductKeys);\nconst hasSharedAnyStorefrontLink = previouslySharedStorefrontUrls.length > 0 || previouslySharedLinkedProductKeys.length > 0;\n\nconst splitTextSafely = (text, maxChars = MAX_CHARS, maxMessages = MAX_MESSAGES) => {\n  const normalized = String(text || '').replace(/\\r/g, '').trim();\n  if (!normalized) return [];\n  const sentenceParts = normalized.split(/\\n+/).flatMap((part) => part.split(/(?<=[.!?])\\s+/)).map((p) => p.trim()).filter(Boolean);\n  const chunks = [];\n  let current = '';\n  const pushCurrent = () => { if (current && current.trim()) chunks.push(current.trim()); current = ''; };\n  const appendPiece = (piece) => {\n    if (!piece) return;\n    if (!current) { current = piece; return; }\n    const looksLikeProduct = /\\$\\s*[\\d.,]+|\\d{3,}\\.\\d{3}|USD\\s*\\d/.test(piece);\n    if ((current.length + 1 + piece.length) <= maxChars) current += (looksLikeProduct ? '\\n' : ' ') + piece;\n    else { pushCurrent(); current = piece; }\n  };\n  for (const part of sentenceParts) {\n    if (part.length <= maxChars) { appendPiece(part); continue; }\n    const words = part.split(/\\s+/).filter(Boolean);\n    let local = '';\n    const pushLocal = () => { if (local) appendPiece(local.trim()); local = ''; };\n    for (const word of words) {\n      if (word.length > maxChars) {\n        pushLocal();\n        for (let i = 0; i < word.length; i += maxChars) appendPiece(word.slice(i, i + maxChars));\n        continue;\n      }\n      if (!local) local = word;\n      else if ((local.length + 1 + word.length) <= maxChars) local += ' ' + word;\n      else { pushLocal(); local = word; }\n    }\n    pushLocal();\n  }\n  pushCurrent();\n  if (chunks.length <= maxMessages) return chunks;\n  const trimmed = chunks.slice(0, maxMessages);\n  const note = '... Si querés, te paso por marca (iPhone, Samsung o Redmi/POCO) para que sea más claro 👌';\n  const last = trimmed[trimmed.length - 1] || '';\n  const allowed = maxChars - note.length - 1;\n  trimmed[trimmed.length - 1] = (allowed > 50 ? last.slice(0, allowed).trim() : last.slice(0, maxChars - 1).trim()) + '\\n' + note;\n  return trimmed;\n};\n\nconst splitByBrandSections = (text) => {\n  const headingRegex = /(iPhone:|Samsung:|Redmi\\/POCO:|Redmi\\/Poco:|Xiaomi:)/gi;\n  const matches2 = [...String(text || '').matchAll(headingRegex)];\n  if (matches2.length < 2) return null;\n  const sections = [];\n  const intro = text.slice(0, matches2[0].index).trim();\n  if (intro) sections.push(intro);\n  for (let i = 0; i < matches2.length; i++) {\n    const start = matches2[i].index;\n    const end = i + 1 < matches2.length ? matches2[i + 1].index : text.length;\n    const section = text.slice(start, end).trim();\n    if (section) sections.push(section);\n  }\n  return sections;\n};\n\nconst buildBrandSafeResponse = ({ brandKey, items, askPrice, askCuotas, payments, saltaEligible }) => {\n  const visibleItems = items.slice(0, 3);\n  const brandLabel = humanizeBrandKey(brandKey);\n  if (visibleItems.length === 0) {\n    return 'Por ahora no veo modelos de ' + brandLabel + ' cargados entre los destacados. Si querés, lo reviso y te paso opciones reales de esa marca.';\n  }\n  const lines = visibleItems.map((item) => {\n    const bits = [];\n    const promoMoney = formatMoney(item.promoPriceArs);\n    const contadoMoney = formatMoney(item.priceArs);\n    const bancMoney = formatMoney(item.bancarizadaCuota);\n    const macroMoney = formatMoney(item.macroCuota);\n    if (askPrice || askCuotas) {\n      if (promoMoney && promoMoney !== contadoMoney) bits.push('promo ' + promoMoney);\n      else if (contadoMoney) bits.push(contadoMoney);\n      if (askCuotas && saltaEligible) {\n        if (payments.includes('macro') && macroMoney) bits.push('6 Macro de ' + macroMoney);\n        else if (bancMoney) bits.push('6 bancarizadas de ' + bancMoney);\n      }\n    }\n    return '• ' + item.name + (bits.length > 0 ? ': ' + bits.join(' | ') : '');\n  });\n  const intro = askPrice || askCuotas\n    ? 'De ' + brandLabel + ', lo que tengo cargado ahora es:'\n    : 'De ' + brandLabel + ', lo que tengo disponible ahora es:';\n  const outro = askPrice || askCuotas\n    ? 'Si querés, te paso el detalle exacto del que te interese.'\n    : 'Si querés, te paso precio o cuotas del que te interese.';\n  return [intro, '', ...lines, '', outro].join('\\n').trim();\n};\n\nconst metadataCandidates = parseList(metadata.products);\nconst userResolvedFromCandidates = inferProductKeysFromText(userMsg, 3, candidateCatalog.length > 0 ? candidateCatalog : catalog);\nconst userResolvedFromCatalog = inferProductKeysFromText(userMsg, 3, catalog);\nconst strongUserResolvedProducts = unique([...userResolvedFromCandidates, ...userResolvedFromCatalog]);\nlet normalizedProducts = metadataCandidates.map((candidate) => resolveProductKey(candidate)).filter(Boolean);\nconst getCatalogItemByKey = (key) => catalog.find((item) => item.key === key) || null;\nconst getBrandForKey = (key) => getCatalogItemByKey(key)?.brandKey || '';\nconst candidateBrandCatalog = strictSingleBrandRequest\n  ? candidateCatalog.filter((item) => item.brandKey === requestedBrandKey)\n  : candidateCatalog;\nconst fallbackBrandCatalog = strictSingleBrandRequest\n  ? catalog.filter((item) => item.brandKey === requestedBrandKey)\n  : catalog;\nif ((explicitlyAskedForImage || explicitlyAskedForLink) && strongUserResolvedProducts.length > 0 && !referencesCurrentProduct) {\n  if (normalizedProducts.length === 0) {\n    normalizedProducts = shouldForceSingleExactLink ? strongUserResolvedProducts.slice(0, 1) : strongUserResolvedProducts;\n  } else if (shouldForceSingleExactLink) {\n    normalizedProducts = normalizedProducts.slice(0, 1);\n  } else {\n    normalizedProducts = unique([...normalizedProducts, ...strongUserResolvedProducts]);\n  }\n} else if ((explicitlyAskedForImage || explicitlyAskedForLink) && normalizedProducts.length === 0) {\n  normalizedProducts = shouldForceSingleExactLink ? strongUserResolvedProducts.slice(0, 1) : strongUserResolvedProducts;\n\n  if (normalizedProducts.length === 0 && referencesCurrentProduct) {\n    const profileKey = resolveProductKey(contextData.customer_profile?.interested_product || '');\n    if (profileKey) normalizedProducts = [profileKey];\n    else if (candidateCatalog.length > 0) normalizedProducts = [candidateCatalog[0].key];\n  }\n}\n\nif (strictSingleBrandRequest && !comparisonRequested) {\n  normalizedProducts = normalizedProducts.filter((key) => getBrandForKey(key) === requestedBrandKey);\n}\nmetadata.products = normalizedProducts.length > 0 ? normalizedProducts.join(', ') : 'none';\nconst cleanTextBrands = extractBrandKeys(cleanText);\nconst normalizedProductBrands = unique(normalizedProducts.map((key) => getBrandForKey(key)).filter(Boolean));\nconst brandMismatch = strictSingleBrandRequest\n  && !comparisonRequested\n  && (\n    cleanTextBrands.some((brand) => brand !== requestedBrandKey)\n    || normalizedProductBrands.some((brand) => brand !== requestedBrandKey)\n    || (cleanTextBrands.length > 0 && !cleanTextBrands.includes(requestedBrandKey))\n  );\nif (brandMismatch) {\n  const safeBrandItems = (candidateBrandCatalog.length > 0 ? candidateBrandCatalog : fallbackBrandCatalog).slice(0, 3);\n  cleanText = buildBrandSafeResponse({\n    brandKey: requestedBrandKey,\n    items: safeBrandItems,\n    askPrice: userRequestsPrice,\n    askCuotas: userRequestsCuotas,\n    payments: Array.isArray(detectPaymentMethods(metadata.payment_method, userMsg, cleanText)) ? detectPaymentMethods(metadata.payment_method, userMsg, cleanText) : [],\n    saltaEligible: ['salta', 'salta capital', 'salta cap'].includes(lowerProfileCity) || profile.is_salta_capital === true || metadata.is_salta === 'true'\n  });\n  const safeKeys = safeBrandItems.map((item) => item.key).filter(Boolean);\n  normalizedProducts = safeKeys;\n  metadata.products = safeKeys.length > 0 ? safeKeys.join(', ') : 'none';\n  metadata.brand_interest = requestedBrandKey;\n}\nlet textChunks = splitTextSafely(cleanText, MAX_CHARS, MAX_MESSAGES);\nif (askedFullCatalog) {\n  const sections = splitByBrandSections(cleanText);\n  if (sections && sections.length >= 2) {\n    const branded = [];\n    for (const sec of sections) {\n      const secChunks = splitTextSafely(sec, MAX_CHARS, 2);\n      branded.push(...secChunks);\n    }\n    if (branded.length > 0) textChunks = branded.slice(0, MAX_MESSAGES);\n  }\n}\n\nlet messagesArray = textChunks.length > 0\n  ? textChunks.map((chunk) => ({ type: 'text', text: sanitizeInternalIds(chunk) }))\n  : [{ type: 'text', text: 'Disculpá, ¿me repetís la consulta?' }];\n\nif (!tradeInRequested && explicitlyAskedForImage && normalizedProducts.length === 0) {\n  if (hasSpecificCurrentRequest && !referencesCurrentProduct) {\n    const clarificationMsg = '\\n\\n📸 No pude identificar con certeza el modelo para mandarte la foto exacta. Escribime el modelo exacto y te paso la imagen correcta.';\n    if (!/identificar con certeza|modelo exacto|no tengo fotos/i.test(cleanText)) {\n      cleanText = sanitizeInternalIds(cleanText.trim() + clarificationMsg);\n      const textItem = messagesArray.find((m) => m.type === 'text');\n      if (textItem) textItem.text = cleanText;\n    }\n  } else {\n    const profileKey = resolveProductKey(contextData.customer_profile?.interested_product || '');\n    const inStockImageKeys = catalog.filter((p) => p.imageUrl && p.inStock !== false).map((p) => p.key);\n    const fallbackImageKeys = catalog.filter((p) => p.imageUrl).map((p) => p.key);\n    const suggestionKeys = unique([profileKey, ...inStockImageKeys.slice(0, 6), ...fallbackImageKeys.slice(0, 6)]).slice(0, 4);\n    if (suggestionKeys.length > 0) {\n      const suggestionNames = suggestionKeys.map((key) => {\n        const item = catalog.find((p) => p.key === key);\n        return item ? item.name : key;\n      });\n      const suggestionMsg = '\\n\\n📸 Tengo fotos de: ' + suggestionNames.join(', ') + '. Decime cuál querés y te la mando.';\n      if (!/tengo fotos de|no tengo fotos/i.test(cleanText)) {\n        cleanText = sanitizeInternalIds(cleanText.trim() + suggestionMsg);\n        const textItem = messagesArray.find((m) => m.type === 'text');\n        if (textItem) textItem.text = cleanText;\n      }\n    } else {\n      const noImgGeneric = '\\n\\n⚠️ Por ahora no tengo fotos cargadas para enviarte, pero te paso precio y detalles si querés.';\n      if (!/no tengo|no tenemos/i.test(cleanText)) {\n        cleanText = sanitizeInternalIds(cleanText.trim() + noImgGeneric);\n        const textItem = messagesArray.find((m) => m.type === 'text');\n        if (textItem) textItem.text = cleanText;\n      }\n    }\n  }\n}\n\nif (!tradeInRequested && explicitlyAskedForImage && normalizedProducts.length > 0) {\n  const sentKeys = new Set();\n  const sentUrls = new Set();\n  const keysWithoutImage = [];\n  for (const key of normalizedProducts) {\n    const item = catalog.find((p) => p.key === key);\n    const imageUrl = item?.imageUrl || '';\n    if (imageUrl && !sentKeys.has(key) && !sentUrls.has(imageUrl)) {\n      messagesArray.push({ type: 'image', url: imageUrl, image_url: imageUrl });\n      sentKeys.add(key);\n      sentUrls.add(imageUrl);\n    } else if (!imageUrl) {\n      keysWithoutImage.push(key);\n    }\n  }\n  if (keysWithoutImage.length > 0 && !/no tengo|no tenemos/i.test(cleanText)) {\n    const readable = keysWithoutImage.slice(0, 3).map((key) => {\n      const item = catalog.find((p) => p.key === key);\n      return item ? item.name : key;\n    });\n    const noImgNote = '\\n\\n⚠️ No tengo fotos de ' + readable.join(', ') + ' por el momento. Si querés más info del modelo escribime.';\n    cleanText = sanitizeInternalIds(cleanText.trim() + noImgNote);\n    const textItem = messagesArray.find((m) => m.type === 'text');\n    if (textItem) textItem.text = cleanText;\n  }\n}\n\nconst trackedProductKey = resolveProductKey(contextData.customer_profile?.interested_product || '');\nconst uniqueNormalizedProducts = unique(normalizedProducts);\nconst uniqueStrongResolvedProducts = unique(strongUserResolvedProducts);\nconst linkCandidatePool = unique([\n  referencesCurrentProduct && trackedProductKey ? trackedProductKey : '',\n  ...uniqueStrongResolvedProducts,\n  ...uniqueNormalizedProducts,\n]).filter((key) => key && catalog.some((item) => item.key === key));\nconst hasAmbiguousLinkRequest = explicitlyAskedForLink && !referencesCurrentProduct && linkCandidatePool.length > 1;\n\nconst directLinkCandidateKey = (() => {\n  if (referencesCurrentProduct && trackedProductKey) return trackedProductKey;\n  if (shouldForceSingleExactLink && uniqueStrongResolvedProducts.length === 1) return uniqueStrongResolvedProducts[0];\n  if (uniqueNormalizedProducts.length === 1) return uniqueNormalizedProducts[0];\n  if (uniqueStrongResolvedProducts.length === 1) return uniqueStrongResolvedProducts[0];\n  if (explicitlyAskedForLink && referencesCurrentProduct && linkCandidatePool.length > 0) return linkCandidatePool[0];\n  return null;\n})();\n\nconst directLinkTarget = directLinkCandidateKey\n  ? (catalog.find((item) => item.key === directLinkCandidateKey)?.storefrontUrl || '')\n  : '';\nconst linkAlreadyShared = Boolean(directLinkTarget) && (\n  previouslySharedStorefrontUrlSet.has(directLinkTarget)\n  || (directLinkCandidateKey ? previouslySharedLinkedProductKeySet.has(directLinkCandidateKey) : false)\n);\nconst shouldProactivelyIncludeLinks = !explicitlyAskedForLink\n  && !askedFullCatalog\n  && Boolean(directLinkTarget)\n  && !linkAlreadyShared\n  && !hasSharedAnyStorefrontLink\n  && (\n    referencesCurrentProduct\n    || hasSpecificCurrentRequest\n  );\nconst shouldAttachStorefrontLink = !tradeInRequested && Boolean(directLinkTarget) && !linkAlreadyShared && (explicitlyAskedForLink || shouldProactivelyIncludeLinks);\nconst directLinkTargets = shouldAttachStorefrontLink ? [directLinkTarget] : [];\n\nif (!tradeInRequested && (explicitlyAskedForLink || shouldProactivelyIncludeLinks)) {\n  if (directLinkTargets.length > 0) {\n    const linkNoteRegex = /link directo abajo|te dejo el link|te paso el link|ac[aá] ten[eé]s el link|verlo en la tienda/i;\n    if (explicitlyAskedForLink) {\n      if (!linkNoteRegex.test(cleanText)) {\n        cleanText = sanitizeInternalIds((cleanText.trim() + '\\n\\nTe dejo el link directo abajo 👇').trim());\n      }\n    } else if (!linkNoteRegex.test(cleanText)) {\n      cleanText = sanitizeInternalIds((cleanText.trim() + '\\n\\nSi querés verlo en la tienda, te dejo el link abajo 👇').trim());\n    }\n  } else if (explicitlyAskedForLink) {\n    if (linkAlreadyShared && !/m[aá]s arriba|ya te lo pas[eé]/i.test(cleanText)) {\n      cleanText = sanitizeInternalIds((cleanText.trim() + '\\n\\nTe lo había pasado más arriba 👆').trim());\n    } else if (hasAmbiguousLinkRequest && !/modelo exacto|link correcto|aclar/i.test(cleanText)) {\n      cleanText = sanitizeInternalIds((cleanText.trim() + '\\n\\nDecime el modelo exacto y te paso el link correcto.').trim());\n    } else if (!linkAlreadyShared && !/no tengo|no tenemos|link directo|por privado/i.test(cleanText)) {\n      const noLinkNote = '\\n\\n⚠️ No tengo cargado el link directo ahora mismo. Si querés, te confirmo el modelo y seguimos por privado.';\n      cleanText = sanitizeInternalIds((cleanText + noLinkNote).trim());\n    }\n  }\n\n  const textItem = messagesArray.find((m) => m.type === 'text');\n  if (textItem) textItem.text = cleanText;\n  else messagesArray.unshift({ type: 'text', text: cleanText });\n}\n\nif (directLinkTargets.length > 0) {\n  messagesArray = [\n    ...messagesArray,\n    { type: 'text', text: directLinkTargets[0], is_direct_link_only: true }\n  ];\n}\n\ncleanText = stripUnexpectedUrls(cleanText, []);\nfor (const message of messagesArray) {\n  if (message && message.type === 'text' && typeof message.text === 'string') {\n    const allowedUrls = message.is_direct_link_only ? [message.text] : [];\n    message.text = stripUnexpectedUrls(message.text, allowedUrls);\n  }\n}\nconst primaryTextItem = messagesArray.find((m) => m.type === 'text');\nif (primaryTextItem) primaryTextItem.text = cleanText;\n\nconst detectedPayments = detectPaymentMethods(metadata.payment_method, userMsg, cleanText);\nconst askedForLocation = /ubicacion|ubicación|direccion|dirección|mapa|pin|sucursal|como llego|cómo llego/.test(normalize(userMsg + ' ' + cleanText));\nconst shareStoreLocation = !tradeInRequested && (metadata.share_location === 'true' || askedForLocation);\nconst isCuotasContext = userRequestsCuotas || metadata.intent === 'cuotas_inquiry' || contextData.is_cuotas_inquiry === true;\nconst isPriceContext = userRequestsPrice || metadata.intent === 'price_inquiry';\nconst isSaltaEligibleForCuotas = metadata.is_salta === 'true' || profile.is_salta_capital === true || ['salta', 'salta capital', 'salta cap'].includes(lowerProfileCity);\nconst exactPricingTargetKey = (() => {\n  if (comparisonRequested) return null;\n  const uniqueNormalizedProducts = unique(normalizedProducts);\n  if (uniqueNormalizedProducts.length === 1) return uniqueNormalizedProducts[0];\n  if (primaryProductKey && uniqueNormalizedProducts.includes(primaryProductKey)) return primaryProductKey;\n  if (primaryProductKey && candidateCatalog.some((item) => item.key === primaryProductKey) && (isCuotasContext || isPriceContext)) return primaryProductKey;\n  return null;\n})();\nconst exactPricingTarget = exactPricingTargetKey\n  ? (catalog.find((item) => item.key === exactPricingTargetKey) || null)\n  : null;\nconst exactPricingTokens = [];\nlet exactPricingSummary = '';\nif (!tradeInRequested && exactPricingTarget && (isCuotasContext || isPriceContext)) {\n  const pricingLines = [];\n  const contadoMoney = formatMoney(exactPricingTarget.priceArs);\n  const promoMoney = formatMoney(exactPricingTarget.promoPriceArs);\n  const bancMoney = formatMoney(exactPricingTarget.bancarizadaCuota);\n  const macroMoney = formatMoney(exactPricingTarget.macroCuota);\n\n  if (isPriceContext || isCuotasContext) {\n    if (promoMoney && promoMoney !== contadoMoney) {\n      if (contadoMoney) pricingLines.push('Lista: ' + contadoMoney + '.');\n      pricingLines.push('Promo contado: ' + promoMoney + '.');\n      exactPricingTokens.push(promoMoney);\n      if (contadoMoney) exactPricingTokens.push(contadoMoney);\n    } else if (contadoMoney) {\n      pricingLines.push('Contado: ' + contadoMoney + '.');\n      exactPricingTokens.push(contadoMoney);\n    }\n  }\n\n  if (isCuotasContext && isSaltaEligibleForCuotas) {\n    if (detectedPayments.includes('macro') && macroMoney) {\n      pricingLines.push('6 cuotas Macro: ' + macroMoney + ' por cuota.');\n      exactPricingTokens.push(macroMoney);\n    } else {\n      if (bancMoney) {\n        pricingLines.push('6 cuotas bancarizadas: ' + bancMoney + ' por cuota.');\n        exactPricingTokens.push(bancMoney);\n      }\n      if (macroMoney) {\n        pricingLines.push('6 cuotas Macro: ' + macroMoney + ' por cuota.');\n        exactPricingTokens.push(macroMoney);\n      }\n    }\n  }\n\n  exactPricingSummary = pricingLines.join(' ');\n}\n\nif (exactPricingSummary) {\n  const hasAllExactPrices = exactPricingTokens.length > 0 && exactPricingTokens.every((token) => cleanText.includes(token));\n  if (!hasAllExactPrices) {\n    cleanText = sanitizeInternalIds((cleanText.trim() + '\\n\\n' + exactPricingSummary).trim());\n    const textItem = messagesArray.find((m) => m.type === 'text' && !m.is_direct_link_only);\n    if (textItem) textItem.text = cleanText;\n    else messagesArray.unshift({ type: 'text', text: cleanText });\n  }\n}\n\nconst detectedTopics = unique([\n  ...parseList(metadata.topics),\n  ...detectTopics({ intent: metadata.intent, userMessage: userMsg, cleanText, payments: detectedPayments, wantsLocation: shareStoreLocation }),\n]);\nconst detectedBrands = strictSingleBrandRequest && !comparisonRequested\n  ? [requestedBrandKey]\n  : detectBrands({\n      brandInterest: metadata.brand_interest,\n      products: normalizedProducts,\n      userMessage: userMsg,\n      cleanText,\n    });\nconst effectiveStage = normalizeTag(metadata.funnel_update && metadata.funnel_update !== 'no_change'\n  ? metadata.funnel_update\n  : contextData.current_funnel_stage || profile.funnel_stage || '');\n\nconst newTags = [];\nif (metadata.intent && metadata.intent !== 'none') newTags.push('intent_' + normalizeTag(metadata.intent));\nif (effectiveStage && effectiveStage !== 'no_change') newTags.push('stage_' + effectiveStage);\nfor (const brand of detectedBrands) newTags.push('brand_' + brand);\nfor (const payment of detectedPayments) newTags.push('pay_' + normalizeTag(payment));\nfor (const topic of detectedTopics) newTags.push('topic_' + normalizeTag(topic));\nif (metadata.is_salta === 'true' || profile.is_salta_capital === true) newTags.push('loc_salta_capital');\nif (mergedData.was_audio) newTags.push('behavior_audio_user');\nif (mergedData.is_image) newTags.push('behavior_image_user');\nif (phoneAreaCode) newTags.push('phone_area_known');\nif (phoneAreaProvince) newTags.push('prov_' + normalizeTag(phoneAreaProvince));\nif (needsHuman) newTags.push('needs_human');\nconst appliedTags = filterAllowedTags(newTags);\nmetadata.topics = detectedTopics.length > 0 ? detectedTopics.join(', ') : 'none';\nmetadata.share_location = shareStoreLocation ? 'true' : 'false';\n\nconst storeSettingsRaw = (() => {\n  try {\n    const raw = $('Fetch Store Settings').first().json;\n    return Array.isArray(raw) ? raw[0] || {} : raw || {};\n  } catch (error) {\n    return {};\n  }\n})();\nconst storeLocationName = String(storeSettingsRaw.store_location_name || 'TechnoStore Salta').trim();\nconst storeLocationAddress = String(storeSettingsRaw.store_address || 'Caseros 1365, Salta Capital').trim();\nconst storeLatitude = String(storeSettingsRaw.store_latitude || '').trim();\nconst storeLongitude = String(storeSettingsRaw.store_longitude || '').trim();\n\nconst waMessages = messagesArray;\nconst payload = {\n  subscriber_id: mergedData.subscriber_id,\n  data: {\n    version: 'v2',\n    content: {\n      type: 'whatsapp',\n      messages: waMessages\n    }\n  }\n};\nreturn [{\n  json: {\n    is_silent: false,\n    payload,\n    wa_messages: waMessages,\n    needs_human: needsHuman,\n    clean_text: cleanText,\n    metadata,\n    products_list: normalizedProducts,\n    product_storefront_urls: directLinkTargets,\n    applied_tags: appliedTags,\n    payment_methods_detected: detectedPayments,\n    brands_mentioned: detectedBrands,\n    topics_mentioned: detectedTopics,\n    share_store_location: shareStoreLocation,\n    store_location_name: storeLocationName,\n    store_location_address: storeLocationAddress,\n    store_latitude: storeLatitude,\n    store_longitude: storeLongitude,\n    subscriber_id: mergedData.subscriber_id,\n    wa_id: mergedData.wa_id || mergedData.subscriber_id,\n    whatsapp_phone_number_id: mergedData.whatsapp_phone_number_id || '',\n    channel: 'manychat',\n    first_name: contextData.first_name || mergedData.first_name,\n    phone: contextData.phone || mergedData.phone,\n    user_message: mergedData.user_message,\n    was_audio: mergedData.was_audio,\n    customer_id: contextData.customer_id,\n    customer_profile: profile,\n    phone_location_hint: phoneLocationHint,\n    phone_area_code: phoneAreaCode,\n    phone_area_name: phoneAreaName,\n    phone_area_province: phoneAreaProvince,\n    should_ask_location: contextData.should_ask_location === true,\n    current_funnel_stage: profile.funnel_stage || null,\n    is_trade_in_request: tradeInRequested\n  }\n}];\n"
+      },
+      "id": "process-ai-response-v15",
+      "name": "Process AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$input.first()];\n"
+      },
+      "id": "merge-all-routes-v15",
+      "name": "Merge All Routes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4320,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-silent",
+              "leftValue": "={{ $json.is_silent }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "749f1c18-ff31-422f-b2a8-5f3dc51c00f5",
+      "name": "Is Silent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4560,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.manychat.com/fb/sending/sendContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a0c9c8af-98d9-4a40-8961-365a3043a55f",
+      "name": "Send to WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4800,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "dTDdJWgAz1yrPfPe",
+          "name": "ManyChat API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const customerUpdate = $input.first().json || {};\nconst data = $('Process AI Response').first().json;\nconst metadata = data.metadata || {};\nconst products = Array.isArray(data.products_list) ? data.products_list : [];\nconst sharedStorefrontUrls = Array.isArray(data.product_storefront_urls)\n  ? data.product_storefront_urls.map((url) => String(url || '').trim()).filter((url) => /^https?:\\/\\//i.test(url))\n  : [];\n\nconst normalizeTag = (value) => String(value || '')\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[^a-z0-9_-]/g, '_')\n  .replace(/_+/g, '_')\n  .replace(/^_+|_+$/g, '')\n  .trim();\n\nconst humanize = (value) => {\n  const normalized = normalizeTag(value);\n  if (!normalized) return '';\n  return normalized\n    .split('_')\n    .filter(Boolean)\n    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))\n    .join(' ');\n};\n\nconst unique = (items) => [...new Set(items.filter(Boolean))];\nconst truncateUnicode = (value, maxChars) => Array.from(String(value || '')).slice(0, maxChars).join('');\nconst cleanText = String(data.clean_text || '').replace(/\\s+/g, ' ').trim();\nconst botActions = [];\nif (products.length > 0) botActions.push('ofrecio ' + products.slice(0, 2).join(', '));\nif (metadata.payment_method && metadata.payment_method !== 'none') botActions.push('retomo pago ' + humanize(metadata.payment_method));\nif (data.share_store_location) botActions.push('compartio ubicacion');\nif (data.needs_human) botActions.push('derivo a asesor');\nif (sharedStorefrontUrls.length > 0) botActions.push('compartio link tienda');\nconst botSnippet = truncateUnicode(cleanText, 140) || '(solo imagenes)';\nconst conversation_summary = truncateUnicode('Bot: ' + (botActions.length > 0 ? botActions.join(' · ') : 'respondio la consulta') + '. ' + botSnippet, 220);\nconst conversation_insights = unique([\n  metadata.intent && metadata.intent !== 'none' ? 'Respuesta ' + humanize(metadata.intent) : '',\n  ...products.slice(0, 3).map((product) => 'Producto ' + product),\n  metadata.payment_method && metadata.payment_method !== 'none' ? 'Pago ' + humanize(metadata.payment_method) : '',\n  data.share_store_location ? 'Comparte ubicacion' : '',\n  data.needs_human ? 'Asesor humano' : '',\n  sharedStorefrontUrls.length > 0 ? 'Link tienda' : '',\n]).slice(0, 8);\nconst nextScore = customerUpdate?.updates?.lead_score;\nconst lead_score_after = Number.isFinite(Number(nextScore)) ? Number(nextScore) : null;\nconst conversation_applied_tags = Array.isArray(customerUpdate.conversation_applied_tags) ? customerUpdate.conversation_applied_tags : [];\nconst payment_methods_detected = Array.isArray(data.payment_methods_detected) ? data.payment_methods_detected : [];\nconst brands_detected = Array.isArray(data.brands_mentioned) ? data.brands_mentioned : [];\nconst topics_detected = Array.isArray(data.topics_mentioned) ? data.topics_mentioned : [];\nconst funnel_stage_after = customerUpdate?.updates?.funnel_stage || data.current_funnel_stage || null;\n\nreturn [{\n  json: {\n    manychat_id: data.subscriber_id,\n    customer_id: data.customer_id || null,\n    role: 'bot',\n    message: data.clean_text || '(solo imágenes)',\n    message_type: sharedStorefrontUrls.length > 0 ? 'text_with_storefront_link' : 'text',\n    intent_detected: metadata.intent || null,\n    products_mentioned: products,\n    triggered_human: data.needs_human || false,\n    was_audio: false,\n    channel: 'manychat',\n    external_message_id: null,\n    whatsapp_phone_number_id: null,\n    applied_tags: conversation_applied_tags,\n    payment_methods_detected,\n    brands_detected,\n    topics_detected,\n    funnel_stage_after,\n    conversation_summary,\n    conversation_insights,\n    lead_score_after\n  }\n}];"
+      },
+      "id": "36c68d55-e247-4be5-8dbd-eed829342601",
+      "name": "Prep Bot Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/conversations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "0f07f8c1-7b8b-4e04-8fbf-ac7631c88a84",
+      "name": "Save Bot Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5040,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Process AI Response').first().json;\nconst metadata = data.metadata || {};\nconst products = Array.isArray(data.products_list) ? data.products_list : [];\nconst profile = data.customer_profile || {};\n\nconst normalizeText = (value) => String(value || '')\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .trim();\n\nconst normalizeTag = (value) => String(value || '')\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[^a-z0-9_-]/g, '_')\n  .replace(/_+/g, '_')\n  .replace(/^_+|_+$/g, '')\n  .trim();\n\nconst unique = (items) => [...new Set(items.filter(Boolean))];\nconst truncateUnicode = (value, maxChars) => Array.from(String(value || '')).slice(0, maxChars).join('');\nconst truncateUnicodeWithEllipsis = (value, maxChars) => {\n  const chars = Array.from(String(value || ''));\n  if (chars.length <= maxChars) return chars.join('');\n  if (maxChars <= 3) return chars.slice(0, maxChars).join('');\n  return chars.slice(0, maxChars - 3).join('') + '...';\n};\nconst deniedTagKeys = new Set(['loc_interior', 'product_tracked', 'contacted', 'condition_seminuevo_interest']);\nconst tagDefinitionRows = (() => {\n  try {\n    const raw = $('Aggregate CRM Tag Definitions').first().json?.tags;\n    return Array.isArray(raw) ? raw : [];\n  } catch (error) {\n    return [];\n  }\n})();\nconst allowedTagKeys = new Set(tagDefinitionRows.map((row) => normalizeTag(row.tag_key)).filter(Boolean));\nconst filterAllowedTags = (tags) => unique(\n  tags\n    .map((tag) => normalizeTag(tag))\n    .filter((tag) => tag && !deniedTagKeys.has(tag) && (allowedTagKeys.size === 0 || allowedTagKeys.has(tag)))\n);\n\nconst now = new Date().toISOString();\nconst stageRank = { new: 0, browsing: 1, interested: 2, closing: 3, human_handoff: 4 };\nconst currentStage = normalizeText(data.current_funnel_stage || profile.funnel_stage || '');\nconst requestedStage = normalizeText(metadata.funnel_update || '');\nconst userMessage = String(data.user_message || '');\nconst cleanText = String(data.clean_text || '');\nconst phoneAreaCode = String(data.phone_area_code || profile.phone_area_code || '').trim();\nconst phoneAreaName = String(data.phone_area_name || profile.phone_area_name || '').trim();\nconst phoneAreaProvince = String(data.phone_area_province || profile.phone_area_province || '').trim();\nconst detectedPayments = Array.isArray(data.payment_methods_detected) ? data.payment_methods_detected : [];\nconst detectedBrands = Array.isArray(data.brands_mentioned) ? data.brands_mentioned : [];\nconst detectedTopics = Array.isArray(data.topics_mentioned) ? data.topics_mentioned : [];\nconst detectedTags = filterAllowedTags(Array.isArray(data.applied_tags) ? data.applied_tags : []);\nconst currentInteractions = Number(profile.total_interactions || 0);\n\nconst humanize = (value) => {\n  const normalized = normalizeTag(value);\n  if (!normalized) return '';\n  return normalized\n    .split('_')\n    .filter(Boolean)\n    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))\n    .join(' ');\n};\n\nconst buildConversationSummary = (stage) => {\n  const userSnippet = String(userMessage || '').replace(/\\s+/g, ' ').trim();\n  const shortSnippet = truncateUnicodeWithEllipsis(userSnippet, 110);\n  const mentions = [];\n  if (products.length > 0) mentions.push('productos ' + products.slice(0, 2).join(', '));\n  else if (detectedBrands.length > 0) mentions.push('marca ' + detectedBrands.slice(0, 2).map(humanize).join(', '));\n  if (detectedPayments.length > 0) mentions.push('pago ' + detectedPayments.slice(0, 2).map(humanize).join(', '));\n  if (detectedTopics.length > 0) mentions.push('temas ' + detectedTopics.slice(0, 3).map(humanize).join(', '));\n  if (metadata.budget_hint && metadata.budget_hint !== 'none') mentions.push('presupuesto ' + humanize(metadata.budget_hint));\n  if (metadata.city_detected && metadata.city_detected !== 'none') mentions.push('ciudad ' + String(metadata.city_detected).trim());\n  else if (phoneAreaProvince) mentions.push('pista ' + phoneAreaProvince);\n  const botOutcome = cleanText ? 'el bot respondio con algo concreto' : 'todavia sin respuesta del bot';\n  const stageText = stage ? 'termino en ' + humanize(stage) : '';\n  const parts = [\n    shortSnippet ? 'Cliente dijo: \"' + shortSnippet + '\"' : '',\n    mentions.length > 0 ? 'Se detecto ' + mentions.join(' · ') : '',\n    botOutcome,\n    stageText,\n  ].filter(Boolean);\n  return truncateUnicode(parts.join('. '), 220);\n};\n\nconst buildConversationInsights = (stage) => unique([\n  metadata.intent && metadata.intent !== 'none' ? 'Intento ' + humanize(metadata.intent) : '',\n  ...products.slice(0, 3).map((product) => 'Producto ' + product),\n  ...detectedBrands.slice(0, 2).map((brand) => 'Marca ' + humanize(brand)),\n  ...detectedPayments.slice(0, 3).map((payment) => 'Pago ' + humanize(payment)),\n  ...detectedTopics.slice(0, 3).map((topic) => 'Tema ' + humanize(topic)),\n  metadata.budget_hint && metadata.budget_hint !== 'none' ? 'Presupuesto ' + humanize(metadata.budget_hint) : '',\n  metadata.city_detected && metadata.city_detected !== 'none' ? 'Ciudad ' + String(metadata.city_detected).trim() : '',\n  stage ? 'Etapa ' + humanize(stage) : '',\n]).slice(0, 8);\n\n\nconst updates = {\n  last_bot_interaction: now,\n  updated_at: now,\n};\n\nif (!profile.first_seen_at) updates.first_seen_at = now;\nif (data.phone) updates.whatsapp_phone = String(data.phone).trim();\nif (data.wa_id || data.subscriber_id) updates.whatsapp_wa_id = String(data.wa_id || data.subscriber_id).trim();\nif (!profile.lead_source && data.channel) updates.lead_source = String(data.channel).trim();\n\nif (requestedStage && requestedStage !== 'no_change' && stageRank[requestedStage] !== undefined) {\n  if (stageRank[currentStage] === undefined || stageRank[requestedStage] >= stageRank[currentStage]) {\n    updates.funnel_stage = requestedStage;\n    updates.last_funnel_change_at = now;\n  }\n}\n\nconst effectiveStage = String(updates.funnel_stage || currentStage || 'new').trim();\nif (effectiveStage === 'browsing' && !profile.browsing_at) updates.browsing_at = now;\nif (effectiveStage === 'interested' && !profile.interested_at) updates.interested_at = now;\nif (effectiveStage === 'closing' && !profile.closing_at) updates.closing_at = now;\nif (effectiveStage === 'human_handoff' && !profile.human_handoff_at) updates.human_handoff_at = now;\n\nif (metadata.city_detected && metadata.city_detected !== 'none') {\n  let city = String(metadata.city_detected).trim();\n  const lower = normalizeText(city);\n  if (['salta', 'salta capital', 'salta cap'].includes(lower)) {\n    city = 'Salta Capital';\n    updates.is_salta_capital = true;\n    updates.location_source = 'explicit_city';\n  } else {\n    updates.location_source = 'explicit_city';\n  }\n  updates.city = city;\n}\nif (metadata.is_salta === 'true') updates.is_salta_capital = true;\nelse if (metadata.is_salta === 'false') updates.is_salta_capital = false;\nif (phoneAreaCode) updates.phone_area_code = phoneAreaCode;\nif (phoneAreaName) updates.phone_area_name = phoneAreaName;\nif (phoneAreaProvince) updates.phone_area_province = phoneAreaProvince;\nif (!updates.location_source) {\n  updates.location_source = metadata.city_detected && metadata.city_detected !== 'none'\n    ? 'explicit_city'\n    : phoneAreaCode\n      ? 'phone_area_code'\n      : 'unknown';\n}\n\nif (metadata.brand_interest && metadata.brand_interest !== 'none') updates.preferred_brand = metadata.brand_interest;\nif (metadata.budget_hint && metadata.budget_hint !== 'none') updates.preferred_budget = metadata.budget_hint;\nif (products.length > 0) updates.interested_product = products[0];\n\nconst existingPayments = Array.isArray(profile.payment_methods_mentioned) ? profile.payment_methods_mentioned : [];\nconst paymentMethodsMentioned = unique([...existingPayments, ...detectedPayments]).slice(0, 12);\nif (paymentMethodsMentioned.length > 0) updates.payment_methods_mentioned = paymentMethodsMentioned;\nif (detectedPayments.length > 0) {\n  updates.payment_method_last = detectedPayments[0];\n}\n\nconst existingProducts = Array.isArray(profile.products_mentioned) ? profile.products_mentioned : [];\nconst mergedProducts = unique([...products, ...existingProducts]).slice(0, 12);\nif (mergedProducts.length > 0) updates.products_mentioned = mergedProducts;\n\nconst existingBrands = Array.isArray(profile.brands_mentioned) ? profile.brands_mentioned : [];\nconst mergedBrands = unique([...detectedBrands, ...existingBrands]).slice(0, 6);\nif (mergedBrands.length > 0) updates.brands_mentioned = mergedBrands;\n\nconst existingTopics = Array.isArray(profile.topics_mentioned) ? profile.topics_mentioned : [];\nconst mergedTopics = unique([...detectedTopics, ...existingTopics]).slice(0, 12);\nif (mergedTopics.length > 0) updates.topics_mentioned = mergedTopics;\n\nif (metadata.intent && metadata.intent !== 'ambiguous') updates.last_intent = metadata.intent;\n\nlet score = 0;\nscore += Math.min(currentInteractions + 1, 20);\nif (mergedBrands.length > 0) score += 5;\nif (products.length > 0) score += 10;\nif (metadata.is_salta === 'true' || profile.is_salta_capital) score += 10;\nif (['interested', 'closing'].includes(effectiveStage)) score += 15;\nif (effectiveStage === 'closing') score += 10;\nif (metadata.intent === 'purchase_intent') score += 25;\nif (metadata.intent === 'reservation') score += 20;\nif (metadata.intent === 'cuotas_inquiry') score += 15;\nif (detectedPayments.length > 0) score += 10;\nif (detectedTopics.includes('ubicacion') || data.share_store_location) score += 4;\nif (detectedTopics.includes('imagenes')) score += 4;\nif (data.was_audio) score += 2;\nif (data.needs_human && metadata.intent !== 'complaint') score += 20;\nupdates.lead_score = score;\n\nconst conversationSummary = buildConversationSummary(effectiveStage);\nconst conversationInsights = buildConversationInsights(effectiveStage);\n\nconst existingTags = filterAllowedTags(Array.isArray(profile.tags) ? profile.tags : []);\nconst mergedTags = filterAllowedTags([...existingTags, ...detectedTags]).slice(0, 64);\nconst conversationAppliedTags = detectedTags.filter((tag) => !existingTags.includes(tag));\nupdates.tags = mergedTags;\n\nif (!data.needs_human && profile.human_assigned === true) {\n  try {\n    const mergedInput = $('Merge & Aggregate Messages').first().json;\n    if (mergedInput.is_human_active === false || !mergedInput.is_human_active) {\n      updates.human_assigned = false;\n    }\n  } catch (error) {\n    updates.human_assigned = false;\n  }\n}\n\nif (data.needs_human) {\n  updates.human_assigned = true;\n  updates.funnel_stage = 'human_handoff';\n  updates.human_handoff_at = profile.human_handoff_at || now;\n  updates.last_human_interaction = now;\n  updates.last_funnel_change_at = now;\n}\n\nreturn [{ json: { subscriber_id: data.subscriber_id, updates, conversation_applied_tags: conversationAppliedTags, conversation_summary: conversationSummary, conversation_insights: conversationInsights } }];"
+      },
+      "id": "9363ef63-db62-409e-99da-1b4f2f443a8c",
+      "name": "Prep Customer Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/customers?manychat_id=eq.{{ $json.subscriber_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.updates) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "e4efdf20-d6fe-42c7-8f4c-952c17afa5bd",
+      "name": "Update Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5040,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/increment_interaction",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_manychat_id: String($('Prep Customer Update').first().json.subscriber_id) }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "increment-interaction-v15",
+      "name": "Increment Interaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5280,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Process AI Response').first().json;\nconst metadata = data.metadata || {};\nconst customerUpdate = $('Prep Customer Update').first().json || {};\nconst updates = customerUpdate.updates || {};\n\nconst toIntOrNull = (value) => {\n  const n = Number(value);\n  return Number.isFinite(n) ? n : null;\n};\n\nconst extractCustomerId = (raw) => {\n  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;\n  if (typeof raw === 'string') return toIntOrNull(raw);\n  if (Array.isArray(raw) && raw.length > 0) {\n    const first = raw[0];\n    if (typeof first === 'number' && Number.isFinite(first)) return first;\n    if (typeof first === 'string') return toIntOrNull(first);\n    if (first && typeof first === 'object') {\n      if (first.upsert_customer !== undefined && first.upsert_customer !== null) return toIntOrNull(first.upsert_customer);\n      if (first.customer_id !== undefined && first.customer_id !== null) return toIntOrNull(first.customer_id);\n      if (first.id !== undefined && first.id !== null) return toIntOrNull(first.id);\n    }\n  }\n  if (raw && typeof raw === 'object') {\n    if (raw.upsert_customer !== undefined && raw.upsert_customer !== null) return toIntOrNull(raw.upsert_customer);\n    if (raw.customer_id !== undefined && raw.customer_id !== null) return toIntOrNull(raw.customer_id);\n    if (raw.id !== undefined && raw.id !== null) return toIntOrNull(raw.id);\n  }\n  return null;\n};\n\nconst saveNode = $('Save Incoming Message').first();\nlet savedId = null;\nconst savedBody = saveNode.json;\nif (Array.isArray(savedBody) && savedBody.length > 0) {\n  savedId = savedBody[0]?.id;\n} else if (savedBody && savedBody.id) {\n  savedId = savedBody.id;\n}\n\nconst upsertNode = $('Upsert Customer').first();\nconst customerId = toIntOrNull(data.customer_id) ?? extractCustomerId(upsertNode.json);\nconst parsedMessageId = toIntOrNull(savedId);\nif (!Number.isFinite(parsedMessageId)) {\n  return [];\n}\n\nconst leadScore = toIntOrNull(updates.lead_score);\n\nreturn [{\n  json: {\n    message_id: parsedMessageId,\n    customer_id: Number.isFinite(customerId) ? customerId : null,\n    intent_detected: String(metadata.intent || '').trim() || null,\n    products_mentioned: Array.isArray(data.products_list) ? data.products_list : [],\n    applied_tags: Array.isArray(customerUpdate.conversation_applied_tags) ? customerUpdate.conversation_applied_tags : [],\n    payment_methods_detected: Array.isArray(data.payment_methods_detected) ? data.payment_methods_detected : [],\n    brands_detected: Array.isArray(data.brands_mentioned) ? data.brands_mentioned : [],\n    topics_detected: Array.isArray(data.topics_mentioned) ? data.topics_mentioned : [],\n    funnel_stage_after: String(updates.funnel_stage || data.current_funnel_stage || '').trim() || null,\n    triggered_human: data.needs_human === true,\n    conversation_summary: String(customerUpdate.conversation_summary || '').trim() || null,\n    conversation_insights: Array.isArray(customerUpdate.conversation_insights) ? customerUpdate.conversation_insights : [],\n    lead_score_after: Number.isFinite(leadScore) ? leadScore : null\n  }\n}];\n"
+      },
+      "id": "240ee610-0e44-4499-8592-361394f3258c",
+      "name": "Backfill User Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/conversations?id=eq.{{ $json.message_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ customer_id: $json.customer_id !== undefined && $json.customer_id !== null ? $json.customer_id : null, intent_detected: $json.intent_detected !== undefined && $json.intent_detected !== null ? $json.intent_detected : null, products_mentioned: $json.products_mentioned || [], applied_tags: $json.applied_tags || [], payment_methods_detected: $json.payment_methods_detected || [], brands_detected: $json.brands_detected || [], topics_detected: $json.topics_detected || [], funnel_stage_after: $json.funnel_stage_after !== undefined && $json.funnel_stage_after !== null ? $json.funnel_stage_after : null, triggered_human: $json.triggered_human === true, conversation_summary: $json.conversation_summary !== undefined && $json.conversation_summary !== null ? $json.conversation_summary : null, conversation_insights: $json.conversation_insights || [], lead_score_after: $json.lead_score_after !== undefined && $json.lead_score_after !== null ? $json.lead_score_after : null }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "71fa74f4-2397-49cf-8d34-36b84e87011b",
+      "name": "Update User Intent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5040,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const upsertRaw = $input.first().json;\n\nconst toIntOrNull = (value) => {\n  const n = Number(value);\n  return Number.isFinite(n) ? n : null;\n};\n\nconst extractCustomerId = (raw) => {\n  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;\n  if (typeof raw === 'string') return toIntOrNull(raw);\n  if (Array.isArray(raw) && raw.length > 0) {\n    const first = raw[0];\n    if (typeof first === 'number' && Number.isFinite(first)) return first;\n    if (typeof first === 'string') return toIntOrNull(first);\n    if (first && typeof first === 'object') {\n      if (first.upsert_customer !== undefined && first.upsert_customer !== null) return toIntOrNull(first.upsert_customer);\n      if (first.customer_id !== undefined && first.customer_id !== null) return toIntOrNull(first.customer_id);\n      if (first.id !== undefined && first.id !== null) return toIntOrNull(first.id);\n    }\n  }\n  if (raw && typeof raw === 'object') {\n    if (raw.upsert_customer !== undefined && raw.upsert_customer !== null) return toIntOrNull(raw.upsert_customer);\n    if (raw.customer_id !== undefined && raw.customer_id !== null) return toIntOrNull(raw.customer_id);\n    if (raw.id !== undefined && raw.id !== null) return toIntOrNull(raw.id);\n  }\n  return null;\n};\n\nconst customerId = extractCustomerId(upsertRaw);\n\nconst saveNode = $('Save Incoming Message').first();\nconst savedBody = saveNode.json;\nlet messageId = null;\nif (Array.isArray(savedBody) && savedBody.length > 0) {\n  messageId = savedBody[0]?.id;\n} else if (savedBody && savedBody.id) {\n  messageId = savedBody.id;\n}\n\nconst parsedMessageId = toIntOrNull(messageId);\nif (!Number.isFinite(customerId) || !Number.isFinite(parsedMessageId)) {\n  return [];\n}\n\nreturn [{\n  json: {\n    message_id: parsedMessageId,\n    customer_id: customerId\n  }\n}];\n"
+      },
+      "id": "prep-incoming-message-customer-link-v15",
+      "name": "Prep Incoming Message Customer Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/conversations?id=eq.{{ $json.message_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ customer_id: $json.customer_id !== undefined && $json.customer_id !== null ? $json.customer_id : null }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "backfill-incoming-message-customer-v15",
+      "name": "Backfill Incoming Message Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/v_store_context?select=store_address,store_hours,store_payment_methods,store_credit_policy,store_shipping_policy,store_warranty_new,store_warranty_used,store_social_instagram,store_social_facebook,customer_cards_supported,customer_cards_blocked,customer_payment_mentions_supported,store_financing_scope,usd_to_ars&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fetch-store-settings-v15",
+      "name": "Fetch Store Settings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3840,
+        144
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/crm_tag_definitions?select=tag_key,tag_group,label,description,color_hex,sort_order,active&active=eq.true&order=tag_group.asc,sort_order.asc,tag_key.asc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fetch-crm-tag-definitions-v15",
+      "name": "Fetch CRM Tag Definitions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2940,
+        160
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = [];\nfor (const item of $input.all()) {\n  let data = item.json;\n  if (data && data.data && Array.isArray(data.data)) data = data.data;\n  if (Array.isArray(data)) rows.push(...data);\n  else if (data && data.tag_key) rows.push(data);\n}\nreturn [{ json: { tags: rows } }];\n"
+      },
+      "id": "agg-crm-tag-definitions-v15",
+      "name": "Aggregate CRM Tag Definitions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3180,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/storefront_orders?select=id,first_name,last_name,email,phone,address,zip_code,city,province,delivery_instructions,payment_method,currency,subtotal,item_count,items,transfer_aliases,status,customer_id,manychat_id,whatsapp_wa_id,whatsapp_phone,whatsapp_handoff_token,whatsapp_handoff_started_at&limit=1&id=eq.{{ Number($('Merge & Aggregate Messages').first().json.storefront_order_id || 0) }}&whatsapp_handoff_token=eq.{{ encodeURIComponent(String($('Merge & Aggregate Messages').first().json.storefront_order_token || '__none__')) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fetch-storefront-order-handoff-v15",
+      "name": "Fetch Storefront Order Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3480,
+        160
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const merged = $('Merge & Aggregate Messages').first().json;\nconst input = $input.first().json || {};\nconst orderId = Number(merged.storefront_order_id || 0);\nconst token = String(merged.storefront_order_token || '').trim().toLowerCase();\nif (!Number.isFinite(orderId) || orderId <= 0 || token.length < 8) {\n  return [];\n}\nconst customerId = Number(input.customer_id);\nreturn [{\n  json: {\n    order_id: orderId,\n    token,\n    customer_id: Number.isFinite(customerId) ? customerId : null,\n    manychat_id: String(merged.subscriber_id || '').trim() || null,\n    whatsapp_phone: String(merged.phone || '').trim() || null,\n    whatsapp_handoff_started_at: new Date().toISOString(),\n    status: 'awaiting_payment_proof'\n  }\n}];"
+      },
+      "id": "prep-storefront-order-handoff-update-v15",
+      "name": "Prep Storefront Order Handoff Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/storefront_orders?id=eq.{{ $json.order_id }}&whatsapp_handoff_token=eq.{{ encodeURIComponent(String($json.token || '__none__')) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ customer_id: $json.customer_id, manychat_id: $json.manychat_id || null, whatsapp_phone: $json.whatsapp_phone || null, status: $json.status || 'awaiting_payment_proof', whatsapp_handoff_started_at: $json.whatsapp_handoff_started_at || null }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "update-storefront-order-handoff-v15",
+      "name": "Update Storefront Order Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3120,
+        -240
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Is Audio?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Audio?": {
+      "main": [
+        [
+          {
+            "node": "Download Audio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Audio": {
+      "main": [
+        [
+          {
+            "node": "Groq Whisper Transcribe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Whisper Transcribe": {
+      "main": [
+        [
+          {
+            "node": "Merge Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Input": {
+      "main": [
+        [
+          {
+            "node": "Save Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Wait 8s Debounce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 8s Debounce": {
+      "main": [
+        [
+          {
+            "node": "Check Is Latest (RPC)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Is Latest (RPC)": {
+      "main": [
+        [
+          {
+            "node": "Debounce Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debounce Check": {
+      "main": [
+        [
+          {
+            "node": "Is Latest?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Latest?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Messages",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ensure Merge Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Fetch Recent Messages": {
+      "main": [
+        []
+      ]
+    },
+    "Ensure Merge Input": {
+      "main": [
+        [
+          {
+            "node": "Merge & Aggregate Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge & Aggregate Messages": {
+      "main": [
+        [
+          {
+            "node": "Upsert Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Customer": {
+      "main": [
+        [
+          {
+            "node": "Fetch Customer Profile",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Incoming Message Customer Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Customer Profile": {
+      "main": [
+        [
+          {
+            "node": "Fetch Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Conversation History": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Products": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Product Catalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Sales)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (Sales)": {
+      "main": [
+        [
+          {
+            "node": "Process AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI Response": {
+      "main": [
+        [
+          {
+            "node": "Merge All Routes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Routes": {
+      "main": [
+        [
+          {
+            "node": "Is Silent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Silent?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Send to WhatsApp",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Customer Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Bot Message": {
+      "main": [
+        [
+          {
+            "node": "Save Bot Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Customer Update": {
+      "main": [
+        [
+          {
+            "node": "Update Customer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Bot Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Customer": {
+      "main": [
+        [
+          {
+            "node": "Increment Interaction",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Backfill User Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backfill User Intent": {
+      "main": [
+        [
+          {
+            "node": "Update User Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (Sales)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: calcular_cuotas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Sales)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Incoming Message Customer Link": {
+      "main": [
+        [
+          {
+            "node": "Backfill Incoming Message Customer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Storefront Order Handoff Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backfill Incoming Message Customer": {
+      "main": [
+        []
+      ]
+    },
+    "Fetch Store Settings": {
+      "main": [
+        [
+          {
+            "node": "Fetch CRM Tag Definitions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Conversation History": {
+      "main": [
+        [
+          {
+            "node": "Fetch Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Product Catalog": {
+      "main": [
+        [
+          {
+            "node": "Fetch Store Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch CRM Tag Definitions": {
+      "main": [
+        [
+          {
+            "node": "Aggregate CRM Tag Definitions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate CRM Tag Definitions": {
+      "main": [
+        [
+          {
+            "node": "Fetch Storefront Order Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Storefront Order Handoff": {
+      "main": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Storefront Order Handoff Update": {
+      "main": [
+        [
+          {
+            "node": "Update Storefront Order Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ValidatorOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approved",
+    "reply_messages",
+    "selected_product_keys",
+    "actions",
+    "final_state_delta",
+    "validation_errors",
+    "validation_warnings",
+    "fallback_reason"
+  ],
+  "properties": {
+    "approved": {
+      "type": "boolean"
+    },
+    "reply_messages": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1200
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "properties": {
+              "type": {
+                "const": "image"
+              },
+              "image_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 3
+    },
+    "selected_product_keys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "maxItems": 4
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "attach_store_url",
+          "attach_storefront_link",
+          "attach_product_images",
+          "share_store_location",
+          "no_reply"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "final_state_delta": {
+      "$ref": "./state-delta.schema.json"
+    },
+    "validation_errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "validation_warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "fallback_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 240
+    }
+  }
+}

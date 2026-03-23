@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResponderOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "route_key",
+    "reply_text",
+    "selected_product_keys",
+    "actions",
+    "state_delta"
+  ],
+  "properties": {
+    "route_key": {
+      "type": "string",
+      "enum": [
+        "storefront_order",
+        "exact_product_quote",
+        "brand_catalog",
+        "generic_sales",
+        "store_info"
+      ]
+    },
+    "reply_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1200
+    },
+    "selected_product_keys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "maxItems": 4
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "attach_store_url",
+          "attach_storefront_link",
+          "attach_product_images",
+          "share_store_location",
+          "no_reply"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "state_delta": {
+      "$ref": "./state-delta.schema.json"
+    }
+  }
+}

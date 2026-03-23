@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StateDelta",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "intent_key",
+    "funnel_stage",
+    "lead_score_delta",
+    "share_store_location",
+    "selected_product_keys",
+    "tags_to_add",
+    "tags_to_remove",
+    "payment_method_key",
+    "summary"
+  ],
+  "properties": {
+    "intent_key": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "greeting",
+        "price_inquiry",
+        "product_match",
+        "catalog_browse",
+        "storefront_order",
+        "payment_question",
+        "store_info"
+      ]
+    },
+    "funnel_stage": {
+      "type": "string",
+      "enum": [
+        "new",
+        "browsing",
+        "interested",
+        "closing",
+        "retained"
+      ]
+    },
+    "lead_score_delta": {
+      "type": "integer",
+      "minimum": -25,
+      "maximum": 25
+    },
+    "share_store_location": {
+      "type": "boolean"
+    },
+    "selected_product_keys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "tags_to_add": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "tags_to_remove": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "payment_method_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "transferencia",
+        "efectivo_ars",
+        "efectivo_usd",
+        "crypto",
+        "tarjeta",
+        "cuotas_bancarizada",
+        "cuotas_macro",
+        "mercado_pago",
+        "bitcoin",
+        "usdt",
+        "naranja",
+        "visa",
+        "mastercard",
+        "amex",
+        "cabal",
+        "otro",
+        null
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 240
+    }
+  }
+}

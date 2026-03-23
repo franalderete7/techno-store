@@ -15,7 +15,6 @@ type SettingSectionId =
   | "payments"
   | "location"
   | "pricing"
-  | "legacy"
   | "automation";
 
 type SettingInputKind = "text" | "textarea" | "number";
@@ -58,13 +57,8 @@ const SETTING_SECTIONS: Array<{
     description: "Primary pricing defaults that influence derived prices and financing calculations.",
   },
   {
-    id: "legacy",
-    title: "Legacy Compatibility",
-    description: "Older defaults still present in the database for compatibility with existing pricing logic.",
-  },
-  {
     id: "automation",
-    title: "Automation",
+    title: "Workflow Automation",
     description: "Operational values used by workflows and bot coordination.",
   },
 ];
@@ -104,6 +98,13 @@ const SETTING_DEFINITIONS: SettingDefinition[] = [
     label: "Facebook",
     section: "storefront",
     placeholder: "@technostore.salta",
+  },
+  {
+    key: "store_website_url",
+    label: "Store Website URL",
+    section: "storefront",
+    placeholder: "https://puntotechno.com",
+    description: "Canonical website URL shared by WhatsApp workflows and any assisted catalog replies.",
   },
   {
     key: "store_payment_methods",
@@ -312,57 +313,17 @@ const SETTING_DEFINITIONS: SettingDefinition[] = [
     placeholder: "0.15",
     helpText: "Use decimal form: 0.15 means 15%.",
   },
-  {
-    key: "logistics_usd",
-    label: "Legacy Logistics USD",
-    section: "legacy",
-    kind: "number",
-    step: "0.01",
-    placeholder: "10",
-  },
-  {
-    key: "cuotas_qty",
-    label: "Legacy Cuotas Qty",
-    section: "legacy",
-    kind: "number",
-    step: "1",
-    placeholder: "6",
-  },
-  {
-    key: "bancarizada_interest",
-    label: "Legacy Bancarizada Interest",
-    section: "legacy",
-    kind: "number",
-    step: "0.01",
-    placeholder: "0.50",
-    helpText: "Use decimal form: 0.50 means 50%.",
-  },
-  {
-    key: "macro_interest",
-    label: "Legacy Macro Interest",
-    section: "legacy",
-    kind: "number",
-    step: "0.01",
-    placeholder: "0.40",
-    helpText: "Use decimal form: 0.40 means 40%.",
-  },
-  {
-    key: "iphone_delivery_days",
-    label: "iPhone Delivery Days",
-    section: "legacy",
-    kind: "number",
-    step: "1",
-    placeholder: "3",
-  },
-  {
-    key: "bot_version",
-    label: "Bot Version",
-    section: "automation",
-    placeholder: "v8",
-  },
 ];
 
 const definitionByKey = new Map(SETTING_DEFINITIONS.map((definition) => [definition.key, definition]));
+const HIDDEN_SETTING_KEYS = new Set([
+  "logistics_usd",
+  "cuotas_qty",
+  "bancarizada_interest",
+  "macro_interest",
+  "iphone_delivery_days",
+  "bot_version",
+]);
 
 function humanizeSettingKey(key: string) {
   return key
@@ -497,7 +458,9 @@ export function StoreSettingsPanel() {
   };
 
   const rowsByKey = new Map(settings.map((row) => [row.key, row]));
-  const unknownRows = settings.filter((row) => !definitionByKey.has(row.key));
+  const unknownRows = settings.filter(
+    (row) => !definitionByKey.has(row.key) && !HIDDEN_SETTING_KEYS.has(row.key)
+  );
 
   return (
     <section className="space-y-6 px-4 py-6 sm:px-6">

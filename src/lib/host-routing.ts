@@ -64,10 +64,9 @@ export function rewriteAdminVisiblePath(pathname: string) {
   if (
     normalized === "/stock" ||
     normalized === "/purchases" ||
-    normalized === "/crm" ||
-    normalized === "/reservations"
+    normalized === "/crm"
   ) {
-    return `/admin${normalized === "/reservations" ? "" : normalized}`;
+    return `/admin${normalized}`;
   }
 
   if (normalized === "/admin" || normalized.startsWith("/admin/")) {
@@ -80,7 +79,7 @@ export function rewriteAdminVisiblePath(pathname: string) {
 export function getCanonicalAdminPath(pathname: string) {
   const normalized = normalizeSlashes(pathname);
 
-  if (normalized === "/admin" || normalized === "/reservations") {
+  if (normalized === "/admin") {
     return "/";
   }
 

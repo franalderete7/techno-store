@@ -1,76 +1,100 @@
-# Techno Store – Products Admin
+# TechnoStore
 
-A Next.js app with a public storefront plus a protected admin panel for managing products in Supabase. Built with shadcn/ui and dark theme.
+TechnoStore is a Next.js app backed by Supabase with three active surfaces:
 
-## Routes
+- public storefront and product detail pages
+- protected admin for products, stock, purchases, CRM, orders, and settings
+- n8n-based WhatsApp sales workflows, with `v17` as the current modular architecture
+
+## Current Scope
+
+The repo is no longer just a products admin.
 
 - Public storefront: `/`
-- Public product detail: `/productos/[handle]`
-- Admin login: `/admin/login`
-- Admin dashboard: `/admin`
+- Public product detail: `/productos/[slug]`
+- Admin shell: `/admin`
+- Admin orders: `/admin/orders`
 - Admin stock: `/admin/stock`
 - Admin purchases: `/admin/purchases`
 - Admin CRM: `/admin/crm`
+- Admin settings: `/admin/settings`
+- Web checkout API: `/api/storefront/checkout`
+- Workflow definitions: [n8n-automations](/Users/aldegol/Documents/Apps/techno-store/n8n-automations)
 
-## Setup
+## Architecture
 
-1. **Clone and install**
+- App runtime: Next.js 14 + React 18
+- Database/auth/storage: Supabase
+- Public catalog source: `v_product_catalog`
+- Store policy source: `v_store_context` + `store_settings`
+- CRM source: `customers`, `conversations`, `crm_tag_definitions`, `v_customer_context`
+- WhatsApp orchestration: n8n workflows in [n8n-automations](/Users/aldegol/Documents/Apps/techno-store/n8n-automations)
+- Current workflow target: `v17`
 
-   ```bash
-   npm install
-   ```
+Supporting docs:
 
-2. **Configure Supabase**
+- App/database notes: [DATABASE_SCHEMA.md](/Users/aldegol/Documents/Apps/techno-store/DATABASE_SCHEMA.md)
+- `v17` architecture: [TECHNOSTORE_V17_ARCHITECTURE.md](/Users/aldegol/Documents/Apps/techno-store/docs/TECHNOSTORE_V17_ARCHITECTURE.md)
 
-   Create `.env.local` in the project root:
+## Database Reality
 
-   ```bash
-   cp .env.example .env.local
-   ```
+The live Supabase project is the schema source of truth.
 
-   Edit `.env.local` and add your Supabase credentials:
+- Refresh local DB types with `npm run db:types:pull`
+- Generated types live in [database.ts](/Users/aldegol/Documents/Apps/techno-store/src/types/database.ts)
+- The repo does not yet contain a complete migration history for all live objects
+- Before future schema work, export and check in the missing live storefront/order/accounting migrations
 
-   - Get **URL** and **anon key** from [Supabase](https://supabase.com) → your project → Settings → API
-   - Set:
-     - `NEXT_PUBLIC_SUPABASE_URL`
-     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+Checked-in SQL currently includes:
 
-   For the protected admin area, also configure Supabase Auth:
+- [v17_workflow_foundation.sql](/Users/aldegol/Documents/Apps/techno-store/supabase/v17_workflow_foundation.sql)
 
-   - Go to **Authentication** → **Providers** → **Email**
-   - Enable email/password login
-   - Optionally enable email confirmation if you want new admin accounts to confirm their email first
+## Local Setup
 
-3. **Apply database schema**
+1. Install dependencies
 
-   Ensure your Supabase project has the `products` table. See `DATABASE_SCHEMA.md` for the full schema. The SQL you provided should be run in the Supabase SQL editor if the table does not exist yet.
+```bash
+npm install
+```
 
-4. **RLS**
+2. Configure `.env.local`
 
-   If Row Level Security is enabled on `products`, grant read/write access for your use case (e.g. for admin dashboard, you may use a service role key or specific RLS policies for authenticated users).
+Required app env:
 
-5. **Optional but recommended: admin allowlist**
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-   Add this server-side env if you want only specific emails to access `/admin/*`:
+Optional admin restriction:
 
-   - `ADMIN_EMAIL_ALLOWLIST=you@example.com,partner@example.com`
+- `ADMIN_EMAIL_ALLOWLIST=you@example.com,partner@example.com`
 
-   If this variable is omitted, any authenticated Supabase user can enter the admin panel.
+If you use checkout writes locally or in deploys, also set:
 
-## Development
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+If you use n8n workflows, configure the corresponding workflow envs in n8n, not here.
+
+3. Configure Supabase Auth for admin access
+
+- Enable email/password auth
+- Add allowlist emails if you want a closed admin
+
+4. Start dev server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+## Workflows
 
-## Deploy to Vercel
+Active repo workflow generation is centered on `v17`.
 
-1. Push to GitHub
-2. Import the repo in [Vercel](https://vercel.com)
-3. Add environment variables in project settings:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `ADMIN_EMAIL_ALLOWLIST` (recommended)
-4. Deploy
+- Active `v17` files stay in [n8n-automations](/Users/aldegol/Documents/Apps/techno-store/n8n-automations)
+- Older workflow generations are archived under `n8n-automations/archive`
+- `v17` contracts live in [docs/technostore-v17](/Users/aldegol/Documents/Apps/techno-store/docs/technostore-v17)
+
+## Operational Notes
+
+- Store policy, warranties, payment methods, and website URL should come from `store_settings`, not hardcoded workflow prompts
+- Exact product answers should be driven by deterministic Supabase candidate retrieval plus validation
+- Do not treat the checked-in SQL as a complete bootstrap of production until the missing live migrations are exported
